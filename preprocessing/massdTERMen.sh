@@ -27,7 +27,7 @@ do
         echo $name
         OUT=$OUTPATH/$dir/$name
         SECONDS=0
-        $DESIGN_BIN --p $pdb --c $CONFIG --o $OUT --w > $OUT.log
+        $DESIGN_BIN --p $pdb --c $CONFIG --o $OUT --s 'chain A' --w > $OUT.log
         echo "$(($SECONDS / 60)) minutes elapsed" >> $OUT.log
         echo "$(($SECONDS / 60)) minutes elapsed"
     done
