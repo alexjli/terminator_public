@@ -7,7 +7,7 @@ Given an etab file, parse the corresponding Potts model parameters
 This assumes that the full protein etab is provided
 Will not work with etabs computed on partial chains
 """
-def parseEtab(filename):
+def parseEtab(filename, save=True):
 
     if filename.split('.')[-1] != 'etab':
         raise ValueError('Input file is not an etab file!')
@@ -54,7 +54,7 @@ def parseEtab(filename):
     L = max(id_to_resid.values()) + 1
 
     potts_selfE = np.zeros((L, 22))
-    potts = np.zeros((L, L, 20, 20))
+    potts = np.zeros((L, L, 22, 22))
 
     for data in selfE:
         resid = data['resid']
@@ -74,8 +74,9 @@ def parseEtab(filename):
         slice1 = potts[resid1][resid0]
         slice1[residue1][residue0] = data['E']
 
-    np.save(filename, potts)
-    np.save(filename[:-5] + '_selfE', potts_selfE)
+    if save:
+        np.save(filename, potts)
+        np.save(filename[:-5] + '_selfE.etab', potts_selfE)
 
     # testing that the values in the potts parameters is correct
     """
@@ -90,75 +91,3 @@ if __name__ == '__main__':
     parser.add_argument('etab', metavar='f', help = 'input etab file')
     args = parser.parse_args()
     parseEtab(args.etab)
-
-"""
-def parseEtab(filename):
-    selfE = []
-    pairE = []
-    chainLens = {}
-    fp = open(filename, 'r')
-    # this loop requires that all self energies
-    # occur before pair energies
-    for idx, line in enumerate(fp):
-        l = line.strip().split(' ')
-
-        # self energies
-        if len(l) == 3:
-            chain, resid = l[0].split(',')
-            resid = int(resid)
-
-            # count how many residue are in each chain
-            if chain in chainLens.keys():
-                if resid > chainLens[chain]:
-                    chainLens[chain] = resid
-            else:
-                chainLens[chain] = 1
-
-            residue = aa_to_int(l[1])
-            E = float(l[2])
-
-            selfE.append([chain, resid, residue, E])
-        elif len(l) == 5:
-            chain1, resid1 = l[0].split(',')
-            chain2, resid2 = l[1].split(',')
-            resid1 = int(resid1)
-            resid2 = int(resid2)
-
-            residue1 = aa_to_int(l[2])
-            residue2 = aa_to_int(l[3])
-            E = float(l[4])
-
-            pairE.append([chain1, chain2, resid1, resid2, residue1, residue2, E])
-        else:
-            raise ValueError("Something doesn't look right at line %d: %s" % (idx, line))
-
-    fp.close()
-
-    offset = [0]
-    chains = sorted(chainLens.keys())
-    for c in chains:
-        offset.append(sum(offset) + chainLens[c])
-    offset.pop()
-    offset = {chains[i]: offset[i] for i in range(len(chains))}
-
-    # update all resids
-    for e_data in selfE:
-        chain = e_data[0]
-        e_data[1] += offset[chain]
-        e_data.pop(0)
-
-    for e_data in pairE:
-        chain1 = e_data[0]
-        chain2 = e_data[1]
-        e_data[2] += offset[chain1] - 1
-        e_data[3] += offset[chain2] - 1
-        e_data.pop(1)
-        e_data.pop(0)
-
-    #potts = np.zeros()
-    import pprint
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(selfE)
-    #print(selfE[0], selfE[20])
-    #print(pairE[0], pairE[20])
-"""

@@ -140,9 +140,9 @@ def dumpTrainingData(in_path, out_path = None, cutoff = 1000):
 
     return output
 
-def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000):
+def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
     data = parseTERMdata(in_path + '.dat')
-    etab = parseEtab(in_path + '.etab')
+    etab, self_etab = parseEtab(in_path + '.etab', save=False)
 
     term_msas = []
     term_features = []
@@ -151,10 +151,6 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000):
     for term_data in data['terms']:
         # cutoff MSAs at top N
         term_msas.append(term_data['labels'][:cutoff])
-        """
-        # append focus
-        # term_focuses.append(term_data['focus'])
-        """
         # add focus
         term_focuses += term_data['focus']
         # append term len, the len of the focus
@@ -176,7 +172,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000):
         num_alignments_arr += num_alignments
         features = np.concatenate([ppoe, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
 
-        # why does pytorch do row vector computation what the heck
+        # pytorch does row vector computation
         # swap rows and columns
         features = features.transpose(0, 2, 1)
         term_features.append(features)
@@ -205,7 +201,9 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000):
         'mask': src_mask,
         'term_lens': len_tensor,
         'sequence': data['sequence'],
-        'seq_len': len(data['selection'])
+        'seq_len': len(data['selection']),
+        'etab': etab,
+        'selfE': self_etab
     }
 
     """
@@ -224,12 +222,13 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000):
     exit()
     """
 
-    name = in_path.strip().split('/')[-1]
-    if out_path:
-        os.chdir(out_path)
+    if save:
+        if out_path:
+            os.chdir(out_path)
 
-    with open(name[:-4] + '.features', 'wb') as fp:
-        pickle.dump(output, fp)
+        name = in_path.strip().split('/')[-1]
+        with open(name[:-4] + '.features', 'wb') as fp:
+            pickle.dump(output, fp)
 
     return output
 
@@ -271,9 +270,9 @@ def makeDataFolder(in_path, out_path = None):
         os.chdir('..')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Convert a dTERMen output .dat file into a pickle file with data in a python-friendly format')
-    parser.add_argument('dat', metavar='f', help = 'input .dat file')
-    parser.add_argument('--out', dest='out', help = 'output path')
+    parser = argparse.ArgumentParser('Convert a dTERMen output .dat file and .etab into a pickle file with data in a python-friendly format')
+    parser.add_argument('dat', metavar='f', help = 'input .etab/.dat file basename')
+    parser.add_argument('--out', dest='out', help = 'output path (no file extension)')
     parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSAs per TERM', default=1000)
     args = parser.parse_args()
     dumpTrainingTensors(args.dat, out_path = args.out, cutoff = args.cutoff)

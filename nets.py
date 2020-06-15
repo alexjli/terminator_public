@@ -91,7 +91,7 @@ class ResidueFeatures(nn.Module):
         # X: num batches x num alignments x sum TERM length
         # features: num_batches x num alignments x sum TERM length x num features
         # samples in X are in rows
-        embedded = self.embedding(X)
+        embedded = self.embedding(X).double()
 
         # hidden dim = embedding hidden dim + num features
         # out: num batches x num alignments x TERM length x hidden dim
@@ -134,6 +134,7 @@ class CondenseMSA(nn.Module):
         if torch.cuda.is_available():
             self.dev = device
         else:
+            print('No CUDA device detected. Defaulting to cpu')
             self.dev = 'cpu'
 
     """
@@ -203,8 +204,8 @@ class CondenseMSA(nn.Module):
         last_timepoint = current_timepoint
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev)
-        count = torch.zeros((n_batches, max_seq_len, 1)).to(self.dev)
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev).double()
+        count = torch.zeros((n_batches, max_seq_len, 1)).to(self.dev).long()
 
         # this make sure each batch stays in the same layer during aggregation
         layer = torch.arange(n_batches).unsqueeze(-1).to(self.dev)
@@ -216,7 +217,7 @@ class CondenseMSA(nn.Module):
 
         # aggregate node embeddings and associated counts
         aggregate = aggregate.index_put((layer, focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(focuses).unsqueeze(-1).float().to(self.dev)
+        count_idx = torch.ones_like(focuses).unsqueeze(-1).to(self.dev)
         count = count.index_put((layer, focuses), count_idx, accumulate=True)
 
         current_timepoint = time.time()
@@ -230,7 +231,13 @@ class CondenseMSA(nn.Module):
 
 class DummyLSTM(nn.Module):
     def __init__(self):
-        self.lstm = nn.LSTM(input_size = 64, hidden_size=64, num_layers = 1, batch_first=True, bidirectional=True)
+        super(DummyLSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size = 32, hidden_size=32, num_layers = 2, batch_first=True, bidirectional=True)
+        self.out_shape = nn.LSTM(input_size = 64, hidden_size = 11, num_layers = 1, batch_first = True, bidirectional = True)
+
 
     def forward(self, X):
-        return self.lstm(X)
+        self.lstm.flatten_parameters()
+        self.out_shape.flatten_parameters()
+        states = self.lstm(X)[0]
+        return self.out_shape(states)[0]
