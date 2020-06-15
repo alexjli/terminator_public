@@ -67,7 +67,7 @@ class TERMDataLoader():
             features = pad_sequence(features, batch_first=True).transpose(1,2).float()
             msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
             focuses = pad_sequence(focuses, batch_first=True)
-            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
+            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
 
             max_focus_len = max(focus_lens)
             padded_src_masks = []
@@ -78,7 +78,7 @@ class TERMDataLoader():
                 padded_src_masks.append(convert(padded_mask))
 
             # invert at this stage, since masks are stored inverted
-            padded_src_masks = ~(torch.stack(padded_src_masks).bool())
+            padded_src_masks = ~(torch.stack(padded_src_masks).byte())
 
             self.data_clusters.append([msas, features, seq_lens, focuses, padded_src_masks, src_key_mask])
 

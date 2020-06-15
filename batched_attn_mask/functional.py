@@ -10,7 +10,7 @@ from torch.nn import _reduction as _Reduction
 from torch.nn.modules import utils
 from torch.nn.modules.utils import _single, _pair, _triple, _list_with_default
 from torch.nn import grad  # noqa: F401
-from torch import _VF
+from . import _VF
 from torch._jit_internal import boolean_dispatch, List
 
 def linear(input, weight, bias=None):

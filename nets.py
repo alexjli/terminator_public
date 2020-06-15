@@ -7,9 +7,9 @@ import numpy as np
 import math
 from scipy.linalg import block_diag
 
-from batched_attn_mask.transformer import TransformerEncoderLayer
+from batched_attn_mask.transformer import TransformerEncoderLayer, TransformerEncoder
 
-NUM_AA = 21
+NUM_AA = 22
 
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf
@@ -130,7 +130,7 @@ class CondenseMSA(nn.Module):
         self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000)
         self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks)
         self.transformer = TransformerEncoderLayer(d_model = hidden_dim, nhead = nheads, dim_feedforward = hidden_dim)
-        self.encoder = nn.TransformerEncoder(self.transformer, num_layers=4)
+        self.encoder = TransformerEncoder(self.transformer, num_layers=4)
         if torch.cuda.is_available():
             self.dev = device
         else:
@@ -177,7 +177,7 @@ class CondenseMSA(nn.Module):
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
         # zero out biases introduced into padding
-        convolution *= negate_padding_mask
+        convolution *= negate_padding_mask.float()
         print(size(convolution))
 
         current_timepoint = time.time()
@@ -190,13 +190,13 @@ class CondenseMSA(nn.Module):
         # transpose because pytorch transformer uses weird shape
         batch_terms = batch_terms.transpose(0,1)
         # create node embeddings
-        node_embeddings = self.encoder(batch_terms, mask = src_mask, src_key_padding_mask = src_key_mask)
+        node_embeddings = self.encoder(batch_terms, mask = src_mask.float(), src_key_padding_mask = src_key_mask.byte())
         # transpose back
         node_embeddings = node_embeddings.transpose(0,1)
         print(size(node_embeddings))
 
         # zero out biases introduced into padding
-        node_embeddings *= negate_padding_mask
+        node_embeddings *= negate_padding_mask.float()
 
         current_timepoint = time.time()
         print('transform', current_timepoint-last_timepoint)
@@ -208,6 +208,11 @@ class CondenseMSA(nn.Module):
 
         # this make sure each batch stays in the same layer during aggregation
         layer = torch.arange(n_batches).unsqueeze(-1).to(self.dev)
+        #import pdb; pdb.set_trace()
+        #breakpoint()
+
+        focuses = focuses.to(self.dev)
+        node_embeddings = node_embeddings.to(self.dev)
 
         # aggregate node embeddings and associated counts
         aggregate = aggregate.index_put((layer, focuses), node_embeddings, accumulate=True)
