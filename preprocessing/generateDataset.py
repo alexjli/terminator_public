@@ -13,20 +13,33 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
     data = parseTERMdata(in_path + '.dat')
     etab, self_etab = parseEtab(in_path + '.etab', save=False)
 
+    selection = data['selection']
+
     term_msas = []
     term_features = []
     term_focuses = []
     term_lens = []
     for term_data in data['terms']:
+        focus = term_data['focus']
+        # only take data for residues that are in the selection
+        take = [i for i in range(len(focus)) if focus[i] in selection]
+
         # cutoff MSAs at top N
-        term_msas.append(term_data['labels'][:cutoff])
+        msa = term_data['labels'][:cutoff]
+        # apply take
+        term_msas.append(np.take(msa, take, axis=-1))
+
         # add focus
-        term_focuses += term_data['focus']
+        focus_take = [item for item in focus if item in selection]
+        term_focuses += focus_take
         # append term len, the len of the focus
-        term_lens.append(len(term_data['focus']))
+        term_lens.append(len(focus_take))
 
         # cutoff ppoe at top N
         ppoe = term_data['ppoe'][:cutoff]
+        # apply take
+        ppoe = np.take(ppoe, take, axis=-1)
+
         term_len = ppoe.shape[0]
         num_alignments = ppoe.shape[2]
         # cutoff rmsd at top N
@@ -119,3 +132,8 @@ def generateDataset(in_folder, out_folder, cutoff = 1000):
     # place the full dataset in the out_folder
     with open('full.dataset', 'wb') as fp:
         pickle.dump(dataset, fp)
+
+    return dataset
+
+if __name__ == '__main__':
+    generateDataset('dTERMen_data', 'features', cutoff = 50)
