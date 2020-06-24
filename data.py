@@ -65,24 +65,33 @@ class TERMDataLoader():
             focus_lens = [self.lengths[i] for i in b_idx]
             features, msas, focuses, seq_lens, src_masks = [], [], [], [], []
             selfEs = []
+            term_lens = []
             for data in batch:
                 # have to transpose these two because then we can use pad_sequence for padding
                 features.append(convert(data['features']).transpose(0,1))
                 msas.append(convert(data['msas']).transpose(0,1))
-                selfEs.append(convert(data['selfE']).transpose(0,1))
 
+                selfEs.append(convert(data['selfE']))
                 focuses.append(convert(data['focuses']))
                 seq_lens.append(data['seq_len'])
                 src_masks.append(data['mask'])
+                term_lens.append(data['term_lens'].tolist())
 
 
             # transpose back after padding
             features = pad_sequence(features, batch_first=True).transpose(1,2).double()
             msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
-            selfEs = pad_sequence(selfEs, batch_first=True).transpose(1,2)
+            selfEs = pad_sequence(selfEs, batch_first=True)
 
             focuses = pad_sequence(focuses, batch_first=True)
             src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
+
+            max_aa = focuses.size(-1)
+            for lens in term_lens:
+                max_term_len = max(lens)
+                diff = max_aa - sum(lens)
+                lens += [max_term_len] * (diff // max_term_len)
+                lens.append(diff % max_term_len)
 
             max_focus_len = max(focus_lens)
             padded_src_masks = []
@@ -95,7 +104,7 @@ class TERMDataLoader():
             # invert at this stage, since masks are stored inverted
             padded_src_masks = ~(torch.stack(padded_src_masks).bool())
 
-            self.data_clusters.append([msas, features, seq_lens, focuses, padded_src_masks, src_key_mask, selfEs])
+            self.data_clusters.append([msas, features, seq_lens, focuses, padded_src_masks, src_key_mask, selfEs, term_lens])
 
     def __len__(self):
         return len(self.data_clusters)
