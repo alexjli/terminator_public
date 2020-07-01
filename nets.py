@@ -192,21 +192,27 @@ class CondenseMSA(nn.Module):
         count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(self.dev)
         count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
 
+        # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
+        for batch, sel in enumerate(seq_lens):
+            count[batch, sel:] = 1
+
         # average the aggregate
         aggregate /= count
 
         return aggregate
 
 
-class DummyLSTM(nn.Module):
-    def __init__(self):
-        super(DummyLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size = 32, hidden_size=32, num_layers = 2, batch_first=True, bidirectional=True)
-        self.out_shape = nn.LSTM(input_size = 64, hidden_size = 11, num_layers = 1, batch_first = True, bidirectional = True)
+class Wrapper(nn.Module):
+    def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
+        super(Wrapper, self).__init__()
+        self.condense = CondenseMSA(hidden_dim = hidden_dim, num_features = num_features, filter_len = filter_len, num_blocks = num_blocks, nheads = nheads, device = device)
+        self.shape1 = nn.Linear(hidden_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.shape2 = nn.Linear(hidden_dim, 22)
 
-
-    def forward(self, X):
-        self.lstm.flatten_parameters()
-        self.out_shape.flatten_parameters()
-        states = self.lstm(X)[0]
-        return self.out_shape(states)[0]
+    def forward(self, msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask):
+        output = self.condense(msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask)
+        output = self.shape1(output)
+        output = self.relu(output)
+        reshape = self.shape2(output)
+        return reshape
