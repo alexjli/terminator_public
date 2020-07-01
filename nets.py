@@ -91,7 +91,7 @@ class ResidueFeatures(nn.Module):
         # X: num batches x num alignments x sum TERM length
         # features: num_batches x num alignments x sum TERM length x num features
         # samples in X are in rows
-        embedded = self.embedding(X).double()
+        embedded = self.embedding(X)
 
         # hidden dim = embedding hidden dim + num features
         # out: num batches x num alignments x TERM length x hidden dim
@@ -181,7 +181,7 @@ class CondenseMSA(nn.Module):
         batched_focuses = self.batchify(focuses, term_lens)
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev).double()
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(self.dev).long()
 
         # this make sure each batch stays in the same layer during aggregation

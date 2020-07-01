@@ -37,7 +37,6 @@ class BatchifyTERM(nn.Module):
         flat_terms = torch.unbind(batched_flat_terms)
         list_terms = [torch.split(flat_terms[i], term_lens[i]) for i in range(n_batches)]
         padded_terms = [pad_sequence(terms) for terms in list_terms]
-        print([term.shape for term in padded_terms[0]])
         padded_terms = [term.transpose(0,1) for term in padded_terms]
         batchify = pad_sequence_12(padded_terms)
         return batchify
@@ -58,7 +57,7 @@ class TERMAttention(nn.Module):
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
-        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).double().cuda())
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend * attend
         return attend
@@ -71,21 +70,17 @@ class TERMAttention(nn.Module):
 
         assert self.num_hidden % n_heads == 0
 
-        print(query.shape)
         d = self.num_hidden // n_heads
         Q = self.W_Q(query).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2,3)
         K = self.W_K(key).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2,3)
         V = self.W_V(value).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2,3)
-        print(Q.shape)
 
         attend_logits = torch.matmul(Q, K.transpose(-2,-1)) / np.sqrt(d)
-
-        print(attend_logits.shape)
 
         if mask_attend is not None:
             # we need to reshape the src key mask for residue-residue attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).double()
+            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).byte()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
