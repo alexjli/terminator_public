@@ -146,7 +146,7 @@ class CondenseMSA(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_mask, src_key_mask):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask):
         n_batches = X.shape[0]
         max_seq_len = max(seq_lens)
         import time
