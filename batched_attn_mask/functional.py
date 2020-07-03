@@ -366,7 +366,13 @@ def multi_head_attention_forward(query,                           # type: Tensor
             if list(attn_mask.size()) != [1, query.size(0), key.size(0)]:
                 raise RuntimeError('The size of the 2D attn_mask is not correct.')
         elif attn_mask.dim() == 3:
-            if list(attn_mask.size()) != [bsz * num_heads, query.size(0), key.size(0)]:
+            # if we feed in the non-expanded mask, expand it by num_heads. hopefuly this reduces memory usage
+            # cuz maybe python will discard the huge mask after using it
+            if list(attn_mask.size()) == [bsz, query.size(0), key.size(0)]:
+                attn_mask = attn_mask.unsqueeze(0).expand(num_heads, -1, -1, -1).transpose(0,1)
+                attn_mask = torch.flatten(attn_mask, 0, 1)
+                #print(attn_mask)
+            elif list(attn_mask.size()) != [bsz * num_heads, query.size(0), key.size(0)]:
                 raise RuntimeError('The size of the 3D attn_mask is not correct.')
         else:
             raise RuntimeError("attn_mask's dimension {} is not supported".format(attn_mask.dim()))
