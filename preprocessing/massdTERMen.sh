@@ -7,8 +7,8 @@ OUTPATH=$MST_WORKSPACE/dTERMen_data
 PDB=$MST_WORKSPACE/mini_data/PDB
 
 # create directory for outpath if it doesn't exist
-if [ ! -d $OUTPATH ]; then 
-    mkdir $OUTPATH 
+if [ ! -d $OUTPATH ]; then
+    mkdir $OUTPATH
 fi
 cd $PDB
 
@@ -16,11 +16,12 @@ cd $PDB
 for dir in $(ls -d */)
 do
     # create subdirectory for outpath
-    if [ ! -d $OUTPATH/$dir ]; then 
-        mkdir $OUTPATH/$dir 
+    if [ ! -d $OUTPATH/$dir ]; then
+        mkdir $OUTPATH/$dir
     fi
 
     cd $dir
+    # run dTERMen on each pdb in folder
     for pdb in $(ls *.pdb)
     do
         name=$(basename $pdb .pdb)
@@ -33,4 +34,3 @@ do
     done
     cd ..
 done
-
