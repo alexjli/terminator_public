@@ -40,6 +40,7 @@ class TERMDataLoader():
         self.dataset = dataset
         self.size = len(dataset)
         self.lengths = [len(dataset[i]['focuses']) for i in range(self.size)]
+        self.shuffle = shuffle
         self.batch_size = batch_size
         sorted_idx = np.argsort(self.lengths)
 
@@ -69,8 +70,8 @@ class TERMDataLoader():
                 # have to transpose these two because then we can use pad_sequence for padding
                 features.append(convert(data['features']).transpose(0,1))
                 msas.append(convert(data['msas']).transpose(0,1))
-                selfEs.append(convert(data['selfE']).transpose(0,1))
 
+                selfEs.append(convert(data['selfE']))
                 focuses.append(convert(data['focuses']))
                 seq_lens.append(data['seq_len'])
                 src_masks.append(data['mask'])
@@ -79,8 +80,8 @@ class TERMDataLoader():
             # transpose back after padding
             features = pad_sequence(features, batch_first=True).transpose(1,2).double()
             msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
-            selfEs = pad_sequence(selfEs, batch_first=True).transpose(1,2)
 
+            selfEs = pad_sequence(selfEs, batch_first=True)
             focuses = pad_sequence(focuses, batch_first=True)
             src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
 
@@ -92,8 +93,9 @@ class TERMDataLoader():
                 padded_mask = block_diag(mask, np.zeros((diff, diff)))
                 padded_src_masks.append(convert(padded_mask))
 
-            # invert at this stage, since masks are stored inverted
+            # invert at this stage and fill with float('-inf'), since masks are stored inverted
             padded_src_masks = ~(torch.stack(padded_src_masks).byte())
+            padded_src_masks = padded_src_masks.float().masked_fill(padded_src_masks, float('-inf'))
 
             self.data_clusters.append([msas, features, seq_lens, focuses, padded_src_masks, src_key_mask, selfEs])
 
@@ -101,6 +103,8 @@ class TERMDataLoader():
         return len(self.data_clusters)
 
     def __iter__(self):
-        #np.random.shuffle(self.data_clusters)
+        if self.shuffle:
+            np.random.shuffle(self.data_clusters)
         for batch in self.data_clusters:
             yield batch
+
