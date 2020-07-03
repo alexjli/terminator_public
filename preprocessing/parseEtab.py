@@ -1,10 +1,11 @@
 import numpy as np
 from common import *
 import argparse
+import pickle
 
 """
 Given an etab file, parse the corresponding Potts model parameters
-This assumes that the full protein etab is provided
+This assumes that full chain protein etabs are provided
 Will not work with etabs computed on partial chains
 """
 def parseEtab(filename, save=True):
@@ -56,27 +57,53 @@ def parseEtab(filename, save=True):
     potts_selfE = np.zeros((L, 22))
     potts = np.zeros((L, L, 22, 22))
 
+    potts_dict = {}
+
     for data in selfE:
         resid = data['resid']
         residue = data['residue']
+
+        # self E
+        potts_selfE[resid][residue] = data['E']
+        # dense potts
         slice = potts[resid][resid]
         slice[residue][residue] = data['E']
-
-        potts_selfE[resid][residue] = data['E']
+        # sparse potts
+        key = (resid, resid)
+        idx = residue * 22 + residue
+        if key not in potts_dict.keys():
+            potts_dict[key] = np.zeros(22 * 22)
+        potts_dict[key][idx] = data['E']
 
     for data in pairE:
         resid0 = data['resid0']
         resid1 = data['resid1']
         residue0 = data['residue0']
         residue1 = data['residue1']
+        # dense potts
         slice0 = potts[resid0][resid1]
         slice0[residue0][residue1] = data['E']
         slice1 = potts[resid1][resid0]
         slice1[residue1][residue0] = data['E']
 
+        # sparse potts
+        key1 = (resid0, resid1)
+        idx1 = residue0 * 22 + residue1
+        if key1 not in potts_dict.keys():
+            potts_dict[key1] = np.zeros(22 * 22)
+        potts_dict[key1][idx1] = data['E']
+
+        key2 = (resid1, resid0)
+        idx2 = residue1 * 22 + residue0
+        if key2 not in potts_dict.keys():
+            potts_dict[key2] = np.zeros(22 * 22)
+        potts_dict[key2][idx2] = data['E']
+
     if save:
         np.save(filename, potts)
         np.save(filename[:-5] + '_selfE.etab', potts_selfE)
+        with open('potts_dict.etab') as fp:
+            pickle.dump(potts_dict, fp)
 
     # testing that the values in the potts parameters is correct
     """
@@ -84,7 +111,7 @@ def parseEtab(filename, save=True):
     print(potts[0][0])
     """
 
-    return potts, potts_selfE
+    return potts_dict, potts_selfE
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Convert an etab into a numpy array of Potts model parameters')
