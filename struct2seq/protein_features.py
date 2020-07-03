@@ -15,7 +15,7 @@ class PositionalEncodings(nn.Module):
     def __init__(self, num_embeddings, period_range=[2,1000]):
         super(PositionalEncodings, self).__init__()
         self.num_embeddings = num_embeddings
-        self.period_range = period_range 
+        self.period_range = period_range
 
     def forward(self, E_idx):
         # i-j
@@ -32,7 +32,7 @@ class PositionalEncodings(nn.Module):
         # Grid-aligned
         # frequency = 2. * np.pi * torch.exp(
         #     -torch.linspace(
-        #         np.log(self.period_range[0]), 
+        #         np.log(self.period_range[0]),
         #         np.log(self.period_range[1]),
         #         self.num_embeddings / 2
         #     )
@@ -49,7 +49,7 @@ class ProteinFeatures(nn.Module):
         self.edge_features = edge_features
         self.node_features = node_features
         self.top_k = top_k
-        self.augment_eps = augment_eps 
+        self.augment_eps = augment_eps
         self.num_rbf = num_rbf
         self.num_positional_embeddings = num_positional_embeddings
 
@@ -65,7 +65,7 @@ class ProteinFeatures(nn.Module):
         # Positional encoding
         self.embeddings = PositionalEncodings(num_positional_embeddings)
         self.dropout = nn.Dropout(dropout)
-        
+
         # Normalization and embedding
         node_in, edge_in = self.feature_dimensions[features_type]
         self.node_embedding = nn.Linear(node_in,  node_features, bias=True)
@@ -133,8 +133,8 @@ class ProteinFeatures(nn.Module):
         diag = torch.diagonal(R, dim1=-2, dim2=-1)
         Rxx, Ryy, Rzz = diag.unbind(-1)
         magnitudes = 0.5 * torch.sqrt(torch.abs(1 + torch.stack([
-              Rxx - Ryy - Rzz, 
-            - Rxx + Ryy - Rzz, 
+              Rxx - Ryy - Rzz,
+            - Rxx + Ryy - Rzz,
             - Rxx - Ryy + Rzz
         ], -1)))
         _R = lambda i,j: R[:,:,:,i,j]
@@ -249,7 +249,7 @@ class ProteinFeatures(nn.Module):
         O = O.view(list(O.shape[:2]) + [9])
         O = F.pad(O, (0,0,1,2), 'constant', 0)
 
-        # DEBUG: Viz [dense] pairwise orientations 
+        # DEBUG: Viz [dense] pairwise orientations
         # O = O.view(list(O.shape[:2]) + [3,3])
         # dX = X.unsqueeze(2) - X.unsqueeze(1)
         # dU = torch.matmul(O.unsqueeze(2), dX.unsqueeze(-1)).squeeze(-1)
@@ -262,7 +262,7 @@ class ProteinFeatures(nn.Module):
 
         O_neighbors = gather_nodes(O, E_idx)
         X_neighbors = gather_nodes(X, E_idx)
-        
+
         # Re-view as rotation matrices
         O = O.view(list(O.shape[:2]) + [3,3])
         O_neighbors = O_neighbors.view(list(O_neighbors.shape[:3]) + [3,3])
@@ -336,7 +336,7 @@ class ProteinFeatures(nn.Module):
         D_features = torch.cat((torch.cos(D), torch.sin(D)), 2)
         return D_features
 
-    def forward(self, X, L, mask):
+    def forward(self, X, mask):
         """ Featurize coordinates as an attributed graph """
 
         # Data augmentation
