@@ -42,6 +42,7 @@ class TERMDataLoader():
         self.lengths = [len(dataset[i]['focuses']) for i in range(self.size)]
         self.shuffle = shuffle
         self.batch_size = batch_size
+        self.shuffle = shuffle
         sorted_idx = np.argsort(self.lengths)
 
         # Cluster into batches of similar sizes
@@ -64,8 +65,12 @@ class TERMDataLoader():
         for b_idx in self.clusters:
             batch = [self.dataset[i] for i in b_idx]
             focus_lens = [self.lengths[i] for i in b_idx]
-            features, msas, focuses, seq_lens, src_masks = [], [], [], [], []
+            features, msas, focuses, seq_lens, coords = [], [], [], [], []
             selfEs = []
+            etabs = []
+            term_lens = []
+            seqs = []
+
             for data in batch:
                 # have to transpose these two because then we can use pad_sequence for padding
                 features.append(convert(data['features']).transpose(0,1))
@@ -74,30 +79,45 @@ class TERMDataLoader():
                 selfEs.append(convert(data['selfE']))
                 focuses.append(convert(data['focuses']))
                 seq_lens.append(data['seq_len'])
-                src_masks.append(data['mask'])
-
+                term_lens.append(data['term_lens'].tolist())
+                coords.append(data['chain_dict'])
+                etabs.append(data['etab'])
+                seqs.append(convert(data['sequence']))
 
             # transpose back after padding
-            features = pad_sequence(features, batch_first=True).transpose(1,2).double()
+            features = pad_sequence(features, batch_first=True).transpose(1,2)
             msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
 
             selfEs = pad_sequence(selfEs, batch_first=True)
             focuses = pad_sequence(focuses, batch_first=True)
-            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
 
-            max_focus_len = max(focus_lens)
-            padded_src_masks = []
-            for mask in src_masks:
-                current_dim = mask.shape[0]
-                diff = max_focus_len - current_dim
-                padded_mask = block_diag(mask, np.zeros((diff, diff)))
-                padded_src_masks.append(convert(padded_mask))
+            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
+            seqs = pad_sequence(seqs, batch_first = True)
 
-            # invert at this stage and fill with float('-inf'), since masks are stored inverted
-            padded_src_masks = ~(torch.stack(padded_src_masks).byte())
-            padded_src_masks = padded_src_masks.float().masked_fill(padded_src_masks, float('-inf'))
+            # we do some padding so that tensor reshaping during batchifyTERM works
+            max_aa = focuses.size(-1)
+            for lens in term_lens:
+                max_term_len = max(lens)
+                diff = max_aa - sum(lens)
+                lens += [max_term_len] * (diff // max_term_len)
+                lens.append(diff % max_term_len)
 
-            self.data_clusters.append([msas, features, seq_lens, focuses, padded_src_masks, src_key_mask, selfEs])
+            X, x_mask, _ = self._featurize(coords, 'cpu')
+
+            # pack all the etabs into one big sparse tensor
+            idxs = []
+            vals = []
+            for batch, e in enumerate(etabs):
+                for ix, nrgs in e.items():
+                    idxs.append(torch.tensor([batch] + list(ix)))
+                    vals.append(convert(nrgs))
+
+            idx_t = torch.stack(idxs).transpose(0,1).long()
+            val_t = torch.stack(vals)
+            etab = torch.sparse.FloatTensor(idx_t, val_t)
+
+            self.data_clusters.append([msas, features, seq_lens, focuses,
+                                       src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs])
 
     def __len__(self):
         return len(self.data_clusters)
@@ -107,4 +127,51 @@ class TERMDataLoader():
             np.random.shuffle(self.data_clusters)
         for batch in self.data_clusters:
             yield batch
+
+    def _featurize(self, batch, device, shuffle_fraction=0.):
+        """ Pack and pad batch into torch tensors """
+        alphabet = 'ACDEFGHIKLMNPQRSTVWY'
+        B = len(batch)
+        for b in batch:
+            del_arr = []
+            l = len(b['seq'])
+            for ii in range(l):
+                all_coords_arr = [b['coords'][c][ii] for c in ['N', 'CA', 'C', 'O']]
+                all_coords_arr = np.stack(all_coords_arr)
+                # get rid of atom if all coords are nan
+                if np.isnan(all_coords_arr).all():
+                    del_arr.append(ii)
+            for c in ['N', 'CA', 'C', 'O']:
+                b['coords'][c] = np.delete(b['coords'][c], del_arr, 0)
+
+        lengths = np.array([len(b['coords']['CA']) for b in batch], dtype=np.int32)
+        L_max = max(lengths)
+        X = np.zeros([B, L_max, 4, 3])
+
+        def shuffle_subset(n, p):
+            n_shuffle = np.random.binomial(n, p)
+            ix = np.arange(n)
+            ix_subset = np.random.choice(ix, size=n_shuffle, replace=False)
+            ix_subset_shuffled = np.copy(ix_subset)
+            np.random.shuffle(ix_subset_shuffled)
+            ix[ix_subset] = ix_subset_shuffled
+            return ix
+
+        # Build the batch
+        for i, b in enumerate(batch):
+            x = np.stack([b['coords'][c] for c in ['N', 'CA', 'C', 'O']], 1)
+
+            l = x.shape[0]
+            x_pad = np.pad(x, [[0,L_max-l], [0,0], [0,0]], 'constant', constant_values=(np.nan, ))
+            X[i,:,:,:] = x_pad
+
+        # Mask
+        isnan = np.isnan(X)
+        mask = np.isfinite(np.sum(X,(2,3))).astype(np.float32)
+        X[isnan] = 0.
+
+        # Conversion
+        X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
+        mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
+        return X, mask, lengths
 

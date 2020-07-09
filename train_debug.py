@@ -8,32 +8,54 @@ import numpy as np
 import time
 
 dev = 'cuda:0'
+dev = 'cpu'
 dataset = Dataset('../MST_workspace/features')
-dataloader = TERMDataLoader(dataset, batch_size=1)
-condense = CondenseMSA(hidden_dim = 32, num_blocks=2, device = dev).double()
-reshape = DummyLSTM().to(dev).double()
-#print(condense)
+dataloader = TERMDataLoader(dataset, batch_size=2)
+condense = Wrapper(hidden_dim = 32, num_blocks = 2, device = dev)
 condense.to(dev)
 
 criterion = nn.MSELoss()
 # dummy optimizer, replace with atom later
-optimizer = optim.SGD(condense.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.SGD(condense.parameters(), lr=0.003, momentum=0.9)
 
-for i, data in enumerate(dataloader):
-    print('datapoint', i)
-    msas, features, seq_lens, focus, src_mask, src_key_mask, selfEs = data
-    msas = msas.to(dev)
-    features = features.to(dev)
-    focus = focus.to(dev)
-    src_mask = src_mask.to(dev)
-    src_key_mask = src_key_mask.to(dev)
-    selfEs = selfEs.to(dev)
-    output = condense(msas, features, seq_lens, focus, src_mask, src_key_mask)
-    output = reshape(output)
+for epoch in range(40):
+    print('epoch', epoch)
+    running_loss = 0
+    for i, data in enumerate(dataloader):
+        print('datapoint', i)
+        msas, features, seq_lens, focuses, src_mask, src_key_mask, selfEs, term_lens = data
+        msas = msas.to(dev)
+        features = features.to(dev).float()
+        focuses = focuses.to(dev)
+        src_mask = src_mask.to(dev)
+        src_key_mask = src_key_mask.to(dev)
+        selfEs = selfEs.to(dev).float()
+        output = condense(msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask)
 
-    optimizer.zero_grad()
+        optimizer.zero_grad()
 
-    loss = criterion(output, selfEs)
-    print(loss.item())
-    loss.backward()
-    optimizer.step()
+        loss = criterion(output, selfEs)
+        print(loss.item())
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+    print('epoch loss', running_loss / (i+1))
+    print()
+
+condense.eval()
+with torch.no_grad():
+    for i, data in enumerate(dataloader):
+        print('datapoint', i)
+        msas, features, seq_lens, focuses, src_mask, src_key_mask, selfEs, term_lens = data
+        msas = msas.to(dev)
+        features = features.to(dev).float()
+        focuses = focuses.to(dev)
+        src_mask = src_mask.to(dev)
+        src_key_mask = src_key_mask.to(dev)
+        selfEs = selfEs.to(dev).float()
+        output = condense(msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask)
+
+        print('output', output[:, 0, ...])
+        print('label', selfEs[:, 0, ...])
+        print()

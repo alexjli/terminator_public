@@ -8,21 +8,6 @@ import time
 def convert(tensor):
     return torch.from_numpy(tensor)
 
-"""
-with open('data/2JOF_full.features', 'rb') as fp:
-    data = pickle.load(fp)
-with open('data/2JOF.features', 'rb') as fp:
-    data2 = pickle.load(fp)
-with open('data/5FG0.features', 'rb') as fp:
-    data3 = pickle.load(fp)
-with open('data/2FGO.features', 'rb') as fp:
-    data4 = pickle.load(fp)
-with open('temp.features', 'wb') as fp:
-    pickle.dump([data, data2, data3, data4], fp)
-"""
-
-
-
 dataloader = TERMDataLoader('temp.features', batch_size=2)
 condense = CondenseMSA(hidden_dim = 8, num_blocks=2)
 #print(condense)

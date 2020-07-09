@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.checkpoint import checkpoint
 
@@ -8,8 +7,8 @@ import numpy as np
 import math
 from scipy.linalg import block_diag
 
-from batched_attn_mask.transformer import TransformerEncoderLayer, TransformerEncoder
-
+from batched_attn_mask.transformer import TransformerEncoderLayer
+from batched_term_transformer.term_attn import *
 
 NUM_AA = 22
 
@@ -93,7 +92,7 @@ class ResidueFeatures(nn.Module):
         # X: num batches x num alignments x sum TERM length
         # features: num_batches x num alignments x sum TERM length x num features
         # samples in X are in rows
-        embedded = self.embedding(X).double()
+        embedded = self.embedding(X)
 
         # hidden dim = embedding hidden dim + num features
         # out: num batches x num alignments x TERM length x hidden dim
@@ -110,6 +109,7 @@ class FocusEncoding(nn.Module):
     def __init__(self, hidden_dim = 64, dropout = 0.1, max_len = 1000):
         super(FocusEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
+        self.hidden_dim = hidden_dim
 
         pe = torch.zeros(max_len, hidden_dim)
         position = torch.arange(0, max_len, dtype=torch.double).unsqueeze(1)
@@ -118,8 +118,11 @@ class FocusEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
 
-    def forward(self, X, focuses):
+    def forward(self, X, focuses, mask = None):
         fe = self.pe[focuses, :]
+        if mask is not None:
+            fe = fe * mask.unsqueeze(-1)
+
         return self.dropout(X + fe)
 
 class CondenseMSA(nn.Module):
@@ -131,8 +134,10 @@ class CondenseMSA(nn.Module):
         self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features)
         self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000)
         self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks)
-        self.transformer = TransformerEncoderLayer(d_model = hidden_dim, nhead = nheads, dim_feedforward = hidden_dim)
-        self.encoder = TransformerEncoder(self.transformer, num_layers=4)
+        self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
+        self.encoder = TERMTransformer(self.transformer, num_layers=4)
+        self.batchify = BatchifyTERM()
+
         if torch.cuda.is_available():
             self.dev = device
         else:
@@ -143,261 +148,76 @@ class CondenseMSA(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, src_mask, src_key_mask):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask):
         n_batches = X.shape[0]
         max_seq_len = max(seq_lens)
         import time
         last_timepoint = time.time()
 
-        # use source mask so that terms can attend to themselves but not each
-        # for more efficient computation, generate the mask over all heads first
-        # first, stack the current source mask nhead times, and transpose to get batches of the same mask
-        print(size(src_mask))
-
-        '''
-        src_mask = src_mask.unsqueeze(0).expand(self.nheads,-1,-1,-1).transpose(0,1)
-        print(size(src_mask))
-        # next, flatten the 0th dim to generate a 3d tensor
-        dim = focuses.shape[1]
-        src_mask = src_mask.contiguous()
-        src_mask = src_mask.view(-1, dim, dim)
-        #src_mask = torch.flatten(src_mask, 0, 1)
-        print(size(src_mask))
-        '''
-
         # zero out all positions used as padding so they don't contribute to aggregation
         negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hidden_dim)
 
-        current_timepoint = time.time()
-        print('mask', current_timepoint-last_timepoint)
-        last_timepoint = current_timepoint
-
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
-        print('embedding size', size(embeddings))
-
-        current_timepoint = time.time()
-        print('embed', current_timepoint-last_timepoint)
-        last_timepoint = current_timepoint
 
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
         # zero out biases introduced into padding
-        convolution *= negate_padding_mask.double()
-        print('convolution size', size(convolution))
 
-        current_timepoint = time.time()
-        print('convolve', current_timepoint-last_timepoint)
-        last_timepoint = current_timepoint
-
+        convolution *= negate_padding_mask
 
         # add absolute positional encodings before transformer
-        batch_terms = self.fe(convolution, focuses)
-        # transpose because pytorch transformer uses weird shape
-        batch_terms = batch_terms.transpose(0,1)
-        # create node embeddings
-        node_embeddings = self.encoder(batch_terms, mask = src_mask.double(), src_key_padding_mask = src_key_mask.byte())
-        # transpose back
-        node_embeddings = node_embeddings.transpose(0,1)
-        print('node_embedding size', size(node_embeddings))
+        batched_flat_terms = self.fe(convolution, focuses, mask = ~src_key_mask)
+        # reshape batched flat terms into batches of terms
+        batchify_terms = self.batchify(batched_flat_terms, term_lens)
+        # also reshape the mask
+        batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
+        # big transform
+        node_embeddings = self.transformer(batchify_terms, mask_attend = batchify_src_key_mask)
 
+        """
         # zero out biases introduced into padding
-        node_embeddings *= negate_padding_mask.double()
+        node_embeddings *= negate_padding_mask
+        """
 
-        current_timepoint = time.time()
-        print('transform', current_timepoint-last_timepoint)
-        last_timepoint = current_timepoint
+        # we also need to batch focuses to we can aggregate data
+        batched_focuses = self.batchify(focuses, term_lens)
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev).double()
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(self.dev).long()
 
         # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).to(self.dev)
-        #import pdb; pdb.set_trace()
-        #breakpoint()
-
-        focuses = focuses.to(self.dev)
-        node_embeddings = node_embeddings.to(self.dev)
+        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(self.dev)
 
         # aggregate node embeddings and associated counts
-        aggregate = aggregate.index_put((layer, focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(focuses).unsqueeze(-1).to(self.dev)
-        count = count.index_put((layer, focuses), count_idx, accumulate=True)
+        aggregate = aggregate.index_put((layer, batched_focuses), node_embeddings, accumulate=True)
+        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(self.dev)
+        count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
 
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
         for batch, sel in enumerate(seq_lens):
             count[batch, sel:] = 1
 
-
-        current_timepoint = time.time()
-        print('aggregate', current_timepoint-last_timepoint)
-        last_timepoint = current_timepoint
-
         # average the aggregate
         aggregate /= count.double()
 
         return aggregate
-
-class DummyLSTM(nn.Module):
-    def __init__(self, hidden_dim = 64):
-        super(DummyLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size = hidden_dim, hidden_size=hidden_dim, num_layers = 2, batch_first=True, bidirectional=True)
-        self.out_shape = nn.LSTM(input_size = hidden_dim*2, hidden_size = 11, num_layers = 1, batch_first = True, bidirectional = True)
-
-
-    def forward(self, X):
-        self.lstm.flatten_parameters()
-        self.out_shape.flatten_parameters()
-        states = self.lstm(X)[0]
-        return self.out_shape(states)[0]
 
 class Wrapper(nn.Module):
     def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
         super(Wrapper, self).__init__()
         self.condense = CondenseMSA(hidden_dim = hidden_dim, num_features = num_features, filter_len = filter_len, num_blocks = num_blocks, nheads = nheads, device = device)
-        self.lstm = DummyLSTM(hidden_dim = hidden_dim)
+        self.shape1 = nn.Linear(hidden_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.shape2 = nn.Linear(hidden_dim, 22)
 
-    def forward(self, msas, features, seq_lens, focuses, src_mask, src_key_mask):
-        output = self.condense(msas, features, seq_lens, focuses, src_mask, src_key_mask)
-        reshape = self.lstm(output)
+    def forward(self, msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask):
+        output = self.condense(msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask)
+        output = self.shape1(output)
+        output = self.relu(output)
+        reshape = self.shape2(output)
         return reshape
-
-class Wrapper2(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, devices = ['cuda:0', 'cuda:1', 'cuda:2']):
-        super(Wrapper2, self).__init__()
-        self.dev1, self.dev2, self.dev3 = devices
-        self.condense = CondenseMSA2(hidden_dim = hidden_dim, num_features = num_features, filter_len = filter_len, num_blocks = num_blocks, nheads = nheads, devices = devices)
-        self.lstm = DummyLSTM(hidden_dim = hidden_dim).to(self.dev1)
-
-    def forward(self, msas, features, seq_lens, focuses, src_mask, src_key_mask):
-        output = self.condense(msas, features, seq_lens, focuses, src_mask, src_key_mask).to(self.dev1)
-        reshape = self.lstm(output)
-        stat_cuda('lstm')
-        return reshape
-
-class CondenseMSA2(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, devices = ['cuda:0', 'cuda:1', 'cuda:2']):
-        super(CondenseMSA2, self).__init__()
-        if torch.cuda.is_available():
-            self.dev1, self.dev2, self.dev3 = devices
-        else:
-            print('No CUDA device detected. Defaulting to cpu')
-            self.dev1, self.dev2, self.dev3 = ['cpu']*3
-
-        channels = hidden_dim
-        self.hidden_dim = hidden_dim
-        self.nheads = nheads
-        self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features).to(self.dev1)
-        self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000).to(self.dev3)
-        self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks).to(self.dev2)
-        self.transformer = TransformerEncoderLayer(d_model = hidden_dim, nhead = nheads, dim_feedforward = hidden_dim).to(self.dev3)
-        self.encoder = TransformerEncoder(self.transformer, num_layers=2).to(self.dev3)
-
-    """
-    S p e e e e d
-    Fully batched
-    """
-    def forward(self, X, features, seq_lens, focuses, src_mask, src_key_mask):
-        n_batches = X.shape[0]
-        max_seq_len = max(seq_lens)
-
-        print('features shape', features.shape)
-                # use source mask so that terms can attend to themselves but not each
-        # for more efficient computation, generate the mask over all heads first
-        # first, stack the current source mask nhead times, and transpose to get batches of the same mask
-        
-        src_mask = src_mask.unsqueeze(0).expand(self.nheads,-1,-1,-1).transpose(0,1)
-        print(size(src_mask))
-        # next, flatten the 0th dim to generate a 3d tensor
-        dim = focuses.shape[1]
-        src_mask = src_mask.contiguous()
-        src_mask = src_mask.view(-1, dim, dim)
-        #src_mask = torch.flatten(src_mask, 0, 1)
-        src_mask = src_mask.to(self.dev3)
-        stat_cuda('mask')
-
-        # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hidden_dim).to(self.dev2)
-
-        X = X.to(self.dev1)
-        features = features.to(self.dev1)
-
-        # embed MSAs and concat other features on
-        embeddings = self.embedding(X, features)
-        del X, features
-
-        stat_cuda('embedding')
-
-        embeddings = embeddings.to(self.dev2)
-        # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
-        convolution = self.resnet(embeddings)
-        del embeddings
-
-        stat_cuda('convolution')
-
-        # zero out biases introduced into padding
-        convolution *= negate_padding_mask.double()
-
-        convolution = convolution.to(self.dev3)
-        focuses = focuses.to(self.dev3)
-        # add absolute positional encodings before transformer
-        batch_terms = self.fe(convolution, focuses)
-        #breakpoint()
-        del convolution
-        stat_cuda('fe')
-
-        print(src_mask)
-        print(batch_terms)
-
-        # transpose because pytorch transformer uses weird shape
-        batch_terms = batch_terms.transpose(0,1)
-        batch_terms = batch_terms.to(self.dev3)
-        # create node embeddings
-        src_mask = src_mask.to(self.dev3)
-        src_key_mask = src_key_mask.to(self.dev3)
-        stat_cuda('pre-transform')
-        node_embeddings = checkpoint(self.encoder, batch_terms, src_mask.double(), src_key_mask.byte())
-        #node_embeddings = self.encoder(batch_terms, mask = src_mask.double(), src_key_padding_mask = src_key_mask.byte())
-        del batch_terms
-        stat_cuda('transform')
-        # transpose back
-        node_embeddings = node_embeddings.transpose(0,1)
-
-        print(node_embeddings)
-
-        negate_padding_mask = negate_padding_mask.to(self.dev3)
-        # zero out biases introduced into padding
-        node_embeddings *= negate_padding_mask.double()
-        
-
-        # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev3).double()
-        count = torch.zeros((n_batches, max_seq_len, 1)).to(self.dev3).long()
-
-        # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).to(self.dev3)
-
-        focuses = focuses.to(self.dev3)
-        node_embeddings = node_embeddings.to(self.dev3)
-
-        # aggregate node embeddings and associated counts
-        aggregate = aggregate.index_put((layer, focuses), node_embeddings, accumulate=True)
-        
-        stat_cuda('aggregate')
-        count_idx = torch.ones_like(focuses).unsqueeze(-1).to(self.dev3)
-        count = count.index_put((layer, focuses), count_idx, accumulate=True)
-        stat_cuda('count')
-
-        del node_embeddings
-        # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
-        for batch, sel in enumerate(seq_lens):
-            count[batch, sel:] = 1
-
-        # average the aggregate
-        aggregate /= count.double()
-
-        return aggregate
 
 def stat_cuda(msg):
     return
