@@ -87,7 +87,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
         'msas': msa_tensor,
         'focuses': term_focuses,
         'term_lens': len_tensor,
-        'sequence': data['sequence'],
+        'sequence': np.array(data['sequence']),
         'seq_len': len(data['selection']),
         'etab': etab,
         'selfE': self_etab

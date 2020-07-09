@@ -15,10 +15,11 @@ def SparseMSE(output, label):
     error = sum / nnz
     return error
 
+torch.set_printoptions(threshold=5000)
 dev = 'cuda:0'
 dev = 'cpu'
 dataset = Dataset('../MST_workspace/features')
-dataloader = TERMDataLoader(dataset, batch_size=2)
+dataloader = TERMDataLoader(dataset, batch_size=2, shuffle = False)
 condense = TERMinator()
 condense.to(dev)
 
@@ -32,7 +33,7 @@ for epoch in range(40):
     running_loss = 0
     for i, data in enumerate(dataloader):
         print('datapoint', i)
-        msas, features, seq_lens, focuses, src_key_mask, selfEs, term_lens, X, x_mask, etab = data
+        msas, features, seq_lens, focuses, src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs = data
         msas = msas.to(dev)
         features = features.to(dev).float()
         focuses = focuses.to(dev)
@@ -40,16 +41,19 @@ for epoch in range(40):
         selfEs = selfEs.to(dev).float()
         X = X.to(dev)
         x_mask = x_mask.to(dev)
-        output = condense(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+        print(seqs.shape)
+        output = condense(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
 
         optimizer.zero_grad()
 
-        loss = criterion(output, etab).float()
-        print(loss)
-        print(loss.item())
+        #loss = criterion(output, etab).float()
+        loss = output
+        print('loss', loss.item())
+        print('prob', torch.exp(-loss))
+        if loss.item() == float('inf') or loss.item() == float('nan'):
+            exit()
         loss.backward()
         optimizer.step()
-        exit()
 
         running_loss += loss.item()
     print('epoch loss', running_loss / (i+1))
@@ -59,15 +63,19 @@ condense.eval()
 with torch.no_grad():
     for i, data in enumerate(dataloader):
         print('datapoint', i)
-        msas, features, seq_lens, focuses, src_mask, src_key_mask, selfEs, term_lens = data
+        msas, features, seq_lens, focuses, src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs = data
         msas = msas.to(dev)
         features = features.to(dev).float()
         focuses = focuses.to(dev)
-        src_mask = src_mask.to(dev)
         src_key_mask = src_key_mask.to(dev)
         selfEs = selfEs.to(dev).float()
-        output = condense(msas, features, seq_lens, focuses, term_lens, src_mask, src_key_mask)
+        loss = condense(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+        print(loss)
+        print(loss.item())
 
-        print('output', output[:, 0, ...])
-        print('label', selfEs[:, 0, ...])
+        output, E_idx = condense.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+
+        print('output', output[0, 0, 0, ...])
+        print('idx', E_idx[0,0, ...])
+        print('label', etab[0, 0, 0, ...])
         print()

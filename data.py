@@ -68,6 +68,7 @@ class TERMDataLoader():
             selfEs = []
             etabs = []
             term_lens = []
+            seqs = []
 
             for data in batch:
                 # have to transpose these two because then we can use pad_sequence for padding
@@ -80,6 +81,7 @@ class TERMDataLoader():
                 term_lens.append(data['term_lens'].tolist())
                 coords.append(data['chain_dict'])
                 etabs.append(data['etab'])
+                seqs.append(convert(data['sequence']))
 
             # transpose back after padding
             features = pad_sequence(features, batch_first=True).transpose(1,2)
@@ -88,6 +90,7 @@ class TERMDataLoader():
 
             focuses = pad_sequence(focuses, batch_first=True)
             src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
+            seqs = pad_sequence(seqs, batch_first = True)
 
             # we do some padding so that tensor reshaping during batchifyTERM works
             max_aa = focuses.size(-1)
@@ -112,7 +115,7 @@ class TERMDataLoader():
             etab = torch.sparse.FloatTensor(idx_t, val_t)
 
             self.data_clusters.append([msas, features, seq_lens, focuses,
-                                       src_key_mask, selfEs, term_lens, X, x_mask, etab])
+                                       src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs])
 
     def __len__(self):
         return len(self.data_clusters)
@@ -135,16 +138,11 @@ class TERMDataLoader():
                 all_coords_arr = np.stack(all_coords_arr)
                 # get rid of atom if all coords are nan
                 if np.isnan(all_coords_arr).all():
-                    #print(ii)
                     del_arr.append(ii)
             for c in ['N', 'CA', 'C', 'O']:
-                #print(b['coords'][c].shape)
                 b['coords'][c] = np.delete(b['coords'][c], del_arr, 0)
-                #print(b['coords'][c].shape, len(del_arr))
-            #print()
 
         lengths = np.array([len(b['coords']['CA']) for b in batch], dtype=np.int32)
-        #print(lengths)
         L_max = max(lengths)
         X = np.zeros([B, L_max, 4, 3])
 

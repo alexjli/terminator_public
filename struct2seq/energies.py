@@ -87,8 +87,7 @@ class PairEnergies(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, V_embed, X, x_mask):
-        """ Graph-conditioned sequence model """
+    def forward(self, V_embed, X, x_mask, sparse = False):
 
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, x_mask)
@@ -104,16 +103,20 @@ class PairEnergies(nn.Module):
             h_E = layer(h_E, h_EV, E_idx, mask_E=x_mask, mask_attend=mask_attend)
 
         h_E = self.W_out(h_E)
-        n_batch, n_nodes, k = h_E.shape[:-1]
 
-        h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
-        h_j_idx = E_idx.unsqueeze(-1)
-        batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
-        ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
+        if not sparse:
+            return h_E, E_idx
+        else:
+            n_batch, n_nodes, k = h_E.shape[:-1]
 
-        flat_ij = ij.view(-1, 3).transpose(0,1)
-        flat_h_E = h_E.view(-1, self.output_dim).float()
+            h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
+            h_j_idx = E_idx.unsqueeze(-1)
+            batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
+            ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
 
-        etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
+            flat_ij = ij.view(-1, 3).transpose(0,1)
+            flat_h_E = h_E.view(-1, self.output_dim).float()
 
-        return etab
+            etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
+
+            return etab, E_idx
