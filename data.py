@@ -40,6 +40,7 @@ class TERMDataLoader():
         self.dataset = dataset
         self.size = len(dataset)
         self.lengths = [len(dataset[i]['focuses']) for i in range(self.size)]
+        self.shuffle = shuffle
         self.batch_size = batch_size
         self.shuffle = shuffle
         sorted_idx = np.argsort(self.lengths)
@@ -86,9 +87,10 @@ class TERMDataLoader():
             # transpose back after padding
             features = pad_sequence(features, batch_first=True).transpose(1,2)
             msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
-            selfEs = pad_sequence(selfEs, batch_first=True)
 
+            selfEs = pad_sequence(selfEs, batch_first=True)
             focuses = pad_sequence(focuses, batch_first=True)
+
             src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
             seqs = pad_sequence(seqs, batch_first = True)
 
@@ -172,3 +174,4 @@ class TERMDataLoader():
         X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
         mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
         return X, mask, lengths
+

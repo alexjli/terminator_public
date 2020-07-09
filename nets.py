@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.checkpoint import checkpoint
 
 import numpy as np
 import math
@@ -9,7 +10,7 @@ from scipy.linalg import block_diag
 from batched_attn_mask.transformer import TransformerEncoderLayer
 from batched_term_transformer.term_attn import *
 
-NUM_AA = 21
+NUM_AA = 22
 
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf
@@ -111,8 +112,8 @@ class FocusEncoding(nn.Module):
         self.hidden_dim = hidden_dim
 
         pe = torch.zeros(max_len, hidden_dim)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hidden_dim, 2).float() * (-math.log(10000.0) / hidden_dim))
+        position = torch.arange(0, max_len, dtype=torch.double).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, hidden_dim, 2).double() * (-math.log(10000.0) / hidden_dim))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
@@ -136,6 +137,7 @@ class CondenseMSA(nn.Module):
         self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
         self.encoder = TERMTransformer(self.transformer, num_layers=4)
         self.batchify = BatchifyTERM()
+
         if torch.cuda.is_available():
             self.dev = device
         else:
@@ -161,6 +163,7 @@ class CondenseMSA(nn.Module):
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
         # zero out biases introduced into padding
+
         convolution *= negate_padding_mask
 
         # add absolute positional encodings before transformer
@@ -197,10 +200,9 @@ class CondenseMSA(nn.Module):
             count[batch, sel:] = 1
 
         # average the aggregate
-        aggregate /= count
+        aggregate /= count.double()
 
         return aggregate
-
 
 class Wrapper(nn.Module):
     def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
@@ -216,3 +218,26 @@ class Wrapper(nn.Module):
         output = self.relu(output)
         reshape = self.shape2(output)
         return reshape
+
+def stat_cuda(msg):
+    return
+    dev1, dev2, dev3 = 0, 1, 2
+    print('--', msg)
+    print('allocated 1: %dM, max allocated: %dM, cached: %dM, max cached: %dM' % (
+        torch.cuda.memory_allocated(dev1) / 1024 / 1024,
+        torch.cuda.max_memory_allocated(dev1) / 1024 / 1024,
+        torch.cuda.memory_cached(dev1) / 1024 / 1024,
+        torch.cuda.max_memory_cached(dev1) / 1024 / 1024
+    ))
+    print('allocated 2: %dM, max allocated: %dM, cached: %dM, max cached: %dM' % (
+        torch.cuda.memory_allocated(dev2) / 1024 / 1024,
+        torch.cuda.max_memory_allocated(dev2) / 1024 / 1024,
+        torch.cuda.memory_cached(dev2) / 1024 / 1024,
+        torch.cuda.max_memory_cached(dev2) / 1024 / 1024
+    ))
+    print('allocated 3: %dM, max allocated: %dM, cached: %dM, max cached: %dM' % (
+        torch.cuda.memory_allocated(dev3) / 1024 / 1024,
+        torch.cuda.max_memory_allocated(dev3) / 1024 / 1024,
+        torch.cuda.memory_cached(dev3) / 1024 / 1024,
+        torch.cuda.max_memory_cached(dev3) / 1024 / 1024
+    ))
