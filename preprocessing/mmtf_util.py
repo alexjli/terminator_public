@@ -17,7 +17,6 @@ def download_cached(url, target_location):
             f.write(response.read())
     return target_location
 
-
 def mmtf_fetch(pdb, cache_dir='cath/mmtf/'):
     """ Retrieve mmtf record from PDB with local caching """
     mmtf_file = cache_dir + pdb + '.mmtf.gz'
@@ -26,12 +25,23 @@ def mmtf_fetch(pdb, cache_dir='cath/mmtf/'):
     mmtf_record = mmtf.parse_gzip(mmtf_file)
     return mmtf_record
 
+def mmtf_fetch_anthill(pdb, cache_dir='cath/mmtf/'):
+    """ Retrieve mmtf record from PDB with local caching using anthill head node"""
+    mmtf_file = cache_dir + pdb + '.mmtf.gz'
+    url = 'http://mmtf.rcsb.org/v1.0/full/' + pdb + '.mmtf.gz'
+    script = '/home/ifs-users/alexjli/TERMinator/preprocessing/anthill_mmtf_fetch.py'
+    command = '\'conda activate pytorch1.1; {} {} {}\''.format(script, url, os.path.abspath(mmtf_file))
+    out = os.system('ssh anthill.cs.dartmouth.edu {}'.format(command))
+    print(out)
+    mmtf_record = mmtf.parse_gzip(mmtf_file)
+    return mmtf_record
 
 def mmtf_parse(pdb_id, chain, target_atoms = ['N', 'CA', 'C', 'O']):
     """ Parse mmtf file to extract C-alpha coordinates """
     # MMTF traversal derived from the specification 
     # https://github.com/rcsb/mmtf/blob/master/spec.md
-    A = mmtf_fetch(pdb_id)
+    #A = mmtf_fetch(pdb_id)
+    A = mmtf_fetch_anthill(pdb_id)
 
     # Build a dictionary
     mmtf_dict = {}

@@ -146,9 +146,6 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
     # inner loop we wanna parallize
     def dataGen(file, folder, out_folder, cutoff):
         name = os.path.splitext(file)[0]
-        full_folder_path = os.path.join(out_folder, folder)
-        if not os.path.exists(full_folder_path):
-            os.mkdir(full_folder_path)
         out_file = os.path.join(out_folder, name)
         print('out file', out_file)
         dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
@@ -168,6 +165,10 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
         # folders that aren't directories aren't folders!
         if not os.path.isdir(folder):
             continue
+
+        full_folder_path = os.path.join(out_folder, folder)
+        if not os.path.exists(full_folder_path):
+            os.mkdir(full_folder_path)
 
         # for every file in the folder
         Parallel(n_jobs=num_cores)(
