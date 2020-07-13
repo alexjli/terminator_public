@@ -121,7 +121,7 @@ class FocusEncoding(nn.Module):
     def forward(self, X, focuses, mask = None):
         fe = self.pe[focuses, :]
         if mask is not None:
-            fe = fe * mask.unsqueeze(-1)
+            fe = fe * mask.unsqueeze(-1).float()
 
         return self.dropout(X + fe)
 
@@ -164,7 +164,7 @@ class CondenseMSA(nn.Module):
         convolution = self.resnet(embeddings)
         # zero out biases introduced into padding
 
-        convolution *= negate_padding_mask
+        convolution *= negate_padding_mask.float()
 
         # add absolute positional encodings before transformer
         batched_flat_terms = self.fe(convolution, focuses, mask = ~src_key_mask)
@@ -181,7 +181,7 @@ class CondenseMSA(nn.Module):
         """
 
         # we also need to batch focuses to we can aggregate data
-        batched_focuses = self.batchify(focuses, term_lens)
+        batched_focuses = self.batchify(focuses, term_lens).to(self.dev)
 
         # create a space to aggregate term data
         aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev)
@@ -200,7 +200,7 @@ class CondenseMSA(nn.Module):
             count[batch, sel:] = 1
 
         # average the aggregate
-        aggregate /= count.double()
+        aggregate /= count.float()
 
         return aggregate
 

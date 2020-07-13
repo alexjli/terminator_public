@@ -18,17 +18,18 @@ class PositionalEncodings(nn.Module):
         self.period_range = period_range
 
     def forward(self, E_idx):
+        dev = E_idx.device
         # i-j
         N_batch = E_idx.size(0)
         N_nodes = E_idx.size(1)
         N_neighbors = E_idx.size(2)
-        ii = torch.arange(N_nodes, dtype=torch.float32).view((1, -1, 1))
+        ii = torch.arange(N_nodes, dtype=torch.float32).view((1, -1, 1)).to(dev)
         d = (E_idx.float() - ii).unsqueeze(-1)
         # Original Transformer frequencies
         frequency = torch.exp(
             torch.arange(0, self.num_embeddings, 2, dtype=torch.float32)
             * -(np.log(10000.0) / self.num_embeddings)
-        )
+        ).to(dev)
         # Grid-aligned
         # frequency = 2. * np.pi * torch.exp(
         #     -torch.linspace(
@@ -101,9 +102,10 @@ class ProteinFeatures(nn.Module):
         return D_neighbors, E_idx, mask_neighbors
 
     def _rbf(self, D):
+        dev = D.device
         # Distance radial basis function
         D_min, D_max, D_count = 0., 20., self.num_rbf
-        D_mu = torch.linspace(D_min, D_max, D_count)
+        D_mu = torch.linspace(D_min, D_max, D_count).to(dev)
         D_mu = D_mu.view([1,1,1,-1])
         D_sigma = (D_max - D_min) / D_count
         D_expand = torch.unsqueeze(D, -1)

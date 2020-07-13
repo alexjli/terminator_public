@@ -5,10 +5,11 @@ import torch.nn as nn
 import numpy as np
 
 class TERMinator(nn.Module):
-    def __init__(self):
+    def __init__(self, device = 'cuda:0'):
         super(TERMinator, self).__init__()
-        self.bot = CondenseMSA(hidden_dim = 32, num_features = 7, filter_len = 3, num_blocks = 4, nheads = 4, device = 'cpu')
-        self.top = PairEnergies(num_letters = 20, node_features = 32, edge_features = 32, input_dim = 32, hidden_dim = 64, k_neighbors=5)
+        self.dev = device
+        self.bot = CondenseMSA(hidden_dim = 32, num_features = 7, filter_len = 3, num_blocks = 4, nheads = 4, device = self.dev)
+        self.top = PairEnergies(num_letters = 20, node_features = 32, edge_features = 32, input_dim = 32, hidden_dim = 64, k_neighbors=5).to(self.dev)
 
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''

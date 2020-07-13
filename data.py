@@ -70,6 +70,7 @@ class TERMDataLoader():
             etabs = []
             term_lens = []
             seqs = []
+            ids = []
 
             for data in batch:
                 # have to transpose these two because then we can use pad_sequence for padding
@@ -83,6 +84,7 @@ class TERMDataLoader():
                 coords.append(data['chain_dict'])
                 etabs.append(data['etab'])
                 seqs.append(convert(data['sequence']))
+                ids.append(data['pdb'])
 
             # transpose back after padding
             features = pad_sequence(features, batch_first=True).transpose(1,2)
@@ -91,7 +93,7 @@ class TERMDataLoader():
             selfEs = pad_sequence(selfEs, batch_first=True)
             focuses = pad_sequence(focuses, batch_first=True)
 
-            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
+            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
             seqs = pad_sequence(seqs, batch_first = True)
 
             # we do some padding so that tensor reshaping during batchifyTERM works
@@ -116,8 +118,11 @@ class TERMDataLoader():
             val_t = torch.stack(vals)
             etab = torch.sparse.FloatTensor(idx_t, val_t)
 
+            print(seq_lens, X.shape)
+            print(ids)
+
             self.data_clusters.append([msas, features, seq_lens, focuses,
-                                       src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs])
+                                       src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs, ids])
 
     def __len__(self):
         return len(self.data_clusters)

@@ -57,9 +57,10 @@ class TERMAttention(nn.Module):
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
-        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf))
+        mask_attn_dev = mask_attend.device
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
-        attend = mask_attend * attend
+        attend = mask_attend.float() * attend
         return attend
 
     def forward(self, src, mask_attend = None, src_key_mask = None):
@@ -80,11 +81,11 @@ class TERMAttention(nn.Module):
         if mask_attend is not None:
             # we need to reshape the src key mask for residue-residue attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).byte()
+            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).float()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
-            mask = mask.bool()
+            mask = mask.byte()
             # Masked softmax
             attend = self._masked_softmax(attend_logits, mask)
         else:

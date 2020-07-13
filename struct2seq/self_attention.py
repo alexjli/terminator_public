@@ -317,9 +317,10 @@ class EdgeEndpointAttention(nn.Module):
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
-        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf))
+        mask_attn_dev = mask_attend.device
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
-        attend = mask_attend * attend
+        attend = mask_attend.float() * attend
         return attend
 
     def forward(self, h_E, h_EV, E_idx, mask_attend=None):
@@ -355,7 +356,7 @@ class EdgeEndpointAttention(nn.Module):
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
-            mask = mask.bool()
+            mask = mask.byte()
             # Masked softmax
             attend = self._masked_softmax(attend_logits, mask)
         else:
@@ -371,10 +372,11 @@ class EdgeEndpointAttention(nn.Module):
         return h_E_update
 
 def merge_duplicate_edges(h_E_update, E_idx):
+    dev = h_E_update.device
     n_batch, n_nodes, k, hidden_dim = h_E_update.shape
     # collect edges into NxN tensor shape
-    collection = torch.zeros((n_batch, n_nodes, n_nodes, hidden_dim))
-    neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, hidden_dim)
+    collection = torch.zeros((n_batch, n_nodes, n_nodes, hidden_dim)).to(dev)
+    neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, hidden_dim).to(dev)
     collection.scatter_(2, neighbor_idx, h_E_update)
     # transpose to get same edge in reverse direction
     collection = collection.transpose(1,2)

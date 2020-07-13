@@ -91,6 +91,7 @@ class PairEnergies(nn.Module):
 
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, x_mask)
+        print(V_embed.shape, V.shape)
         V = torch.cat([V, V_embed], dim = -1)
         h_V = self.W_v(V)
         h_E = self.W_e(E)
