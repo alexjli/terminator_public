@@ -4,6 +4,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pickle
 from scipy.linalg import block_diag
 import glob
+import random
 
 def convert(tensor):
     return torch.from_numpy(tensor)
@@ -22,6 +23,9 @@ class Dataset():
                 with open(filename, 'rb') as fp:
                     data = pickle.load(fp)
                     self.dataset.append(data)
+
+    def shuffle(self):
+        random.shuffle(self.dataset)
 
     def dumpDataset(self, name='dataset'):
         with open(name + '.features', 'wb') as fp:
