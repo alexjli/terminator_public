@@ -74,7 +74,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
     assert sum(len_tensor) == features_tensor.shape[1]
 
     pdb = in_path.split('/')[-1]
-    chain_dict = mmtf_parse(pdb, chain = 'A')
+    chain_dict = mmtf_parse(pdb, chain = None)
 
     # Convert raw coords to np arrays
     for key, val in chain_dict['coords'].items():
@@ -151,6 +151,7 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
         dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
 
     num_cores = multiprocessing.cpu_count()
+    print('num cores', num_cores)
     # make folder where the dataset files are gonna be placed
     if not os.path.exists(out_folder):
         os.mkdir(out_folder)
@@ -178,4 +179,9 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
 
 
 if __name__ == '__main__':
-    generateDatasetParallel('dTERMen_data', 'features', cutoff = 50)
+    parser = argparse.ArgumentParser('Generate features data files from dTERMen .dat files')
+    parser.add_argument('in_folder', help = 'input folder containing .dat files in proper directory structure', default='dTERMen_data')
+    parser.add_argument('out_folder', help = 'folder where features will be placed', default='features')
+    parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 1000, type=int)
+    args = parser.parse_args()
+    generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff)
