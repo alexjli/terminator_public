@@ -25,7 +25,7 @@ def mmtf_fetch(pdb, cache_dir='cath/mmtf/'):
     mmtf_record = mmtf.parse_gzip(mmtf_file)
     return mmtf_record
 
-def mmtf_fetch_anthill(pdb, cache_dir='cath/mmtf/'):
+def mmtf_fetch_anthill(pdb, cache_dir='mmtf/'):
     """ Retrieve mmtf record from PDB with local caching using anthill head node"""
     mmtf_file = cache_dir + pdb + '.mmtf.gz'
     url = 'http://mmtf.rcsb.org/v1.0/full/' + pdb + '.mmtf.gz'
@@ -42,6 +42,10 @@ def mmtf_parse(pdb_id, chain, target_atoms = ['N', 'CA', 'C', 'O']):
     # https://github.com/rcsb/mmtf/blob/master/spec.md
     #A = mmtf_fetch(pdb_id)
     A = mmtf_fetch_anthill(pdb_id)
+
+    if chain is None:
+        chain = A.chain_name_list[0]
+        print('chain', chain)
 
     # Build a dictionary
     mmtf_dict = {}
