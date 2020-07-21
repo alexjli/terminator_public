@@ -51,7 +51,7 @@ class PairEnergies(nn.Module):
         hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
         vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
         dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
-        output_dim = 22 * 22):
+        output_dim = 20 * 20):
         """ Graph labeling network """
         super(PairEnergies, self).__init__()
 
@@ -88,10 +88,8 @@ class PairEnergies(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(self, V_embed, X, x_mask, sparse = False):
-
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, x_mask)
-        print(V_embed.shape, V.shape)
         V = torch.cat([V, V_embed], dim = -1)
         h_V = self.W_v(V)
         h_E = self.W_e(E)
