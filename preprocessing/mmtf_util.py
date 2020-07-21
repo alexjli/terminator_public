@@ -44,8 +44,8 @@ def mmtf_parse(pdb_id, chain, target_atoms = ['N', 'CA', 'C', 'O']):
     A = mmtf_fetch_anthill(pdb_id)
 
     if chain is None:
-        chain = A.chain_name_list[0]
-        print('chain', chain)
+        chain = A.chain_name_list[-1]
+    print('chain', chain)
 
     # Build a dictionary
     mmtf_dict = {}
