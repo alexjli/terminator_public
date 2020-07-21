@@ -122,8 +122,8 @@ class TERMDataLoader():
             val_t = torch.stack(vals)
             etab = torch.sparse.FloatTensor(idx_t, val_t)
 
-            print(seq_lens, X.shape)
             print(ids)
+            print()
 
             self.data_clusters.append([msas, features, seq_lens, focuses,
                                        src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs, ids])
@@ -140,16 +140,18 @@ class TERMDataLoader():
     def _featurize(self, batch, device, shuffle_fraction=0.):
         """ Pack and pad batch into torch tensors """
         alphabet = 'ACDEFGHIKLMNPQRSTVWY'
+
         B = len(batch)
         for b in batch:
             del_arr = []
-            l = len(b['seq'])
+            l = len(b['coords']['CA'])
             for ii in range(l):
                 all_coords_arr = [b['coords'][c][ii] for c in ['N', 'CA', 'C', 'O']]
                 all_coords_arr = np.stack(all_coords_arr)
                 # get rid of atom if all coords are nan
-                if np.isnan(all_coords_arr).all():
+                if np.isnan(all_coords_arr).any():
                     del_arr.append(ii)
+
             for c in ['N', 'CA', 'C', 'O']:
                 b['coords'][c] = np.delete(b['coords'][c], del_arr, 0)
 

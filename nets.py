@@ -10,7 +10,7 @@ from scipy.linalg import block_diag
 from batched_attn_mask.transformer import TransformerEncoderLayer
 from batched_term_transformer.term_attn import *
 
-NUM_AA = 22
+NUM_AA = 21
 
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf

@@ -23,6 +23,11 @@ AA_to_int = {
 'X' : 21
 }
 
+
+AA_to_int = {key: val-1 for key, val in AA_to_int.items()}
+
+int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) is 1}
+
 """
 Given a string of one-letter encoded AAs, return its corresponding integer encoding
 """
@@ -32,3 +37,7 @@ def seq_to_ints(sequence):
 # wrapper for AA_to_int
 def aa_to_int(residue):
     return AA_to_int[residue]
+
+# wrapper for AA_to_int
+def int_to_aa(i):
+    return int_to_AA[i]
