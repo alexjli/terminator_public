@@ -16,7 +16,7 @@ torch.set_printoptions(precision=2)
 torch.set_printoptions(sci_mode=False)
 dev = 'cuda:0'
 #dev = 'cpu'
-dataset = Dataset(ifsdata + 'features_speedtest_jenk_21')
+dataset = Dataset(ifsdata + 'tmp')
 dataset.shuffle()
 
 # idxs at which to split the dataset
@@ -36,7 +36,7 @@ optimizer = optim.Adagrad(terminator.parameters(), lr=0.001, lr_decay=0.01)
 
 save = []
 
-for epoch in range(150):
+for epoch in range(1500):
     print('epoch', epoch)
 
     # train
@@ -144,3 +144,8 @@ with torch.no_grad():
 import pickle
 with open(ifsdata + 'net.out', 'wb') as fp:
     pickle.dump(dump, fp)
+
+with open(ifsdata+'training_curves.pk', 'wb') as fp:
+    pickle.dump(save, fp)
+
+torch.save(terminator.state_dict(), ifsdata + 'net.pt')
