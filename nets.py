@@ -15,7 +15,8 @@ NUM_AA = 21
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf
 
-num_features = len(['phi', 'psi', 'omega', 'env', 'rmsd', 'term_len', 'num_alignments'])
+NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len', 'num_alignments'])
+NUM_FEATURES=10
 
 def conv1xN(channels, N):
     return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2))
@@ -82,11 +83,14 @@ class Conv1DResNet(nn.Module):
         return out
 
 class ResidueFeatures(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = num_features):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES):
         super(ResidueFeatures, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_features = num_features
+        print(num_features)
         self.embedding = nn.Embedding(NUM_AA, hidden_dim - num_features)
+        self.linear = nn.Linear(hidden_dim, hidden_dim)
+        self.bn = nn.BatchNorm2d(hidden_dim)
 
     def forward(self, X, features):
         # X: num batches x num alignments x sum TERM length
@@ -101,6 +105,11 @@ class ResidueFeatures(nn.Module):
         # transpose so that features = number of channels for convolution
         # out: num batches x num channels x TERM length x num alignments
         out = out.transpose(1,3)
+
+        out = self.bn(out)
+        #out = out.transpose(1,3)
+        #out = self.linear(out)
+        #out = out.transpose(1,3)
 
         return out
 
@@ -126,12 +135,13 @@ class FocusEncoding(nn.Module):
         return self.dropout(X + fe)
 
 class CondenseMSA(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
         super(CondenseMSA, self).__init__()
         channels = hidden_dim
         self.hidden_dim = hidden_dim
         self.nheads = nheads
         self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features)
+        #self.bn = nn.BatchNorm2d(hidden_dim)
         self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000)
         self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks)
         self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
@@ -144,6 +154,9 @@ class CondenseMSA(nn.Module):
             print('No CUDA device detected. Defaulting to cpu')
             self.dev = 'cpu'
 
+    def get_aa_embedding_layer(self):
+        return self.embedding.embedding
+
     """
     S p e e e e d
     Fully batched
@@ -151,14 +164,13 @@ class CondenseMSA(nn.Module):
     def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask):
         n_batches = X.shape[0]
         max_seq_len = max(seq_lens)
-        import time
-        last_timepoint = time.time()
 
         # zero out all positions used as padding so they don't contribute to aggregation
         negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hidden_dim)
 
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
+        #embeddings = self.bn(embeddings)
 
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
@@ -205,7 +217,7 @@ class CondenseMSA(nn.Module):
         return aggregate
 
 class Wrapper(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = num_features, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
         super(Wrapper, self).__init__()
         self.condense = CondenseMSA(hidden_dim = hidden_dim, num_features = num_features, filter_len = filter_len, num_blocks = num_blocks, nheads = nheads, device = device)
         self.shape1 = nn.Linear(hidden_dim, hidden_dim)
