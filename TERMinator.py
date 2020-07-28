@@ -10,12 +10,12 @@ class TERMinator(nn.Module):
     def __init__(self, device = 'cuda:0'):
         super(TERMinator, self).__init__()
         self.dev = device
-        self.bot = CondenseMSA(hidden_dim = 64, num_features = 7, filter_len = 3, num_blocks = 4, nheads = 4, device = self.dev)
+        self.bot = CondenseMSA(hidden_dim = 64, num_features = 10, filter_len = 9, num_blocks = 4, nheads = 4, device = self.dev)
         self.top = PairEnergies(num_letters = 20, node_features = 64, edge_features = 64, input_dim = 64, hidden_dim = 128, k_neighbors=30).to(self.dev)
 
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''
-    def _nlpl(self, etab, E_idx, seqs, x_mask):
+    def _nlpl0(self, etab, E_idx, seqs, x_mask):
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
         # idx matrix to gather the identity at all other residues given a residue of focus
@@ -23,6 +23,35 @@ class TERMinator(nn.Module):
         E_aa = E_aa.view(list(E_idx.shape) + [1,1]).expand(-1, -1, -1, 20, -1)
         # gather the 22 energies for each edge based on E_aa
         edge_nrgs = torch.gather(etab, 4, E_aa).squeeze(-1)
+        # get the nrg of for 22 possible aa identities at each position
+        aa_nrgs = torch.sum(edge_nrgs, dim = 2)
+        # convert energies to probabilities
+        all_aa_probs = torch.softmax(-aa_nrgs, dim = 2)
+        # get the probability of the sequence
+        seqs_probs = torch.gather(all_aa_probs, 2, seqs.unsqueeze(-1)).squeeze(-1)
+        # convert to nlpl
+        log_probs = torch.log(seqs_probs) * x_mask # zero out positions that don't have residues
+        n_res = torch.sum(x_mask, dim=-1)
+        nlpl = torch.sum(log_probs, dim=-1)/n_res
+        nlpl = -torch.mean(nlpl)
+        return nlpl
+
+    def _nlpl(self, etab, E_idx, seqs, x_mask):
+        n_batch, L, k, _ = etab.shape
+        etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
+        
+        # separate selfE and pairE since we have to treat selfE differently
+        self_etab = etab[:, :, 0:1] 
+        pair_etab = etab[:, :, 1:]
+        # idx matrix to gather the identity at all other residues given a residue of focus
+        E_aa = torch.gather(seqs.unsqueeze(-1).expand(-1, -1, k-1), 1, E_idx[:, :, 1:])
+        E_aa = E_aa.view(list(E_idx[:,:,1:].shape) + [1,1]).expand(-1, -1, -1, 20, -1)
+        # gather the 22 energies for each edge based on E_aa
+        pair_nrgs = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
+        # gather 22 self energies by taking the diagonal of the etab
+        self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
+        # concat the two to get a full edge etab
+        edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the nrg of for 22 possible aa identities at each position
         aa_nrgs = torch.sum(edge_nrgs, dim = 2)
         # convert energies to probabilities
