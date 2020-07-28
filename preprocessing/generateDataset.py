@@ -5,7 +5,7 @@ import pickle
 import argparse
 from scipy.linalg import block_diag
 import glob
-import multiprocessing
+import multiprocessing as mp
 from joblib import Parallel, delayed
 
 from parseTERM import parseTERMdata
@@ -42,23 +42,33 @@ def dumpTrainingTensors(in_path, chain_lookup = None, out_path = None, cutoff = 
         term_lens.append(len(focus_take))
 
         # cutoff ppoe at top N
-        ppoe = term_data['ppoe'][:cutoff]
+        ppoe = term_data['ppoe']
+        term_len = ppoe.shape[2]
+        num_alignments = ppoe.shape[0]
+        ppoe = ppoe[:cutoff]
+
+        ppo_rads = ppoe[:, :3]/180*np.pi
+        sin_ppo = np.sin(ppo_rads)
+        cos_ppo = np.cos(ppo_rads)
+        env = ppoe[:, 3:]
+
         # apply take
         ppoe = np.take(ppoe, take, axis=-1)
 
-        term_len = ppoe.shape[0]
-        num_alignments = ppoe.shape[2]
         # cutoff rmsd at top N
         rmsd = np.expand_dims(term_data['rmsds'][:cutoff], 1)
-        rmsd_arr = np.concatenate([rmsd for _ in range(num_alignments)], axis=1)
+        rmsd_arr = np.concatenate([rmsd for _ in range(term_len)], axis=1)
         rmsd_arr = np.expand_dims(rmsd_arr, 1)
-        term_len_arr = np.zeros((term_len, num_alignments))
-        term_len_arr = np.expand_dims(term_len_arr, 1)
+        term_len_arr = np.zeros((cutoff, 1, term_len))
         term_len_arr += term_len
-        num_alignments_arr = np.zeros((term_len, num_alignments))
-        num_alignments_arr = np.expand_dims(num_alignments_arr, 1)
+        num_alignments_arr = np.zeros((cutoff, 1, term_len))
         num_alignments_arr += num_alignments
-        features = np.concatenate([ppoe, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
+        #features = np.concatenate([ppoe, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
+        """
+        for arr in [sin_ppo, cos_ppo, env, rmsd_arr, term_len_arr, num_alignments_arr]:
+            print(arr.shape)
+        """
+        features = np.concatenate([sin_ppo, cos_ppo, env, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
 
         # pytorch does row vector computation
         # swap rows and columns
@@ -162,16 +172,27 @@ def generateDataset(in_folder, out_folder, cutoff = 1000):
 
     return dataset
 
+# inner loop we wanna parallize
+def dataGen(file, folder, out_folder, cutoff, chain_lookup):
+    name = os.path.splitext(file)[0]
+    out_file = os.path.join(out_folder, name)
+    print('out file', out_file)
+    dumpTrainingTensors(name, chain_lookup = chain_lookup, out_path = out_file, cutoff = cutoff)
+
+
+
 # https://medium.com/@mjschillawski/quick-and-easy-parallelization-in-python-32cb9027e490
 def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
+    """
     # inner loop we wanna parallize
     def dataGen(file, folder, out_folder, cutoff, chain_lookup):
         name = os.path.splitext(file)[0]
         out_file = os.path.join(out_folder, name)
         print('out file', out_file)
         dumpTrainingTensors(name, chain_lookup = chain_lookup, out_path = out_file, cutoff = cutoff)
+    """
 
-    num_cores = multiprocessing.cpu_count()
+    num_cores = mp.cpu_count()
     print('num cores', num_cores)
     # make folder where the dataset files are gonna be placed
     if not os.path.exists(out_folder):
@@ -203,11 +224,20 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
         if not os.path.exists(full_folder_path):
             os.mkdir(full_folder_path)
 
+        pool = mp.Pool(8)
+        for idx, file in enumerate(glob.glob(folder+'/*.dat')):
+            res = pool.apply_async(dataGen, args=(file, folder, out_folder, cutoff, chain_lookup))
+            #print(res.get())
+            print(res.wait(10))
+        pool.close()
+
+
+        """
         # for every file in the folder
-        Parallel(n_jobs=num_cores)(
+        Parallel(n_jobs=8, prefer="threads")(
             delayed(dataGen)(file, folder, out_folder, cutoff, chain_lookup) for file in glob.glob(folder + '/*.dat')
         )
-
+        """
 
 
 if __name__ == '__main__':
