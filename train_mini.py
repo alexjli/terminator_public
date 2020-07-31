@@ -16,7 +16,7 @@ torch.set_printoptions(precision=2)
 torch.set_printoptions(sci_mode=False)
 dev = 'cuda:0'
 #dev = 'cpu'
-dataset = Dataset(ifsdata + 'tmp')
+dataset = Dataset(ifsdata + 'features_speedtest_jenk_21')
 dataset.shuffle()
 
 # idxs at which to split the dataset
@@ -25,7 +25,7 @@ train_dataset = dataset[:train_val]
 val_dataset = dataset[train_val:val_test]
 test_dataset = dataset[val_test:]
 
-train_dataloader = TERMDataLoader(train_dataset, batch_size=4, shuffle = True)
+train_dataloader = TERMDataLoader(train_dataset, batch_size=6, shuffle = True)
 val_dataloader = TERMDataLoader(val_dataset, batch_size=1, shuffle = False)
 test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle = False)
 terminator = TERMinator(device = dev)
@@ -33,10 +33,11 @@ terminator.to(dev)
 
 optimizer = optim.SGD(terminator.parameters(), lr=0.001, momentum=0.7)
 optimizer = optim.Adagrad(terminator.parameters(), lr=0.001, lr_decay=0.01)
+optimizer = optim.Adam(terminator.parameters())
 
 save = []
 
-for epoch in range(1500):
+for epoch in range(100):
     print('epoch', epoch)
 
     # train
@@ -51,6 +52,7 @@ for epoch in range(1500):
         print(ids)
         msas = msas.to(dev)
         features = features.to(dev).float()
+        print(features.shape)
         focuses = focuses.to(dev)
         src_key_mask = src_key_mask.to(dev)
         X = X.to(dev)
@@ -124,10 +126,13 @@ with torch.no_grad():
 
         output, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
         
-        #seqs = terminator.predict_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+        pred_seqs = terminator.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+        opt_seqs = terminator.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
         print(ids)
-        #print(seqs)
-        
+        p_recov = terminator.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+        print('pred', pred_seqs)
+        print('opt', opt_seqs)
+        print('p recov', p_recov)
 
         n_batch, l, n = output.shape[:3]
         """
