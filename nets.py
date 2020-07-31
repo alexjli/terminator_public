@@ -185,7 +185,7 @@ class CondenseMSA(nn.Module):
         # also reshape the mask
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
-        node_embeddings = self.transformer(batchify_terms, mask_attend = batchify_src_key_mask)
+        node_embeddings = self.encoder(batchify_terms, mask_attend = batchify_src_key_mask)
 
         """
         # zero out biases introduced into padding
@@ -232,7 +232,6 @@ class Wrapper(nn.Module):
         return reshape
 
 def stat_cuda(msg):
-    return
     dev1, dev2, dev3 = 0, 1, 2
     print('--', msg)
     print('allocated 1: %dM, max allocated: %dM, cached: %dM, max cached: %dM' % (
