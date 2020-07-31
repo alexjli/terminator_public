@@ -16,7 +16,8 @@ class SelfEnergies(Struct2Seq):
     def __init__(self, num_letters, node_features, edge_features, input_dim,
         hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
         vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
-        dropout=0.1, forward_attention_decoder=True, use_mpnn=False):
+        dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
+        output_dim = 20):
 
         super(SelfEnergies, self).__init__(num_letters, node_features, edge_features,
             hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
@@ -25,11 +26,10 @@ class SelfEnergies(Struct2Seq):
 
         # Embedding layers
         self.W_v = nn.Linear(node_features + input_dim, hidden_dim, bias=True)
+        self.W_out = nn.Linear(hidden_dim, output_dim, bias=True)
 
     def forward(self, V_embed, X, x_mask):
         """ Graph-conditioned sequence model """
-
-        print(X.shape)
 
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, x_mask)
