@@ -85,7 +85,7 @@ class TERMDataLoader():
                 focuses.append(convert(data['focuses']))
                 seq_lens.append(data['seq_len'])
                 term_lens.append(data['term_lens'].tolist())
-                coords.append(data['chain_dict'])
+                coords.append(data['coords'])
                 etabs.append(data['etab'])
                 seqs.append(convert(data['sequence']))
                 ids.append(data['pdb'])
@@ -139,6 +139,8 @@ class TERMDataLoader():
 
     def _featurize(self, batch, device, shuffle_fraction=0.):
         """ Pack and pad batch into torch tensors """
+
+        """
         alphabet = 'ACDEFGHIKLMNPQRSTVWY'
 
         B = len(batch)
@@ -167,10 +169,16 @@ class TERMDataLoader():
             np.random.shuffle(ix_subset_shuffled)
             ix[ix_subset] = ix_subset_shuffled
             return ix
+        """
+        
+        B = len(batch)
+        lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
+        L_max = max(lengths)
+        X = np.zeros([B, L_max, 4, 3])
+
 
         # Build the batch
-        for i, b in enumerate(batch):
-            x = np.stack([b['coords'][c] for c in ['N', 'CA', 'C', 'O']], 1)
+        for i, x in enumerate(batch):
 
             l = x.shape[0]
             x_pad = np.pad(x, [[0,L_max-l], [0,0], [0,0]], 'constant', constant_values=(np.nan, ))

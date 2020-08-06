@@ -6,16 +6,17 @@ import argparse
 from scipy.linalg import block_diag
 import glob
 import multiprocessing as mp
-from joblib import Parallel, delayed
 
 from parseTERM import parseTERMdata
 from parseEtab import parseEtab
+from parseCoords import parseCoords
 from mmtf_util import *
 from util import *
 
 cath_base_url = 'http://download.cathdb.info/cath/releases/latest-release/'
 
-def dumpTrainingTensors(in_path, chain_lookup = None, out_path = None, cutoff = 1000, save=True):
+def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
+    coords = parseCoords(in_path + '.red.pdb', save=False)
     data = parseTERMdata(in_path + '.dat')
     etab, self_etab = parseEtab(in_path + '.etab', save=False)
 
@@ -87,22 +88,14 @@ def dumpTrainingTensors(in_path, chain_lookup = None, out_path = None, cutoff = 
 
     pdb = in_path.split('/')[-1]
 
-    # this is a hacky workaround, needs to be made more legit at some point
-    try:
-        chain = chain_lookup[pdb.upper()]
-    except:
-        print('{} not in cath s40, defaulting to guessing the chain'.format(pdb))
-        chain = None
-
-    chain_dict = mmtf_parse(pdb, chain = chain)
-
-    # Convert raw coords to np arrays
-    for key, val in chain_dict['coords'].items():
-        chain_dict['coords'][key] = np.asarray(val)
+    coords_tensor = None
+    if len(coords) == 1:
+        chain = next(iter(coords.keys()))
+        coords_tensor = coords[chain]
 
     output = {
         'pdb': pdb,
-        'chain_dict': chain_dict,
+        'coords': coords_tensor,
         'features': features_tensor,
         'msas': msa_tensor,
         'focuses': term_focuses,
@@ -121,6 +114,8 @@ def dumpTrainingTensors(in_path, chain_lookup = None, out_path = None, cutoff = 
         with open(out_path + '.features', 'wb') as fp:
             pickle.dump(output, fp)
 
+    print('Done with', pdb)
+
     return output
 
 def generateDataset(in_folder, out_folder, cutoff = 1000):
@@ -134,16 +129,6 @@ def generateDataset(in_folder, out_folder, cutoff = 1000):
 
     dataset = []
     os.chdir(in_folder)
-
-    cath_nr40_fn = 'cath-dataset-nonredundant-S40.list'
-    cath_nr40_url = cath_base_url + 'non-redundant-data-sets/' + cath_nr40_fn
-    cath_nr40_file = '/home/ifsdata/scratch/grigoryanlab/alexjli/' + cath_nr40_fn
-    download_cached_anthill(cath_nr40_url, cath_nr40_file)
-
-    with open(cath_nr40_file) as f:
-        cath_nr40_ids = f.read().split('\n')[:-1]
-    cath_nr40_chains = list(set(cath_id[:5] for cath_id in cath_nr40_ids))
-    chain_lookup = {name[:4].upper(): name[4] for name in  cath_nr40_chains}
 
     # process folder by folder
     for folder in glob.glob("*"):
@@ -163,36 +148,10 @@ def generateDataset(in_folder, out_folder, cutoff = 1000):
             #output = dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
             #dataset.append(output)
 
-    """
-    os.chdir(out_folder)
-    # place the full dataset in the out_folder
-    with open('full.dataset', 'wb') as fp:
-        pickle.dump(dataset, fp)
-    """
-
     return dataset
 
-# inner loop we wanna parallize
-def dataGen(file, folder, out_folder, cutoff, chain_lookup):
-    name = os.path.splitext(file)[0]
-    out_file = os.path.join(out_folder, name)
-    print('out file', out_file)
-    dumpTrainingTensors(name, chain_lookup = chain_lookup, out_path = out_file, cutoff = cutoff)
 
-
-
-# https://medium.com/@mjschillawski/quick-and-easy-parallelization-in-python-32cb9027e490
-def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
-    """
-    # inner loop we wanna parallize
-    def dataGen(file, folder, out_folder, cutoff, chain_lookup):
-        name = os.path.splitext(file)[0]
-        out_file = os.path.join(out_folder, name)
-        print('out file', out_file)
-        dumpTrainingTensors(name, chain_lookup = chain_lookup, out_path = out_file, cutoff = cutoff)
-    """
-
-    num_cores = mp.cpu_count()
+def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1):
     print('num cores', num_cores)
     # make folder where the dataset files are gonna be placed
     if not os.path.exists(out_folder):
@@ -204,16 +163,7 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
 
     os.chdir(in_folder)
 
-    cath_nr40_fn = 'cath-dataset-nonredundant-S40.list'
-    cath_nr40_url = cath_base_url + 'non-redundant-data-sets/' + cath_nr40_fn
-    cath_nr40_file = '/home/ifsdata/scratch/grigoryanlab/alexjli/' + cath_nr40_fn
-    download_cached_anthill(cath_nr40_url, cath_nr40_file)
-
-    with open(cath_nr40_file) as f:
-        cath_nr40_ids = f.read().split('\n')[:-1]
-    cath_nr40_chains = list(set(cath_id[:5] for cath_id in cath_nr40_ids))
-    chain_lookup = {name[:4].upper(): name[4] for name in  cath_nr40_chains}
-
+    pool = mp.Pool(num_cores)
     # process folder by folder
     for folder in glob.glob("*"):
         # folders that aren't directories aren't folders!
@@ -223,21 +173,24 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000):
         full_folder_path = os.path.join(out_folder, folder)
         if not os.path.exists(full_folder_path):
             os.mkdir(full_folder_path)
-
-        pool = mp.Pool(8)
+            
         for idx, file in enumerate(glob.glob(folder+'/*.dat')):
-            res = pool.apply_async(dataGen, args=(file, folder, out_folder, cutoff, chain_lookup))
-            #print(res.get())
-            print(res.wait(10))
-        pool.close()
+            res = pool.apply_async(dataGen, args=(file, folder, out_folder, cutoff), error_callback = raise_error)
+    pool.close()
+    pool.join()
+
+def raise_error(error):
+    raise error
+
+# inner loop we wanna parallize
+def dataGen(file, folder, out_folder, cutoff):
+    name = os.path.splitext(file)[0]
+    out_file = os.path.join(out_folder, name)
+    print('out file', out_file)
+    dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
 
 
-        """
-        # for every file in the folder
-        Parallel(n_jobs=8, prefer="threads")(
-            delayed(dataGen)(file, folder, out_folder, cutoff, chain_lookup) for file in glob.glob(folder + '/*.dat')
-        )
-        """
+
 
 
 if __name__ == '__main__':
@@ -245,5 +198,6 @@ if __name__ == '__main__':
     parser.add_argument('in_folder', help = 'input folder containing .dat files in proper directory structure', default='dTERMen_data')
     parser.add_argument('out_folder', help = 'folder where features will be placed', default='features')
     parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 1000, type=int)
+    parser.add_argument('-n', dest='num_cores', help = 'number of cores to use', default = 1, type = int)
     args = parser.parse_args()
-    generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff)
+    generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff, num_cores = args.num_cores)
