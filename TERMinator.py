@@ -12,7 +12,7 @@ class TERMinator(nn.Module):
         self.dev = device
         self.k_neighbors = 30
         self.bot = CondenseMSA(hidden_dim = 64, num_features = 10, filter_len = 9, num_blocks = 1, nheads = 4, device = self.dev)
-        self.top = PairEnergies(num_letters = 20, node_features = 64, edge_features = 64, input_dim = 64, hidden_dim = 128, k_neighbors=30).to(self.dev)
+        self.top = PairEnergies(num_letters = 20, node_features = 64, edge_features = 64, input_dim = 64, hidden_dim = 64, k_neighbors=30).to(self.dev)
         self.ln = nn.LayerNorm(20)
 
     ''' Negative log psuedo-likelihood '''
@@ -34,7 +34,7 @@ class TERMinator(nn.Module):
         # concat the two to get a full edge etab
         edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the avg nrg for 22 possible aa identities at each position
-        aa_nrgs = torch.mean(edge_nrgs, dim = 2)
+        aa_nrgs = torch.sum(edge_nrgs, dim = 2)
         #aa_nrgs = self.ln(aa_nrgs)
         # convert energies to probabilities
         all_aa_probs = torch.softmax(-aa_nrgs, dim = 2)
@@ -184,7 +184,7 @@ class TERMinator(nn.Module):
         # concat the two to get a full edge etab
         edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the avg nrg for 22 possible aa identities at each position
-        aa_nrgs = torch.mean(edge_nrgs, dim = 2)
+        aa_nrgs = torch.sum(edge_nrgs, dim = 2)
         #aa_nrgs = self.ln(aa_nrgs)
         # get the indexes of the max nrgs
         # these are our predicted aa identities
