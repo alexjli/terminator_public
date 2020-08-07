@@ -7,13 +7,13 @@ from preprocessing.common import int_to_aa
 
 
 class TERMinator(nn.Module):
-    def __init__(self, device = 'cuda:0'):
+    def __init__(self, hidden_dim = 64, resnet_blocks = 1, conv_filter = 9, term_heads = 4, term_layers = 4, k_neighbors = 30, device = 'cuda:0'):
         super(TERMinator, self).__init__()
         self.dev = device
-        self.k_neighbors = 30
-        self.bot = CondenseMSA(hidden_dim = 64, num_features = 10, filter_len = 9, num_blocks = 1, nheads = 4, device = self.dev)
-        self.top = PairEnergies(num_letters = 20, node_features = 64, edge_features = 64, input_dim = 64, hidden_dim = 64, k_neighbors=30).to(self.dev)
-        self.ln = nn.LayerNorm(20)
+        self.k_neighbors = k_neighbors
+        self.hidden_dim = hidden_dim
+        self.bot = CondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev)
+        self.top = PairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors).to(self.dev)
 
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''
@@ -162,7 +162,7 @@ class TERMinator(nn.Module):
 
     ''' Guess an initial sequence based on the self energies '''
     def _init_seqs(self, self_etab):
-        self_etab = self.ln(self_etab)
+        #self_etab = self.ln(self_etab)
         aa_idx = torch.argmax(-self_etab, dim = -1)
         return aa_idx
 
