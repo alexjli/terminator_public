@@ -11,9 +11,9 @@ def parseCoords(filename, save = True):
             try:
                 element = data[13:16].strip()
                 chain = data[21]
-                x = data[31:39].strip()
-                y = data[39:47].strip()
-                z = data[47:55].strip()
+                x = data[30:38].strip()
+                y = data[38:46].strip()
+                z = data[46:54].strip()
                 coords = [float(coord) for coord in [x,y,z]]
                 #print(element, chain, coords)
             except Exception as e:
