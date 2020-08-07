@@ -135,17 +135,16 @@ class FocusEncoding(nn.Module):
         return self.dropout(X + fe)
 
 class CondenseMSA(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0'):
         super(CondenseMSA, self).__init__()
         channels = hidden_dim
         self.hidden_dim = hidden_dim
         self.nheads = nheads
         self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features)
-        #self.bn = nn.BatchNorm2d(hidden_dim)
         self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000)
         self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks)
         self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
-        self.encoder = TERMTransformer(self.transformer, num_layers=4)
+        self.encoder = TERMTransformer(self.transformer, num_layers=num_transformers)
         self.batchify = BatchifyTERM()
 
         if torch.cuda.is_available():
@@ -170,12 +169,11 @@ class CondenseMSA(nn.Module):
 
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
-        #embeddings = self.bn(embeddings)
 
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
-        # zero out biases introduced into padding
 
+        # zero out biases introduced into padding
         convolution *= negate_padding_mask.float()
 
         # add absolute positional encodings before transformer
@@ -186,11 +184,6 @@ class CondenseMSA(nn.Module):
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
         node_embeddings = self.encoder(batchify_terms, mask_attend = batchify_src_key_mask)
-
-        """
-        # zero out biases introduced into padding
-        node_embeddings *= negate_padding_mask
-        """
 
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(self.dev)
