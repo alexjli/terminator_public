@@ -2,6 +2,7 @@ from nets import CondenseMSA
 from struct2seq.energies import *
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from preprocessing.common import int_to_aa
 
@@ -13,7 +14,9 @@ class TERMinator(nn.Module):
         self.k_neighbors = k_neighbors
         self.hidden_dim = hidden_dim
         self.bot = CondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev)
-        self.top = PairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors).to(self.dev)
+        self.top = PairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 3).to(self.dev)
+
+        self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''
@@ -21,12 +24,21 @@ class TERMinator(nn.Module):
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
         
+        # X is encoded as 20 so lets just add an extra row/col of zeros
+        pad = (0, 1, 0, 1)
+        etab = F.pad(etab, pad, "constant", 0)
+
+        isnt_x_aa = (ref_seqs != 20).float().to(self.dev)
+        if (isnt_x_aa == 0).any():
+            print('native sequence has X')
+        #print(is_x_aa)
+
         # separate selfE and pairE since we have to treat selfE differently
         self_etab = etab[:, :, 0:1] 
         pair_etab = etab[:, :, 1:]
         # idx matrix to gather the identity at all other residues given a residue of focus
         E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k-1), 1, E_idx[:, :, 1:])
-        E_aa = E_aa.view(list(E_idx[:,:,1:].shape) + [1,1]).expand(-1, -1, -1, 20, -1)
+        E_aa = E_aa.view(list(E_idx[:,:,1:].shape) + [1,1]).expand(-1, -1, -1, 21, -1)
         # gather the 22 energies for each edge based on E_aa
         pair_nrgs = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
         # gather 22 self energies by taking the diagonal of the etab
@@ -35,17 +47,31 @@ class TERMinator(nn.Module):
         edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the avg nrg for 22 possible aa identities at each position
         aa_nrgs = torch.sum(edge_nrgs, dim = 2)
+
+        #prior_loss = ((aa_nrgs - self.prior) ** 2).mean(dim = 1).sum()
+
+        #aa_nrgs -= self.prior
+        #self.update_prior(aa_nrgs)
         #aa_nrgs = self.ln(aa_nrgs)
+
+
         # convert energies to probabilities
         all_aa_probs = torch.softmax(-aa_nrgs, dim = 2)
         # get the probability of the sequence
         seqs_probs = torch.gather(all_aa_probs, 2, ref_seqs.unsqueeze(-1)).squeeze(-1)
+
         # convert to nlpl
         log_probs = torch.log(seqs_probs) * x_mask # zero out positions that don't have residues
-        n_res = torch.sum(x_mask, dim=-1)
+        log_probs = log_probs * isnt_x_aa # zero out positions where the native sequence is X
+        n_res = torch.sum(x_mask * isnt_x_aa, dim=-1)
         nlpl = torch.sum(log_probs, dim=-1)/n_res
         nlpl = -torch.mean(nlpl)
         return nlpl
+
+    def update_prior(self, aa_nrgs, alpha = 0.1):
+        avg_nrgs = aa_nrgs.mean(dim = 1).mean(dim = 0).view(1, 1, 20)
+        self.prior = self.prior * (1-alpha) + avg_nrgs * alpha
+        self.prior = self.prior.detach()
 
     def forward(self,
                 msas,
@@ -146,9 +172,9 @@ class TERMinator(nn.Module):
         is_same = (pred_seqs == true_seqs)
         lens = torch.sum(x_mask, dim=-1)
         is_same *= x_mask.byte()
-        print(is_same)
+        #print(is_same)
         num_same = torch.sum(is_same.float(), dim=-1)
-        print(num_same, lens)
+        #print(num_same, lens)
         percent_same = num_same / lens
         return percent_same
 
@@ -185,6 +211,7 @@ class TERMinator(nn.Module):
         edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the avg nrg for 22 possible aa identities at each position
         aa_nrgs = torch.sum(edge_nrgs, dim = 2)
+        #aa_nrgs -= self.prior
         #aa_nrgs = self.ln(aa_nrgs)
         # get the indexes of the max nrgs
         # these are our predicted aa identities
@@ -197,14 +224,14 @@ class TERMinator(nn.Module):
 TERMinator, except using different Structured Transformers for self and pair energies
 '''
 class TERMinator2(nn.Module):
-    def __init__(self, dev1 = 'cuda:0', dev2 = 'cuda:1'):
+    def __init__(self, hidden_dim = 64, resnet_blocks = 1, conv_filter = 9, term_heads = 4, term_layers = 4, k_neighbors = 30, device = 'cuda:0'):
         super(TERMinator2, self).__init__()
-        self.dev1 = dev1
-        self.dev2 = dev2
-        self.bot = CondenseMSA(hidden_dim = 64, num_features = 10, filter_len = 9, num_blocks = 4, nheads = 4, device = self.dev1)
-        self.selfE = SelfEnergies(num_letters = 20, node_features = 64, edge_features = 64, input_dim = 64, hidden_dim = 128, k_neighbors=30).to(self.dev2)
-        self.pairE = PairEnergies(num_letters = 20, node_features = 64, edge_features = 64, input_dim = 64, hidden_dim = 128, k_neighbors=30).to(self.dev1)
-        self.ln = nn.LayerNorm(20) 
+        self.dev = device
+        self.k_neighbors = k_neighbors
+        self.hidden_dim = hidden_dim
+        self.bot = CondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev)
+        self.selfE = SelfEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 1).to(self.dev)
+        self.pairE = PairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 1).to(self.dev)
 
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''
@@ -225,7 +252,6 @@ class TERMinator2(nn.Module):
         edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the nrg of for 22 possible aa identities at each position
         aa_nrgs = torch.sum(edge_nrgs, dim = 2)
-        aa_nrgs = self.ln(aa_nrgs)
         # convert energies to probabilities
         all_aa_probs = torch.softmax(-aa_nrgs, dim = -1)
         # get the probability of the sequence
@@ -248,7 +274,7 @@ class TERMinator2(nn.Module):
                 x_mask,
                 sequence):
         condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        self_etab = self.selfE(condense.to(self.dev2), X, x_mask).to(self.dev1)
+        self_etab = self.selfE(condense, X, x_mask)
         etab, E_idx = self.pairE(condense, X, x_mask)
         nlpl = self._nlpl(self_etab, etab, E_idx, sequence, x_mask)
         return nlpl
@@ -279,11 +305,14 @@ class TERMinator2(nn.Module):
                      x_mask,
                      sequences):
         condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        self_etab = self.selfE(condense.to(self.dev2), X, x_mask).to(self.dev1)
         etab, E_idx = self.pairE(condense, X, x_mask)
-        seqs = self._seq(self_etab, etab, E_idx, x_mask, sequences)
-        return seqs
+        self_etab = self.selfE(condense, X, x_mask)
+        int_seqs = self._seq(self_etab, etab, E_idx, x_mask, sequences)
+        int_seqs = int_seqs.cpu().numpy()
+        char_seqs = self._int_to_aa(int_seqs)
+        return char_seqs
 
+    ''' predict the optimal sequence based purely on structure '''
     def pred_sequence(self,
                       msas,
                       features,
@@ -294,17 +323,58 @@ class TERMinator2(nn.Module):
                       X,
                       x_mask):
         condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        self_etab = self.selfE(condense.to(self.dev2), X, x_mask).to(self.dev1)
         etab, E_idx = self.pairE(condense, X, x_mask)
-        init_seqs = self._init_seqs(self_etab)
-        seqs = self._seq(self_etab, etab, E_idx, x_mask, init_seqs)
-        return seqs
+        self_nrgs = self.selfE(condense, X, x_mask)
+        init_seqs = self._init_seqs(self_nrgs)
+        int_seqs = self._seq(self_nrgs, etab, E_idx, x_mask, init_seqs)
+        int_seqs = int_seqs.cpu().numpy()
+        char_seqs = self._int_to_aa(int_seqs)
+        return char_seqs
 
+    ''' compute percent sequence recovery '''
+    def percent_recovery(self,
+                         msas,
+                         features,
+                         seq_lens,
+                         focuses,
+                         term_lens,
+                         src_key_mask,
+                         X,
+                         x_mask,
+                         sequences):
+        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
+        etab, E_idx = self.pairE(condense, X, x_mask)
+        self_nrgs = self.selfE(condense, X, x_mask)
+        init_seqs = self._init_seqs(self_nrgs)
+        pred_seqs = self._seq(self_nrgs, etab, E_idx, x_mask, init_seqs)
+        p_recov = self._percent(pred_seqs, sequences, x_mask)
+        return p_recov
+
+    ''' with the predicted seq and actual seq, find the percent identity '''
+    def _percent(self, pred_seqs, true_seqs, x_mask):
+        is_same = (pred_seqs == true_seqs)
+        lens = torch.sum(x_mask, dim=-1)
+        is_same *= x_mask.byte()
+        #print(is_same)
+        num_same = torch.sum(is_same.float(), dim=-1)
+        #print(num_same, lens)
+        percent_same = num_same / lens
+        return percent_same
+
+    ''' Convert int sequence sto its corresponding amino acid identities '''
+    def _int_to_aa(self, int_seqs):
+        # vectorize the function so we can apply it over the np array
+        vec_i2a = np.vectorize(int_to_aa)
+        char_seqs = vec_i2a(int_seqs).tolist()
+        char_seqs = [''.join([aa for aa in seq]) for seq in char_seqs]
+        return char_seqs
+
+    ''' Guess an initial sequence based on the self energies '''
     def _init_seqs(self, self_etab):
-        self_etab = self.ln(self_etab)
         aa_idx = torch.argmax(-self_etab, dim = -1)
         return aa_idx
 
+    ''' Find the int aa seq with the highest psuedolikelihood '''
     def _seq(self, self_etab, etab, E_idx, x_mask, ref_seqs):
         n_batch, L, k, _ = etab.shape
 
@@ -323,20 +393,8 @@ class TERMinator2(nn.Module):
         edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
         # get the nrg of for 22 possible aa identities at each position
         aa_nrgs = torch.sum(edge_nrgs, dim = 2)
-        aa_nrgs = self.ln(aa_nrgs)
         # get the indexes of the max nrgs
         # these are our predicted aa identities
-        aa_idx = torch.argmax(-aa_nrgs, dim = -1).cpu().numpy()
+        aa_idx = torch.argmax(-aa_nrgs, dim = -1)
 
-        # vectorize the function so we can apply it over the np array
-        vec_i2a = np.vectorize(int_to_aa)
-        seqs = vec_i2a(aa_idx).tolist()
-        seqs = [''.join([aa for aa in seq]) for seq in seqs]
-
-        """
-        # truncate seqs to get rid of any weird padding values
-        lens = torch.sum(x_mask, dim=-1)
-        seqs = [seqs[i][:lens[i]] for i in range(len(seqs))]
-        """
-
-        return seqs
+        return aa_idx
