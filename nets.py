@@ -87,8 +87,14 @@ class ResidueFeatures(nn.Module):
         super(ResidueFeatures, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_features = num_features
-        print(num_features)
+        
         self.embedding = nn.Embedding(NUM_AA, hidden_dim - num_features)
+        self.linear = nn.Linear(hidden_dim, hidden_dim)
+        """
+        assert hidden_dim%2 == 0, "please choose a hidden dim that's a multiple of 2"
+        self.embedding = nn.Embedding(NUM_AA, hidden_dim//2)
+        self.linear = nn.Linear(num_features, hidden_dim//2)
+        """
         self.linear = nn.Linear(hidden_dim, hidden_dim)
         self.bn = nn.BatchNorm2d(hidden_dim)
 
@@ -97,6 +103,11 @@ class ResidueFeatures(nn.Module):
         # features: num_batches x num alignments x sum TERM length x num features
         # samples in X are in rows
         embedded = self.embedding(X)
+
+        """
+        features = self.bn(features.transpose(1,3))
+        embed_features = self.linear(features.transpose(1,3))
+        """
 
         # hidden dim = embedding hidden dim + num features
         # out: num batches x num alignments x TERM length x hidden dim
@@ -107,9 +118,9 @@ class ResidueFeatures(nn.Module):
         out = out.transpose(1,3)
 
         out = self.bn(out)
-        #out = out.transpose(1,3)
-        #out = self.linear(out)
-        #out = out.transpose(1,3)
+        out = out.transpose(1,3)
+        out = self.linear(out)
+        out = out.transpose(1,3)
 
         return out
 
@@ -153,6 +164,13 @@ class CondenseMSA(nn.Module):
             print('No CUDA device detected. Defaulting to cpu')
             self.dev = 'cpu'
 
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+
+
     def get_aa_embedding_layer(self):
         return self.embedding.embedding
 
@@ -175,7 +193,9 @@ class CondenseMSA(nn.Module):
 
         # zero out biases introduced into padding
         convolution *= negate_padding_mask.float()
+        #convolution = embeddings.mean(dim=-1).transpose(1,2)
 
+        #print("embed", torch.isnan(convolution).any())
         # add absolute positional encodings before transformer
         batched_flat_terms = self.fe(convolution, focuses, mask = ~src_key_mask)
         # reshape batched flat terms into batches of terms
@@ -184,6 +204,8 @@ class CondenseMSA(nn.Module):
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
         node_embeddings = self.encoder(batchify_terms, mask_attend = batchify_src_key_mask)
+        
+        #print("transform", torch.isnan(node_embeddings).any())
 
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(self.dev)
@@ -206,6 +228,8 @@ class CondenseMSA(nn.Module):
 
         # average the aggregate
         aggregate /= count.float()
+
+        #print("aggregate", torch.isnan(aggregate).any())
 
         return aggregate
 
