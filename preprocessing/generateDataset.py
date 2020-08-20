@@ -6,6 +6,7 @@ import argparse
 from scipy.linalg import block_diag
 import glob
 import multiprocessing as mp
+import time
 
 from parseTERM import parseTERMdata
 from parseEtab import parseEtab
@@ -113,6 +114,8 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
 
         with open(out_path + '.features', 'wb') as fp:
             pickle.dump(output, fp)
+        with open(out_path + '.length', 'w') as fp:
+            fp.write(str(len(term_focuses)))
 
     print('Done with', pdb)
 
@@ -151,7 +154,7 @@ def generateDataset(in_folder, out_folder, cutoff = 1000):
     return dataset
 
 
-def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1):
+def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1, update = True):
     print('num cores', num_cores)
     # make folder where the dataset files are gonna be placed
     if not os.path.exists(out_folder):
@@ -163,7 +166,7 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1)
 
     os.chdir(in_folder)
 
-    pool = mp.Pool(num_cores)
+    pool = mp.Pool(num_cores, maxtasksperchild = 10)
     # process folder by folder
     for folder in glob.glob("*"):
         # folders that aren't directories aren't folders!
@@ -175,7 +178,17 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1)
             os.mkdir(full_folder_path)
             
         for idx, file in enumerate(glob.glob(folder+'/*.dat')):
+            name = os.path.splitext(file)[0]
+            if update:
+                out_file = os.path.join(out_folder, name)
+                if os.path.exists(out_file + '.features'):
+                    continue
+            # i dunno why but if this doesn't exist the worker just dies without saying anything ig
+            if not os.path.exists(name + '.red.pdb'):
+                print(name + '.red.pdb doesnt exist? skipping')
+                continue
             res = pool.apply_async(dataGen, args=(file, folder, out_folder, cutoff), error_callback = raise_error)
+
     pool.close()
     pool.join()
 
@@ -187,6 +200,7 @@ def dataGen(file, folder, out_folder, cutoff):
     name = os.path.splitext(file)[0]
     out_file = os.path.join(out_folder, name)
     print('out file', out_file)
+    #print('red.pdb exists:', os.path.exists(name + '.red.pdb'))
     dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
 
 
