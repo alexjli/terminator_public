@@ -128,11 +128,11 @@ class TERMTransformer(nn.Module):
         super(TERMTransformer, self).__init__()
         self.layers = _get_clones(transformer, num_layers)
 
-    def forward(self, src, mask_attend = None):
+    def forward(self, src, src_mask = None, mask_attend = None):
         output = src
 
         for mod in self.layers:
-            output = mod(output, mask_attend = mask_attend)
+            output = mod(output, src_mask = src_mask, mask_attend = mask_attend)
 
         return output
 

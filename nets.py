@@ -15,11 +15,10 @@ NUM_AA = 21
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf
 
-NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len', 'num_alignments'])
-NUM_FEATURES=10
+NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
 
 def conv1xN(channels, N):
-    return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2))
+    return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2), groups = channels)
 
 def size(tensor):
     return str((tensor.element_size() * tensor.nelement())/(1<<20)) + " MB"
@@ -190,7 +189,6 @@ class CondenseMSA(nn.Module):
 
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
-
         # zero out biases introduced into padding
         convolution *= negate_padding_mask.float()
         #convolution = embeddings.mean(dim=-1).transpose(1,2)
@@ -203,9 +201,7 @@ class CondenseMSA(nn.Module):
         # also reshape the mask
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
-        node_embeddings = self.encoder(batchify_terms, mask_attend = batchify_src_key_mask)
-        
-        #print("transform", torch.isnan(node_embeddings).any())
+        node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask.float(), mask_attend = batchify_src_key_mask)
 
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(self.dev)
