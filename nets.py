@@ -18,7 +18,7 @@ NUM_AA = 21
 NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
 
 def conv1xN(channels, N):
-    return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2), groups = channels)
+    return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2))
 
 def size(tensor):
     return str((tensor.element_size() * tensor.nelement())/(1<<20)) + " MB"
@@ -35,13 +35,22 @@ class Conv1DResidual(nn.Module):
         self.bn2 = nn.BatchNorm2d(channels)
         self.conv2 = conv1xN(channels, filter_len)
 
+        self.bn1.register_forward_hook(inf_nan_hook_fn)
+        self.conv1.register_forward_hook(inf_nan_hook_fn)
+        self.bn2.register_forward_hook(inf_nan_hook_fn)
+        self.conv2.register_forward_hook(inf_nan_hook_fn)
+
+
     def forward(self, X):
         identity = X
 
         out = self.bn1(X)
+
         out = self.relu(out)
         out = self.conv1(out)
+
         out = self.bn2(out)
+
         out = self.relu(out)
         out = self.conv2(out)
 
@@ -71,7 +80,7 @@ class Conv1DResNet(nn.Module):
         # X = self.bn(X)
         out = self.resnet(X)
 
-        # average alone axis of alignments
+        # average along axis of alignments
         # out: num batches x hidden dim x TERM length
         out = out.mean(dim = -1)
 
@@ -94,7 +103,10 @@ class ResidueFeatures(nn.Module):
         self.embedding = nn.Embedding(NUM_AA, hidden_dim//2)
         self.linear = nn.Linear(num_features, hidden_dim//2)
         """
-        self.linear = nn.Linear(hidden_dim, hidden_dim)
+        self.relu = nn.ReLU(inplace = True)
+        self.tanh = nn.Tanh()
+        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
+        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
         self.bn = nn.BatchNorm2d(hidden_dim)
 
     def forward(self, X, features):
@@ -116,9 +128,17 @@ class ResidueFeatures(nn.Module):
         # out: num batches x num channels x TERM length x num alignments
         out = out.transpose(1,3)
 
+        # normalize over channels (TERM length x num alignments)
         out = self.bn(out)
+
+        # embed features using ffn
         out = out.transpose(1,3)
-        out = self.linear(out)
+        out = self.lin1(out)
+        out = self.relu(out)
+        out = self.lin2(out)
+        out = self.tanh(out)
+
+        # retranspose so features are channels
         out = out.transpose(1,3)
 
         return out
@@ -145,7 +165,7 @@ class FocusEncoding(nn.Module):
         return self.dropout(X + fe)
 
 class CondenseMSA(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0'):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0', track_nans = True):
         super(CondenseMSA, self).__init__()
         channels = hidden_dim
         self.hidden_dim = hidden_dim
@@ -156,6 +176,7 @@ class CondenseMSA(nn.Module):
         self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
         self.encoder = TERMTransformer(self.transformer, num_layers=num_transformers)
         self.batchify = BatchifyTERM()
+        self.track_nan = track_nans
 
         if torch.cuda.is_available():
             self.dev = device
@@ -187,11 +208,15 @@ class CondenseMSA(nn.Module):
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
+        if self.track_nan: process_nan(embeddings, None, 'embed')
+
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
         # zero out biases introduced into padding
         convolution *= negate_padding_mask.float()
         #convolution = embeddings.mean(dim=-1).transpose(1,2)
+
+        if self.track_nan: process_nan(convolution, embeddings, 'convolve')
 
         #print("embed", torch.isnan(convolution).any())
         # add absolute positional encodings before transformer
@@ -202,6 +227,8 @@ class CondenseMSA(nn.Module):
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
         node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask.float(), mask_attend = batchify_src_key_mask)
+
+        if self.track_nan: process_nan(node_embeddings, convolution, 'transform')
 
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(self.dev)
@@ -225,7 +252,7 @@ class CondenseMSA(nn.Module):
         # average the aggregate
         aggregate /= count.float()
 
-        #print("aggregate", torch.isnan(aggregate).any())
+        if self.track_nan: process_nan(aggregate, node_embeddings, 'aggregate')
 
         return aggregate
 
@@ -243,6 +270,14 @@ class Wrapper(nn.Module):
         output = self.relu(output)
         reshape = self.shape2(output)
         return reshape
+
+def process_nan(t, prev_t, msg):
+    if torch.isnan(t).any():
+        with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+            fp.write(repr(prev_t) + '\n')
+            fp.write(repr(t) + '\n')
+            fp.write(str(msg))
+        raise KeyboardInterrupt
 
 def stat_cuda(msg):
     dev1, dev2, dev3 = 0, 1, 2
@@ -265,3 +300,63 @@ def stat_cuda(msg):
         torch.cuda.memory_cached(dev3) / 1024 / 1024,
         torch.cuda.max_memory_cached(dev3) / 1024 / 1024
     ))
+
+def inf_nan_hook_fn(self, input, output):
+    """
+    try:
+        print('mean', self.running_mean)
+        print('var', self.running_var)
+    except:
+        pass
+    """
+    if has_large(input[0]):
+        print("large mag input")
+        with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+            abs_input = torch.abs(input[0])
+            fp.write('Input to ' + repr(self) + ' forward\n')
+            fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
+            fp.write("top 5 " + repr(torch.topk(abs_input.view([-1]), 5)) + '\n')
+            fp.write('Weights ' + repr(self.weight) + '\n')
+            fp.write('Biases ' + repr(self.bias) + '\n')
+            try:
+                fp.write('Running mean ' + repr(self.running_mean) + '\n')
+                fp.write('Running var ' + repr(self.running_var) + '\n')
+            except:
+                fp.write('Not a batchnorm layer')
+        exit()
+
+    elif (output == float('inf')).any() or (output == float('-inf')).any() or torch.isnan(output).any():
+        print('we got an inf/nan rip')
+        with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+            fp.write('Inf/nan is from ' + repr(self) + ' forward\n')
+            fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
+            fp.write('Outputs from b_idx 0 channel 0' + repr(output[0][0]) + '\n')
+            fp.write('Weights ' + repr(self.weight) + '\n')
+            fp.write('Biases ' + repr(self.bias) + '\n')
+            try:
+                fp.write('Running mean ' + repr(self.running_mean) + '\n')
+                fp.write('Running var ' + repr(self.running_var) + '\n')
+            except:
+                fp.write('Not a batchnorm layer')
+        exit()
+    else:
+        try:
+            if is_nan_inf(self.running_mean) or is_nan_inf(self.running_var):
+                with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+                    fp.write('Inf/nan is from ' + repr(self) + ' forward\n')
+                    fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
+                    fp.write('Outputs from b_idx 0 channel 0' + repr(output[0][0]) + '\n')
+                    fp.write('Weights ' + repr(self.weight) + '\n')
+                    fp.write('Biases ' + repr(self.bias) + '\n')
+                    fp.write('Running mean ' + repr(self.running_mean) + '\n')
+                    fp.write('Running var ' + repr(self.running_var) + '\n')
+                exit()
+        except:
+            pass
+
+
+def is_nan_inf(output):
+    return (output == float('inf')).any() or (output == float('-inf')).any() or torch.isnan(output).any()
+
+def has_large(input):
+    return torch.max(torch.abs(input)) > 100
