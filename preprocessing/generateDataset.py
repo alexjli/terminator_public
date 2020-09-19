@@ -65,12 +65,10 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
         term_len_arr += term_len
         num_alignments_arr = np.zeros((cutoff, 1, term_len))
         num_alignments_arr += num_alignments
-        #features = np.concatenate([ppoe, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
-        """
-        for arr in [sin_ppo, cos_ppo, env, rmsd_arr, term_len_arr, num_alignments_arr]:
-            print(arr.shape)
-        """
-        features = np.concatenate([sin_ppo, cos_ppo, env, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
+        
+        selected_features = [sin_ppo, cos_ppo, env, rmsd_arr, term_len_arr] 
+
+        features = np.concatenate(selected_features, axis=1)
 
         # pytorch does row vector computation
         # swap rows and columns
@@ -179,7 +177,7 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1,
             
         for idx, file in enumerate(glob.glob(folder+'/*.dat')):
             name = os.path.splitext(file)[0]
-            if update:
+            if not update:
                 out_file = os.path.join(out_folder, name)
                 if os.path.exists(out_file + '.features'):
                     continue
@@ -213,5 +211,6 @@ if __name__ == '__main__':
     parser.add_argument('out_folder', help = 'folder where features will be placed', default='features')
     parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 1000, type=int)
     parser.add_argument('-n', dest='num_cores', help = 'number of cores to use', default = 1, type = int)
+    parser.add_argument('-u', dest='update', help = 'if true, update existing files. else, files that already exist will not be overwritten', default=True, type = bool)
     args = parser.parse_args()
-    generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff, num_cores = args.num_cores)
+    generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff, num_cores = args.num_cores, update = args.update)
