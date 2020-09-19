@@ -11,7 +11,7 @@ import os
 def convert(tensor):
     return torch.from_numpy(tensor)
 
-class Dataset():
+class TERMDataset():
     def __init__(self, in_folder, pdb_ids = None):
         self.dataset = []
         if pdb_ids:
@@ -117,6 +117,7 @@ class TERMDataLoader():
 
             X, x_mask, _ = self._featurize(coords, 'cpu')
 
+            """
             # pack all the etabs into one big sparse tensor
             idxs = []
             vals = []
@@ -128,12 +129,10 @@ class TERMDataLoader():
             idx_t = torch.stack(idxs).transpose(0,1).long()
             val_t = torch.stack(vals)
             etab = torch.sparse.FloatTensor(idx_t, val_t)
-
-            print(ids)
-            print()
+            """
 
             self.data_clusters.append([msas, features, seq_lens, focuses,
-                                       src_key_mask, selfEs, term_lens, X, x_mask, etab, seqs, ids])
+                                       src_key_mask, selfEs, term_lens, X, x_mask, seqs, ids])
 
     def __len__(self):
         return len(self.data_clusters)
