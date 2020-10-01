@@ -94,8 +94,9 @@ if __name__ == '__main__':
     p1 = ironfs + 'dTERMen_speedtest200_clique1/'
     p2 = ironfs + 'dTERMen_speedtest200_clique1_p2/'
     p3 = ironfs + 'dTERMen_speedtest200_clique1_p3/'
-    p4 = ironfs + 'monomer_DB/'
+    p4 = ironfs + 'monomer_DB_1/'
     p5 = ironfs + 'monomer_DB_2/'
+    p6 = ironfs + 'monomer_DB_3/'
 
     if not os.path.isdir('etabs'):
         os.mkdir('etabs')

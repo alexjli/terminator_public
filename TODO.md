@@ -32,4 +32,13 @@ at some point
 
 backup files to c3ddb
 
-measure perplexity
+measure perplexity (***)
+
+increase model complexity to see how it does, or just feed it more data
+
+update google slides architectures diagram
+add regularization?
+
+if i split a protein into two, does it still output a very similar potts model?
+
+prioritize running the model on more data!!!
