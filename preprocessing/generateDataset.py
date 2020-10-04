@@ -209,7 +209,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Generate features data files from dTERMen .dat files')
     parser.add_argument('in_folder', help = 'input folder containing .dat files in proper directory structure', default='dTERMen_data')
     parser.add_argument('out_folder', help = 'folder where features will be placed', default='features')
-    parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 1000, type=int)
+    parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 50, type=int)
     parser.add_argument('-n', dest='num_cores', help = 'number of cores to use', default = 1, type = int)
     parser.add_argument('-u', dest='update', help = 'if true, update existing files. else, files that already exist will not be overwritten', default=True, type = bool)
     args = parser.parse_args()
