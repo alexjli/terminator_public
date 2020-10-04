@@ -291,13 +291,17 @@ class TERMinator(nn.Module):
     def _seq(self, etab, E_idx, x_mask, sequences):
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
-        
+
+        # X is encoded as 20 so lets just add an extra row/col of zeros
+        pad = (0, 1, 0, 1)
+        etab = F.pad(etab, pad, "constant", 0)
+
         # separate selfE and pairE since we have to treat selfE differently
         self_etab = etab[:, :, 0:1] 
         pair_etab = etab[:, :, 1:]
         # idx matrix to gather the identity at all other residues given a residue of focus
         E_aa = torch.gather(sequences.unsqueeze(-1).expand(-1, -1, k-1), 1, E_idx[:, :, 1:])
-        E_aa = E_aa.view(list(E_idx[:,:,1:].shape) + [1,1]).expand(-1, -1, -1, 20, -1)
+        E_aa = E_aa.view(list(E_idx[:,:,1:].shape) + [1,1]).expand(-1, -1, -1, 21, -1)
         # gather the 22 energies for each edge based on E_aa
         pair_nrgs = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
         # gather 22 self energies by taking the diagonal of the etab
