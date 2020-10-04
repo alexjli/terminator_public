@@ -208,7 +208,8 @@ class CondenseMSA(nn.Module):
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
-        if self.track_nan: process_nan(embeddings, None, 'embed')
+        if self.track_nan:
+            process_nan(embeddings, (X, features, self.embedding.embedding.weight), 'embed')
 
         # use Convolutional ResNet and averaging for further embedding and to reduce dimensionality
         convolution = self.resnet(embeddings)
@@ -359,4 +360,4 @@ def is_nan_inf(output):
     return (output == float('inf')).any() or (output == float('-inf')).any() or torch.isnan(output).any()
 
 def has_large(input):
-    return torch.max(torch.abs(input)) > 100
+    return torch.max(torch.abs(input)) > 1000
