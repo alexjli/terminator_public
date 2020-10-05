@@ -131,8 +131,17 @@ class TERMDataLoader():
             etab = torch.sparse.FloatTensor(idx_t, val_t)
             """
 
-            self.data_clusters.append([msas, features, seq_lens, focuses,
-                                       src_key_mask, selfEs, term_lens, X, x_mask, seqs, ids])
+            self.data_clusters.append({'msas':msas, 
+                                       'features':features, 
+                                       'seq_lens':seq_lens, 
+                                       'focuses':focuses,
+                                       'src_key_mask':src_key_mask, 
+                                       'selfEs':selfEs, 
+                                       'term_lens'term_lens, 
+                                       'X':X, 
+                                       'x_mask':x_mask, 
+                                       'seqs':seqs, 
+                                       'ids':ids})
 
     def __len__(self):
         return len(self.data_clusters)
@@ -284,8 +293,17 @@ class TERMLazyDataLoader(Sampler):
 
         #print(ids)
 
-        return [msas, features, seq_lens, focuses,
-                src_key_mask, selfEs, term_lens, X, x_mask, seqs, ids]
+        return {'msas':msas, 
+                'features':features, 
+                'seq_lens':seq_lens, 
+                'focuses':focuses,
+                'src_key_mask':src_key_mask, 
+                'selfEs':selfEs, 
+                'term_lens'term_lens, 
+                'X':X, 
+                'x_mask':x_mask, 
+                'seqs':seqs, 
+                'ids':ids}
 
     def __len__(self):
         return len(self.clusters)
