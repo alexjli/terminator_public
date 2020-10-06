@@ -24,7 +24,7 @@ dev = 'cuda:0'
 writer = SummaryWriter(log_dir = ifsdata + 'runs')
 
 
-dataset = LazyDataset(ifsdata + 'features_4600')
+dataset = LazyDataset(ifsdata + 'features_7000')
 #dataset.shuffle()
 #dataset = dataset[:100]
 
@@ -52,7 +52,7 @@ test_dataloader = DataLoader(test_dataset,
                               batch_sampler = test_batch_sampler,
                               num_workers = 2,
                               collate_fn = test_batch_sampler._package)
-terminator = TERMinator(hidden_dim = 32, resnet_blocks = 3, term_layers = 3, conv_filter=3, device = dev)
+terminator = TERMinator(hidden_dim = 32, resnet_blocks = 4, term_layers = 4, conv_filter=3, device = dev)
 terminator.to(dev)
 
 optimizer = optim.SGD(terminator.parameters(), lr=0.001, momentum=0.7)
@@ -69,7 +69,7 @@ best_checkpoint = None
 best_val = 999
 
 try:
-    for epoch in range(1000):
+    for epoch in range(100):
         print('epoch', epoch)
 
         # train
@@ -105,7 +105,7 @@ try:
             avg_loss = running_loss / (count + 1)
             train_progress.update(1)
             train_progress.refresh()
-            train_progress.set_description_str('loss {} | prob {} '.format(avg_loss, np.exp(-avg_loss)))
+            train_progress.set_description_str('loss {} | prob {} '.format(avg_loss, avg_prob))
 
         train_progress.close()
         epoch_loss = running_loss / (count+1)
@@ -172,6 +172,7 @@ print(save)
 
 dump = []
 
+torch.save(terminator.state_dict(), ifsdata + 'runs/net_last.pt')
 recovery = []
 terminator.load_state_dict(best_checkpoint)
 terminator.eval()
@@ -217,14 +218,13 @@ with torch.no_grad():
             print(e)
 
 import pickle
-with open(ifsdata + 'net.out', 'wb') as fp:
+with open(ifsdata + 'runs/net.out', 'wb') as fp:
     pickle.dump(dump, fp)
 
-with open(ifsdata+'training_curves.pk', 'wb') as fp:
+with open(ifsdata+'runs/training_curves.pk', 'wb') as fp:
     pickle.dump(save, fp)
 
-torch.save(terminator.state_dict(), ifsdata + 'net_last.pt')
-torch.save(best_checkpoint, ifsdata + 'net_best.pt')
+torch.save(best_checkpoint, ifsdata + 'runs/net_best.pt')
 writer.close()
 
 print('avg p recov:', torch.stack(recovery).mean())
