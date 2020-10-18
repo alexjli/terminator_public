@@ -164,6 +164,8 @@ class FocusEncoding(nn.Module):
 
         return self.dropout(X + fe)
 
+# TODO: differential positional encodings
+
 class CondenseMSA(nn.Module):
     def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0', track_nans = True):
         super(CondenseMSA, self).__init__()
@@ -198,7 +200,7 @@ class CondenseMSA(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, chain_lens):
         n_batches = X.shape[0]
         max_seq_len = max(seq_lens)
 

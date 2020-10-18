@@ -8,11 +8,11 @@ import glob
 import multiprocessing as mp
 import time
 
-from parseTERM import parseTERMdata
-from parseEtab import parseEtab
-from parseCoords import parseCoords
-from mmtf_util import *
-from util import *
+from .parseTERM import parseTERMdata
+from .parseEtab import parseEtab
+from .parseCoords import parseCoords
+#from mmtf_util import *
+#from util import *
 
 cath_base_url = 'http://download.cathdb.info/cath/releases/latest-release/'
 
@@ -91,6 +91,11 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
     if len(coords) == 1:
         chain = next(iter(coords.keys()))
         coords_tensor = coords[chain]
+    else:
+        chains = sorted(coords.keys())
+        coords_tensor = np.vstack([coords[c] for c in chains])
+
+    assert coords_tensor.shape[0] == len(data['sequence']), "num aa coords != seq length"
 
     output = {
         'pdb': pdb,
@@ -101,8 +106,9 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
         'term_lens': len_tensor,
         'sequence': np.array(data['sequence']),
         'seq_len': len(data['selection']),
-        'etab': etab,
-        'selfE': self_etab
+        'chain_lens': data['chain_lens']
+        #'etab': etab,
+        #'selfE': self_etab
     }
 
 

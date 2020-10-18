@@ -1,9 +1,11 @@
 from nets import CondenseMSA
-from struct2seq.energies import *
+from condense import MultiChainCondenseMSA
+from energies import *
 from struct2seq.self_attention import *
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 import numpy as np
 from preprocessing.common import int_to_aa
 
@@ -177,8 +179,7 @@ class TERMinator(nn.Module):
                 X,
                 x_mask,
                 sequence):
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        etab, E_idx = self.top(condense, X, x_mask)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
         rms = torch.sqrt(torch.mean(etab**2))
         nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
         return nlpl, rms, avg_prob
@@ -192,10 +193,9 @@ class TERMinator(nn.Module):
               term_lens,
               src_key_mask,
               X,
-              x_mask,
-              sparse = False):
+              x_mask):
         condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        etab, E_idx = self.top(condense, X, x_mask, sparse = sparse)
+        etab, E_idx = self.top(condense, X, x_mask)
         return etab, E_idx
 
     ''' Optimize the sequence using max psuedo-likelihood '''
@@ -209,8 +209,7 @@ class TERMinator(nn.Module):
                      X,
                      x_mask,
                      sequences):
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        etab, E_idx = self.top(condense, X, x_mask)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
         int_seqs = self._seq(etab, E_idx, x_mask, sequences)
         int_seqs = int_seqs.cpu().numpy()
         char_seqs = self._int_to_aa(int_seqs)
@@ -226,8 +225,7 @@ class TERMinator(nn.Module):
                       src_key_mask,
                       X,
                       x_mask):
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        etab, E_idx = self.top(condense, X, x_mask)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -246,8 +244,7 @@ class TERMinator(nn.Module):
                          X,
                          x_mask,
                          sequences):
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
-        etab, E_idx = self.top(condense, X, x_mask)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -317,6 +314,112 @@ class TERMinator(nn.Module):
         aa_idx = torch.argmax(-aa_nrgs, dim = -1)
 
         return aa_idx
+
+
+class MultiChainTERMinator(TERMinator):
+    def __init__(self, hidden_dim = 64, resnet_blocks = 1, conv_filter = 9, term_heads = 4, term_layers = 4, k_neighbors = 30, device = 'cuda:0'):
+        super(MultiChainTERMinator, self).__init__(hidden_dim = hidden_dim, resnet_blocks = resnet_blocks, conv_filter = conv_filter, term_heads = term_heads, term_layers = term_layers, k_neighbors = k_neighbors, device = device)
+        self.bot = MultiChainCondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev)
+        self.top = MultiChainPairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 3).to(self.dev)
+
+
+    def forward(self,
+                msas,
+                features,
+                seq_lens,
+                focuses,
+                term_lens,
+                src_key_mask,
+                X,
+                x_mask,
+                sequence,
+                chain_lens):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        rms = torch.sqrt(torch.mean(etab**2))
+        nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
+        return nlpl, rms, avg_prob
+
+    ''' compute the \'potts model parameters\' for the structure '''
+    def potts(self,
+              msas,
+              features,
+              seq_lens,
+              focuses,
+              term_lens,
+              src_key_mask,
+              X,
+              x_mask,
+              chain_lens):
+
+        # generate chain_idx from chain_lens
+        chain_idx = []
+        for c_lens in chain_lens:
+            arrs = []
+            for i in range(len(c_lens)):
+                l = c_lens[i]
+                arrs.append(torch.ones(l)*i)
+            chain_idx.append(torch.cat(arrs, dim = -1))
+        chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
+
+        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, chain_idx, X)
+        etab, E_idx = self.top(condense, X, x_mask, chain_idx)
+        return etab, E_idx
+
+    ''' Optimize the sequence using max psuedo-likelihood '''
+    def opt_sequence(self,
+                     msas,
+                     features,
+                     seq_lens,
+                     focuses,
+                     term_lens,
+                     src_key_mask,
+                     X,
+                     x_mask,
+                     sequences,
+                     chain_lens):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        int_seqs = self._seq(etab, E_idx, x_mask, sequences)
+        int_seqs = int_seqs.cpu().numpy()
+        char_seqs = self._int_to_aa(int_seqs)
+        return char_seqs
+
+    ''' predict the optimal sequence based purely on structure '''
+    def pred_sequence(self,
+                      msas,
+                      features,
+                      seq_lens,
+                      focuses,
+                      term_lens,
+                      src_key_mask,
+                      X,
+                      x_mask,
+                      chain_lens):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        self_nrgs = self._get_self_etab(etab)
+        init_seqs = self._init_seqs(self_nrgs)
+        int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
+        int_seqs = int_seqs.cpu().numpy()
+        char_seqs = self._int_to_aa(int_seqs)
+        return char_seqs
+
+    ''' compute percent sequence recovery '''
+    def percent_recovery(self,
+                         msas,
+                         features,
+                         seq_lens,
+                         focuses,
+                         term_lens,
+                         src_key_mask,
+                         X,
+                         x_mask,
+                         sequences,
+                         chain_lens):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        self_nrgs = self._get_self_etab(etab)
+        init_seqs = self._init_seqs(self_nrgs)
+        pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
+        p_recov = self._percent(pred_seqs, sequences, x_mask)
+        return p_recov
 
 
 '''

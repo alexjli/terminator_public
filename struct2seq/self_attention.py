@@ -120,6 +120,7 @@ class TransformerLayer(nn.Module):
             h_V_t = mask_V_t * h_V_t
         return h_V_t
 
+
 class EdgeTransformerLayer(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
         super(EdgeTransformerLayer, self).__init__()

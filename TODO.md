@@ -42,3 +42,6 @@ add regularization?
 if i split a protein into two, does it still output a very similar potts model?
 
 prioritize running the model on more data!!!
+
+include target phi,psi,omega,env for native protein
+add gaussian noise to coordinates as data augmentation?

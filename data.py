@@ -82,26 +82,28 @@ class TERMDataLoader():
             term_lens = []
             seqs = []
             ids = []
+            chain_lens = []
 
             for data in batch:
                 # have to transpose these two because then we can use pad_sequence for padding
                 features.append(convert(data['features']).transpose(0,1))
                 msas.append(convert(data['msas']).transpose(0,1))
 
-                selfEs.append(convert(data['selfE']))
+                #selfEs.append(convert(data['selfE']))
                 focuses.append(convert(data['focuses']))
                 seq_lens.append(data['seq_len'])
                 term_lens.append(data['term_lens'].tolist())
                 coords.append(data['coords'])
-                etabs.append(data['etab'])
+                #etabs.append(data['etab'])
                 seqs.append(convert(data['sequence']))
                 ids.append(data['pdb'])
+                chain_lens.append(data['chain_lens'])
 
             # transpose back after padding
             features = pad_sequence(features, batch_first=True).transpose(1,2)
             msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
 
-            selfEs = pad_sequence(selfEs, batch_first=True)
+            #selfEs = pad_sequence(selfEs, batch_first=True)
             focuses = pad_sequence(focuses, batch_first=True)
 
             src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
@@ -136,12 +138,13 @@ class TERMDataLoader():
                                        'seq_lens':seq_lens, 
                                        'focuses':focuses,
                                        'src_key_mask':src_key_mask, 
-                                       'selfEs':selfEs, 
-                                       'term_lens'term_lens, 
+                                       #'selfEs':selfEs, 
+                                       'term_lens':term_lens, 
                                        'X':X, 
                                        'x_mask':x_mask, 
                                        'seqs':seqs, 
-                                       'ids':ids})
+                                       'ids':ids,
+                                       'chain_lens':chain_lens})
 
     def __len__(self):
         return len(self.data_clusters)
@@ -242,26 +245,28 @@ class TERMLazyDataLoader(Sampler):
         term_lens = []
         seqs = []
         ids = []
+        chain_lens = []
 
         for data in batch:
             # have to transpose these two because then we can use pad_sequence for padding
             features.append(convert(data['features']).transpose(0,1))
             msas.append(convert(data['msas']).transpose(0,1))
 
-            selfEs.append(convert(data['selfE']))
+            #selfEs.append(convert(data['selfE']))
             focuses.append(convert(data['focuses']))
             seq_lens.append(data['seq_len'])
             term_lens.append(data['term_lens'].tolist())
             coords.append(data['coords'])
-            etabs.append(data['etab'])
+            #etabs.append(data['etab'])
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
+            chain_lens.append(data['chain_lens'])
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1,2)
         msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
 
-        selfEs = pad_sequence(selfEs, batch_first=True)
+        #selfEs = pad_sequence(selfEs, batch_first=True)
         focuses = pad_sequence(focuses, batch_first=True)
 
         src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
@@ -298,12 +303,13 @@ class TERMLazyDataLoader(Sampler):
                 'seq_lens':seq_lens, 
                 'focuses':focuses,
                 'src_key_mask':src_key_mask, 
-                'selfEs':selfEs, 
-                'term_lens'term_lens, 
+                #'selfEs':selfEs, 
+                'term_lens':term_lens, 
                 'X':X, 
                 'x_mask':x_mask, 
                 'seqs':seqs, 
-                'ids':ids}
+                'ids':ids,
+                'chain_lens':chain_lens}
 
     def __len__(self):
         return len(self.clusters)

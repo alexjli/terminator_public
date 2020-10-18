@@ -3,9 +3,9 @@ import os
 import json
 import pickle
 import argparse
-from common import seq_to_ints
+from .common import seq_to_ints
 from scipy.linalg import block_diag
-from parseEtab import parseEtab
+from .parseEtab import parseEtab
 
 HEAD_LEN = len('* TERM ')
 
@@ -26,14 +26,31 @@ def parseTERMdata(filename):
     selection = [int(i) for i in selection]
 
     # parse phi, psi, omega, and environ vals
+    # keep track of chain len based on phi=999
     ppoe = []
+    chain_lens = []
+    current_chain_len = 0
+
     current_line = fp.readline()
     while current_line[0] != '*':
         data = current_line.strip().split(' ')
         data = [float(i) for i in data]
+        # if phi = 999. start new chain
+        if data[0] == 999:
+            chain_lens.append(current_chain_len)
+            current_chain_len = 0
         ppoe.append(data)
+        current_chain_len += 1
         current_line = fp.readline()
+
+    # append last chain len
+    chain_lens.append(current_chain_len)
+
+    # the first chain len will always be 0, so pop that off
+    chain_lens.pop(0)
     ppoe = np.array(ppoe)
+
+    assert sum(chain_lens) == len(seq), "sum of chain lens != total seq len"
 
     # parse TERMs from rest of file
     terms = []
@@ -47,6 +64,7 @@ def parseTERMdata(filename):
     output['selection'] = selection
     output['ppoe'] = ppoe
     output['terms'] = terms
+    output['chain_lens'] = chain_lens
     return output
 
 def parseTERM(fp, lastline):
@@ -118,7 +136,7 @@ def dumpTrainingData(in_path, out_path = None, cutoff = 1000):
         num_alignments_arr += num_alignments
         features = np.concatenate([ppoe, rmsd_arr, term_len_arr, num_alignments_arr], axis=1)
 
-        # why does pytorch do row vector computation what the heck
+        # pytorch does row vector computation, but i formatted in column vectors
         # swap rows and columns
         features = features.transpose(1,2)
         # cutoff features at top N
@@ -203,7 +221,8 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
         'sequence': data['sequence'],
         'seq_len': len(data['selection']),
         'etab': etab,
-        'selfE': self_etab
+        'selfE': self_etab,
+        'chain_lens': data['chain_lens']
     }
 
     """
