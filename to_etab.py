@@ -90,7 +90,7 @@ def get_idx_dict(pdb):
 
 if __name__ == '__main__':
     ironfs = '/home/ironfs/scratch/grigoryanlab/alexjli/'
-    os.chdir(ifsdata)
+    #os.chdir(ifsdata)
     p1 = ironfs + 'dTERMen_speedtest200_clique1/'
     p2 = ironfs + 'dTERMen_speedtest200_clique1_p2/'
     p3 = ironfs + 'dTERMen_speedtest200_clique1_p3/'
@@ -118,6 +118,8 @@ if __name__ == '__main__':
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p4, pdb, pdb))
         elif os.path.isdir(p5 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p5, pdb, pdb))
+        elif os.path.isdir(p6 + pdb):
+            idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p6, pdb, pdb))
         else:
             raise Exception('umwhat')
 
@@ -125,7 +127,8 @@ if __name__ == '__main__':
         etab = data['out'][0]
 
         out_path = 'etabs/' + pdb + '.etab'
-
+        if os.path.exists(out_path):
+            continue
         to_etab_file(etab, E_idx, idx_dict, out_path)
 
 
