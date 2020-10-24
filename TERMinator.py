@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import numpy as np
-from preprocessing.common import int_to_aa
+from utils.common import int_to_aa
 
 
 class TERMinator(nn.Module):
@@ -30,7 +30,6 @@ class TERMinator(nn.Module):
         # X is encoded as 20 so lets just add an extra row/col of zeros
         pad = (0, 1, 0, 1)
         etab = F.pad(etab, pad, "constant", 0)
-
         isnt_x_aa = (ref_seqs != 20).float().to(self.dev)
 
         # separate selfE and pairE since we have to treat selfE differently
@@ -284,7 +283,8 @@ class TERMinator(nn.Module):
         aa_idx = torch.argmax(-self_etab, dim = -1)
         return aa_idx
 
-    ''' Find the int aa seq with the highest psuedolikelihood '''
+    ''' Find the int aa seq with the highest psuedolikelihood using an initial guess from the self energies '''
+
     def _seq(self, etab, E_idx, x_mask, sequences):
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
