@@ -45,3 +45,12 @@ prioritize running the model on more data!!!
 
 include target phi,psi,omega,env for native protein
 add gaussian noise to coordinates as data augmentation?
+
+check amino acid embeddings
+see what parts of the net is necessary
+check TERM matches data leakage
+
+send vikram path to run_7000_cpl_term1_tanh run
+automatic experiment recording
+
+drop the sequence input from net 1?
