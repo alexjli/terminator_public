@@ -103,11 +103,10 @@ def main(args):
                 X = data['X'].to(dev)
                 x_mask = data['x_mask'].to(dev)
                 seqs = data['seqs'].to(dev)
-                chain_lens = data['chain_lens']
                 seq_lens = data['seq_lens'].to(dev)
 
 
-                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, chain_lens)
+                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
 
                 torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.zero_grad()
@@ -148,11 +147,10 @@ def main(args):
                     X = data['X'].to(dev)
                     x_mask = data['x_mask'].to(dev)
                     seqs = data['seqs'].to(dev)
-                    chain_lens = data['chain_lens']
                     seq_lens = data['seq_lens'].to(dev)
 
 
-                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, chain_lens)
+                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
                     running_loss += loss.item()
                     running_prob += prob.item()
                     count = i

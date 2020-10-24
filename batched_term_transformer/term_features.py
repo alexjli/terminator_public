@@ -21,7 +21,7 @@ class IndexDiffEncoding(PositionalEncodings):
         same_chain = (E_chain_idx == E_chain_idx[:, :, :, 0:1]).to(dev)
         d = torch.where(same_chain, d_raw, torch.tensor(self.inf).float().to(dev)).unsqueeze(-1)
 
-        print(d.long().squeeze(-1))
+        #print(d.long().squeeze(-1))
         # Original Transformer frequencies
         frequency = torch.exp(
             torch.arange(0, self.num_embeddings, 2, dtype=torch.float32)
