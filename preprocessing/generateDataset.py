@@ -8,9 +8,9 @@ import glob
 import multiprocessing as mp
 import time
 
-from .parseTERM import parseTERMdata
-from .parseEtab import parseEtab
-from .parseCoords import parseCoords
+from parseTERM import parseTERMdata
+from parseEtab import parseEtab
+from parseCoords import parseCoords
 #from mmtf_util import *
 #from util import *
 
@@ -217,6 +217,6 @@ if __name__ == '__main__':
     parser.add_argument('out_folder', help = 'folder where features will be placed', default='features')
     parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 50, type=int)
     parser.add_argument('-n', dest='num_cores', help = 'number of cores to use', default = 1, type = int)
-    parser.add_argument('-u', dest='update', help = 'if true, update existing files. else, files that already exist will not be overwritten', default=True, type = bool)
+    parser.add_argument('-u', dest='update', help = 'if added, update existing files. else, files that already exist will not be overwritten', default=False, action='store_true')
     args = parser.parse_args()
     generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff, num_cores = args.num_cores, update = args.update)

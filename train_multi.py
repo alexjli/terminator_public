@@ -13,6 +13,7 @@ from struct2seq.noam_opt import *
 import argparse
 
 ifsdata = '/home/ifsdata/scratch/grigoryanlab/alexjli/'
+ironfs = '/home/ironfs/scratch/grigoryanlab/alexjli/'
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -27,7 +28,7 @@ def main(args):
 
 
     if args.lazy:
-        dataset = LazyDataset(ifsdata + args.dataset)
+        dataset = LazyDataset(ironfs + args.dataset)
         if args.shuffle_splits:
             dataset.shuffle()
 
@@ -37,7 +38,7 @@ def main(args):
         val_dataset = dataset[train_val:val_test]
         test_dataset = dataset[val_test:]
 
-        train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=12, shuffle=True)
+        train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=10, shuffle=True)
         val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -123,7 +124,7 @@ def main(args):
                 avg_prob = running_prob / (count + 1)
                 train_progress.update(1)
                 train_progress.refresh()
-                train_progress.set_description_str('loss {} | prob {} '.format(avg_loss, avg_prob))
+                train_progress.set_description_str('loss {} | prob {} | lr {}'.format(avg_loss, avg_prob, optimizer.rate()))
 
             train_progress.close()
             epoch_loss = running_loss / (count+1)
@@ -176,6 +177,14 @@ def main(args):
             if val_prob < best_validation:
                 best_validation = val_prob
                 best_checkpoint = terminator.state_dict()
+
+            for name, param in terminator.named_parameters():
+                try:
+                    writer.add_histogram(name, param, epoch)
+                    writer.add_histogram(name+".grad", param.grad, epoch)
+                except:
+                    writer.add_histogram(name, torch.zeros(1), epoch)
+
 
     except KeyboardInterrupt:
         pass
@@ -244,10 +253,10 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
-    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $ifsdata/', default = "features_7000")
+    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $ironfs/', default = "features_multichain")
     parser.add_argument('--dev', help = 'device to train on', default = 'cuda:0')
     parser.add_argument('--lazy', help = 'use lazy data loading', default = True, type = bool)
-    parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
+    parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, action = 'store_true')
     args = parser.parse_args()
     main(args)
  
