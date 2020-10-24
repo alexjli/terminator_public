@@ -321,7 +321,10 @@ class MultiChainTERMinator(TERMinator):
         super(MultiChainTERMinator, self).__init__(hidden_dim = hidden_dim, resnet_blocks = resnet_blocks, conv_filter = conv_filter, term_heads = term_heads, term_layers = term_layers, k_neighbors = k_neighbors, device = device)
         self.bot = MultiChainCondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev)
         self.top = MultiChainPairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 3).to(self.dev)
-
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
     def forward(self,
                 msas,
