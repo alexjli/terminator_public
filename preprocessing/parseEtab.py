@@ -1,5 +1,5 @@
 import numpy as np
-from .common import *
+from common import *
 import argparse
 import pickle
 

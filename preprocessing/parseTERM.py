@@ -3,9 +3,9 @@ import os
 import json
 import pickle
 import argparse
-from .common import seq_to_ints
+from common import seq_to_ints
 from scipy.linalg import block_diag
-from .parseEtab import parseEtab
+from parseEtab import parseEtab
 
 HEAD_LEN = len('* TERM ')
 
