@@ -1,19 +1,14 @@
 import numpy as np
 import pickle
 import os
-from preprocessing.common import AA_to_int
+from utils.common import AA_to_int
 
 int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) is 3}
 
 ifsdata = '/home/ifsdata/scratch/grigoryanlab/alexjli'
 
-# currently only works for single chain etabs
+# should work for multi-chain proteins now
 def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
-    chain = None
-    if len(idx_dict.keys()) == 1:
-        chain = next(iter(idx_dict.keys()))
-        idx_dict = idx_dict[chain]
-
     out_file = open(out_path, 'w')
 
     # etab matrix: l x k x 20 x 20
@@ -24,7 +19,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
     # l x 20
     self_nrgs = np.diagonal(self_etab, offset=0, axis1=-2, axis2=-1)
     for aa_idx, aa_nrgs in enumerate(self_nrgs):
-        resid = idx_dict[aa_idx]
+        chain, resid = idx_dict[aa_idx]
         for aa_int_id, nrg in enumerate(aa_nrgs):
             aa_3lt_id = int_to_AA[aa_int_id]
             out_file.write('{},{} {} {}\n'.format(chain, resid, aa_3lt_id, nrg))
@@ -35,7 +30,8 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
     for i_idx, nrg_slice in enumerate(pair_etab):
         for k, k_slice in enumerate(nrg_slice):
             j_idx = E_idx[i_idx][k]
-            i_resid, j_resid = idx_dict[i_idx], idx_dict[j_idx]
+            chain_i, i_resid = idx_dict[i_idx]
+            chain_j, j_resid = idx_dict[j_idx]
             for i, i_slice in enumerate(k_slice):
                 i_3lt_id = int_to_AA[i]
                 for j, nrg in enumerate(i_slice):
@@ -43,7 +39,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
                     
                     # every etab has two entries i, j and j, i
                     # average these nrgs
-                    key = [(chain, i_resid, i_3lt_id), (chain, j_resid, j_3lt_id)]
+                    key = [(chain_i, i_resid, i_3lt_id), (chain_j, j_resid, j_3lt_id)]
                     key.sort(key = lambda x: x[1])
                     key = tuple(key)
                     if key not in pair_nrgs.keys():
@@ -63,8 +59,8 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
 
     out_file.close()
 
-def get_idx_dict(pdb):
-    chain_dict = {}
+def get_idx_dict(pdb): 
+    idx_dict = {}
     with open(pdb, 'r') as fp:
         current_idx = 0
         for line in fp:
@@ -73,20 +69,16 @@ def get_idx_dict(pdb):
                 continue 
             try:
                 chain = data[21]
-                idx = int(data[22:26].strip())
+                residx = int(data[22:26].strip())
             except Exception as e:
                 print(data)
                 raise e
 
-            if chain not in chain_dict.keys():
-                chain_dict[chain] = {}
-                current_idx = 0
-
-            if idx not in chain_dict[chain].values():
-                chain_dict[chain][current_idx] = idx
+            if (chain, residx) not in idx_dict.values():
+                idx_dict[current_idx] = (chain, residx)
                 current_idx += 1
 
-    return chain_dict
+    return idx_dict
 
 if __name__ == '__main__':
     ironfs = '/home/ironfs/scratch/grigoryanlab/alexjli/'
