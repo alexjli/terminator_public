@@ -202,7 +202,7 @@ class LazyDataset(Dataset):
         return [self.dataset[i] for i in data_idx]
 
 class TERMLazyDataLoader(Sampler):
-    def __init__(self, dataset, batch_size=4, shuffle=True, batch_shuffle = True, drop_last = False):
+    def __init__(self, dataset, batch_size=4, shuffle=True, batch_shuffle = True, drop_last = False, max_total_data_len = 55000):
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.lengths = zip(*dataset)
@@ -213,13 +213,31 @@ class TERMLazyDataLoader(Sampler):
 
         # Cluster into batches of similar sizes
         clusters, batch = [], []
-        batch_max = 0
-        for count, idx in enumerate(sorted_idx):
-            if count != 0 and count % self.batch_size == 0:
-                clusters.append(batch)
-                batch = [idx]
-            else:
-                batch.append(idx)
+
+        # if batch_size is None, fit as many proteins we can into a batch
+        # without overloading the GPU
+        if max_total_data_len > 0 and batch_size is None:
+            current_batch_lens = []
+            total_data_len = 0
+            for count, idx in enumerate(sorted_idx):
+                current_batch_lens.append(self.lengths[idx])
+                total_data_len = max(current_batch_lens) * len(current_batch_lens)
+                if count != 0 and total_data_len > max_total_data_len:
+                    clusters.append(batch)
+                    batch = [idx]
+                    current_batch_lens = [self.lengths[idx]]
+                else:
+                    batch.append(idx)
+                    #current_batch_lens.append(self.lengths[idx])
+
+        else: # used fixed batch size
+            for count, idx in enumerate(sorted_idx):
+                if count != 0 and count % self.batch_size == 0:
+                    clusters.append(batch)
+                    batch = [idx]
+                else:
+                    batch.append(idx)
+
         if len(batch) > 0 and not drop_last:
             clusters.append(batch)
         self.clusters = clusters
