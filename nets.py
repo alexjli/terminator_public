@@ -17,6 +17,8 @@ NUM_AA = 21
 
 NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
 
+ERROR_DIR = '/home/ifsdata/scratch/grigoryanlab/alexjli/run.error'
+
 def conv1xN(channels, N):
     return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2))
 
@@ -276,7 +278,7 @@ class Wrapper(nn.Module):
 
 def process_nan(t, prev_t, msg):
     if torch.isnan(t).any():
-        with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+        with open(ERROR_FILE, 'w') as fp:
             fp.write(repr(prev_t) + '\n')
             fp.write(repr(t) + '\n')
             fp.write(str(msg))
@@ -314,7 +316,7 @@ def inf_nan_hook_fn(self, input, output):
     """
     if has_large(input[0]):
         print("large mag input")
-        with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+        with open(ERROR_FILE, 'w') as fp:
             abs_input = torch.abs(input[0])
             fp.write('Input to ' + repr(self) + ' forward\n')
             fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
@@ -330,7 +332,7 @@ def inf_nan_hook_fn(self, input, output):
 
     elif (output == float('inf')).any() or (output == float('-inf')).any() or torch.isnan(output).any():
         print('we got an inf/nan rip')
-        with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+        with open(ERROR_FILE, 'w') as fp:
             fp.write('Inf/nan is from ' + repr(self) + ' forward\n')
             fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
             fp.write('Outputs from b_idx 0 channel 0' + repr(output[0][0]) + '\n')
@@ -345,7 +347,7 @@ def inf_nan_hook_fn(self, input, output):
     else:
         try:
             if is_nan_inf(self.running_mean) or is_nan_inf(self.running_var):
-                with open('/home/ifsdata/scratch/grigoryanlab/alexjli/run.error', 'w') as fp:
+                with open(ERROR_FILE, 'w') as fp:
                     fp.write('Inf/nan is from ' + repr(self) + ' forward\n')
                     fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
                     fp.write('Outputs from b_idx 0 channel 0' + repr(output[0][0]) + '\n')
