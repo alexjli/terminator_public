@@ -181,13 +181,16 @@ class TERMDataLoader():
         return X, mask, lengths
 
 class LazyDataset(Dataset):
-    def __init__(self, in_folder, pdb_ids = None):
+    def __init__(self, in_folder, pdb_ids = None, min_protein_len = 30):
         self.dataset = []
         for filename in glob.glob('{}/*/*.features'.format(in_folder)):
             prefix = os.path.splitext(filename)[0]
             with open(prefix + '.length') as fp:
-                length = int(fp.readline().strip())
-            self.dataset.append((os.path.abspath(filename), length))
+                total_term_length = int(fp.readline().strip())
+                seq_len = int(fp.readline().strip())
+                if seq_len < min_protein_len:
+                    continue
+            self.dataset.append((os.path.abspath(filename), total_term_length))
 
         self.shuffle_idx = np.arange(len(self.dataset))
 

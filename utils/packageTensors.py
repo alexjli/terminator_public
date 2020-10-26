@@ -109,7 +109,8 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
         with open(out_path + '.features', 'wb') as fp:
             pickle.dump(output, fp)
         with open(out_path + '.length', 'w') as fp:
-            fp.write(str(len(term_focuses)))
+            fp.write(str(len(term_focuses)) + '\n')
+            fp.write(str(len(data['selection'])))
 
     print('Done with', pdb)
 
