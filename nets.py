@@ -17,7 +17,7 @@ NUM_AA = 21
 
 NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
 
-ERROR_DIR = '/home/ifsdata/scratch/grigoryanlab/alexjli/run.error'
+ERROR_FILE = '/home/ifsdata/scratch/grigoryanlab/alexjli/run.error'
 
 def conv1xN(channels, N):
     return nn.Conv2d(channels, channels, kernel_size = (1, N), padding = (0, N//2))
