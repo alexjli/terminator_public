@@ -23,6 +23,10 @@ def parseCoords(filename, save = True):
             if chain not in chain_dict.keys():
                 chain_dict[chain] = {element: [] for element in ['N', 'CA', 'C', 'O']}
 
+            # naively model terminal carboxylate as a single O atom 
+            # (i cant find the two oxygens so im just gonna use OXT)
+            if element == 'OXT':
+                element = 'O'
             chain_dict[chain][element].append(coords)
 
     chain_tensors = {}

@@ -9,7 +9,7 @@ import time
 
 from utils.packageTensors import dumpTrainingTensors
 
-def generateDataset(in_folder, out_folder, cutoff = 1000):
+def generateDataset(in_folder, out_folder, cutoff = 50, update = False):
     # make folder where the dataset files are gonna be placed
     if not os.path.exists(out_folder):
         os.mkdir(out_folder)
@@ -33,17 +33,33 @@ def generateDataset(in_folder, out_folder, cutoff = 1000):
             full_folder_path = os.path.join(out_folder, folder)
             if not os.path.exists(full_folder_path):
                 os.mkdir(full_folder_path)
+
+            name = os.path.splitext(file)[0]
+            if not update:
+                out_file = os.path.join(out_folder, name)
+                if os.path.exists(out_file + '.features'):
+                    continue
+            # i dunno why but if this doesn't exist the worker just dies without saying anything ig
+            if not os.path.exists(name + '.red.pdb'):
+                print(name + '.red.pdb doesnt exist? skipping')
+                continue
+
             out_file = os.path.join(out_folder, name)
             print('out file', out_file)
-            dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff, chain_lookup = chain_lookup)
+            try:
+                dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
+            except Exception as e:
+                print(e)
             #output = dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff)
             #dataset.append(output)
 
     return dataset
 
 
+# when subprocesses fail you usually don't get an error...
 def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1, update = True):
     print('num cores', num_cores)
+    print('warning! it seems that if subprocesses fail right now you don\'t get an error message. be wary of this if the number of files you\'re getting seems off')
     # make folder where the dataset files are gonna be placed
     if not os.path.exists(out_folder):
         os.mkdir(out_folder)
@@ -103,4 +119,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', dest='num_cores', help = 'number of cores to use', default = 1, type = int)
     parser.add_argument('-u', dest='update', help = 'if added, update existing files. else, files that already exist will not be overwritten', default=False, action='store_true')
     args = parser.parse_args()
-    generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff, num_cores = args.num_cores, update = args.update)
+    if args.num_cores > 1:
+        generateDatasetParallel(args.in_folder, args.out_folder, cutoff = args.cutoff, num_cores = args.num_cores, update = args.update)
+    else:
+        generateDataset(args.in_folder, args.out_folder, cutoff = args.cutoff, update = args.update)
