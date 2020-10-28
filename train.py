@@ -143,7 +143,7 @@ def main(args):
                 for i, data in enumerate(val_dataloader):
                     msas = data['msas'].to(dev)
                     features = data['features'].to(dev).float()
-                    focuses = data['focuses']focuses.to(dev)
+                    focuses = data['focuses'].to(dev)
                     src_key_mask = data['src_key_mask'].to(dev)
                     X = data['X'].to(dev)
                     x_mask = data['x_mask'].to(dev)
@@ -197,14 +197,14 @@ def main(args):
             print('datapoint', i)
             msas = data['msas'].to(dev)
             features = data['features'].to(dev).float()
-            focuses = data['focuses']focuses.to(dev)
+            focuses = data['focuses'].to(dev)
             src_key_mask = data['src_key_mask'].to(dev)
             X = data['X'].to(dev)
             x_mask = data['x_mask'].to(dev)
             seqs = data['seqs'].to(dev)
             seq_lens = data['seq_lens'].to(dev)
 
-           loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
             
             print(loss.item(), prob.item())
 
