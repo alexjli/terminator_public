@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader
 from struct2seq.noam_opt import *
 import argparse
 
-ifsdata = '/home/ifsdata/scratch/grigoryanlab/alexjli/'
+ifsdata = '/scratch/users/alexjli/TERMinator/'
+outputdir = '/scratch/users/vsundar/TERMinator/'
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -22,7 +23,7 @@ torch.set_printoptions(profile="full")
 
 def main(args):
     dev = args.dev
-    writer = SummaryWriter(log_dir = ifsdata + 'runs')
+    writer = SummaryWriter(log_dir = outputdir + 'runs')
     train_dataloader, val_dataloader, test_dataloader = None, None, None
 
 
@@ -179,11 +180,11 @@ def main(args):
 
     print(save)
 
-    torch.save(terminator.state_dict(), ifsdata + 'net_last.pt')
-    torch.save(best_checkpoint, ifsdata + '/runs/net_best.pt')
+    torch.save(terminator.state_dict(), outputdir + '/runs/net_last.pt')
+    torch.save(best_checkpoint, outputdir + '/runs/net_best.pt')
  
 
-    with open(ifsdata+'/runs/training_curves.pk', 'wb') as fp:
+    with open(outputdir+'/runs/training_curves.pk', 'wb') as fp:
         pickle.dump(save, fp)
 
     dump = []
@@ -233,7 +234,7 @@ def main(args):
 
     print('avg p recov:', torch.stack(recovery).mean())
 
-    with open(ifsdata + '/runs/net.out', 'wb') as fp:
+    with open(outputdir + '/runs/net.out', 'wb') as fp:
         pickle.dump(dump, fp)
 
     writer.close()
