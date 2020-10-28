@@ -99,7 +99,7 @@ def main(args):
             for i, data in enumerate(train_dataloader):
                 msas = data['msas'].to(dev)
                 features = data['features'].to(dev).float()
-                focuses = data['focuses']focuses.to(dev)
+                focuses = data['focuses'].to(dev)
                 src_key_mask = data['src_key_mask'].to(dev)
                 X = data['X'].to(dev)
                 x_mask = data['x_mask'].to(dev)
