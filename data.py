@@ -68,7 +68,7 @@ class TERMDataLoader():
         if len(batch) > 0:
             clusters.append(batch)
         self.clusters = clusters
-        print(self.clusters)
+        # print(self.clusters)
 
         self.data_clusters = []
 
@@ -183,14 +183,24 @@ class TERMDataLoader():
 class LazyDataset(Dataset):
     def __init__(self, in_folder, pdb_ids = None, min_protein_len = 30):
         self.dataset = []
-        for filename in glob.glob('{}/*/*.features'.format(in_folder)):
-            prefix = os.path.splitext(filename)[0]
-            with open(prefix + '.length') as fp:
-                total_term_length = int(fp.readline().strip())
-                seq_len = int(fp.readline().strip())
-                if seq_len < min_protein_len:
-                    continue
-            self.dataset.append((os.path.abspath(filename), total_term_length))
+        if pdb_ids:
+            for id in pdb_ids:
+                filename = '{}/{}.features'.format(in_folder, id)
+                with open('{}/{}.length'.format(in_folder, id)) as fp:
+                    total_term_length = int(fp.readline().strip())
+                    seq_len = int(fp.readline().strip())
+                    if seq_len < min_protein_len:
+                        continue
+                self.dataset.append((os.path.abspath(filename), total_term_length))
+        else:
+            for filename in glob.glob('{}/*/*.features'.format(in_folder)):
+                prefix = os.path.splitext(filename)[0]
+                with open(prefix + '.length') as fp:
+                    total_term_length = int(fp.readline().strip())
+                    seq_len = int(fp.readline().strip())
+                    if seq_len < min_protein_len:
+                        continue
+                self.dataset.append((os.path.abspath(filename), total_term_length))
 
         self.shuffle_idx = np.arange(len(self.dataset))
 
@@ -244,7 +254,7 @@ class TERMLazyDataLoader(Sampler):
         if len(batch) > 0 and not drop_last:
             clusters.append(batch)
         self.clusters = clusters
-        print(self.clusters)
+        # print(self.clusters)
 
     def _package(self, b_idx):
         # wrap up all the tensors with proper padding and masks

@@ -11,9 +11,10 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from struct2seq.noam_opt import *
 import argparse
+import os
 
-ifsdata = '/scratch/users/alexjli/TERMinator/'
-outputdir = '/scratch/users/vsundar/TERMinator/'
+INPUT_DATA = '/nobackup1c/users/vsundar/TERMinator/'
+OUTPUT_DIR = '/nobackup1c/users/vsundar/TERMinator/'
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -23,22 +24,30 @@ torch.set_printoptions(profile="full")
 
 def main(args):
     dev = args.dev
-    writer = SummaryWriter(log_dir = outputdir + 'runs')
+    run_output_dir = os.path.join(OUTPUT_DIR, args.run_name)
+    if not os.path.isdir(run_output_dir):
+        os.makedirs(run_output_dir)
     train_dataloader, val_dataloader, test_dataloader = None, None, None
 
 
     if args.lazy:
-        dataset = LazyDataset(ifsdata + args.dataset)
-        if args.shuffle_splits:
-            dataset.shuffle()
+        train_ids = []
+        with open(os.path.join(INPUT_DATA, args.dataset, args.train), 'r') as f:
+            for line in f:
+                train_ids += [line[:-1]]
+        validation_ids = []
+        with open(os.path.join(INPUT_DATA, args.dataset, args.validation), 'r') as f:
+            for line in f:
+                validation_ids += [line[:-1]]
+        test_ids = []
+        with open(os.path.join(INPUT_DATA, args.dataset, args.test), 'r') as f:
+            for line in f:
+                test_ids += [line[:-1]]
+        train_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = train_ids) 
+        val_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
+        test_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
 
-        # idxs at which to split the dataset
-        train_val, val_test = (len(dataset) * 8) // 10, (len(dataset) * 9) // 10
-        train_dataset = dataset[:train_val]
-        val_dataset = dataset[train_val:val_test]
-        test_dataset = dataset[val_test:]
-
-        train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=12, shuffle=True)
+        train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=6, shuffle=True)
         val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -57,17 +66,23 @@ def main(args):
                                       num_workers = 2,
                                       collate_fn = test_batch_sampler._package)
     else:
-        dataset = TERMDataset(ifsdata + args.dataset)
-        if args.shuffle_splits:
-            dataset.shuffle()
+        train_ids = []
+        with open(os.path.join(INPUT_DATA, args.dataset, args.train), 'r') as f:
+            for line in f:
+                train_ids += [line[:-1]]
+        validation_ids = []
+        with open(os.path.join(INPUT_DATA, args.dataset, args.validation), 'r') as f:
+            for line in f:
+                validation_ids += [line[:-1]]
+        test_ids = []
+        with open(os.path.join(INPUT_DATA, args.dataset, args.test), 'r') as f:
+            for line in f:
+                test_ids += [line[:-1]]
+        train_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = train_ids) 
+        val_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
+        test_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
 
-        # idxs at which to split the dataset
-        train_val, val_test = (len(dataset) * 8) // 10, (len(dataset) * 9) // 10
-        train_dataset = dataset[:train_val]
-        val_dataset = dataset[train_val:val_test]
-        test_dataset = dataset[val_test:]
-
-        train_dataloader = TERMDataLoader(train_dataset, batch_size=12, shuffle=True)
+        train_dataloader = TERMDataLoader(train_dataset, batch_size=6, shuffle=True)
         val_dataloader = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -81,12 +96,26 @@ def main(args):
     max_grad_norm = 1
 
     save = []
-
-    best_checkpoint = None
-    best_validation = 999
+    
+    if os.path.isfile(os.path.join(run_output_dir, 'net_best_checkpoint.pt')):
+        best_checkpoint_state = torch.load(os.path.join(run_output_dir, 'net_best_checkpoint.pt'))
+        last_checkpoint_state = torch.load(os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
+        best_checkpoint = best_checkpoint_state['state_dict']
+        best_validation = best_checkpoint_state['val_prob']
+        start_epoch = last_checkpoint_state['epoch']
+        terminator.load_state_dict(last_checkpoint_state['state_dict'])
+        optimizer.load_state_dict(last_checkpoint_state['optimizer_state'])
+        with open(os.path.join(run_output_dir, 'training_curves.pk'), 'rb') as fp:
+            save = pickle.load(fp)
+        writer = SummaryWriter(log_dir = os.path.join(run_output_dir, 'tensorboard'), purge_step = start_epoch+1)
+    else:
+        best_checkpoint = None
+        best_validation = 999
+        start_epoch = 0
+        writer = SummaryWriter(log_dir = os.path.join(run_output_dir, 'tensorboard'))
 
     try:
-        for epoch in range(100):
+        for epoch in range(start_epoch, 100):
             print('epoch', epoch)
 
             # train
@@ -104,7 +133,8 @@ def main(args):
                 X = data['X'].to(dev)
                 x_mask = data['x_mask'].to(dev)
                 seqs = data['seqs'].to(dev)
-                seq_lens = data['seq_lens'].to(dev)
+                seq_lens = data['seq_lens']
+                term_lens = data['term_lens']
 
 
                 loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
@@ -148,7 +178,8 @@ def main(args):
                     X = data['X'].to(dev)
                     x_mask = data['x_mask'].to(dev)
                     seqs = data['seqs'].to(dev)
-                    seq_lens = data['seq_lens'].to(dev)
+                    seq_lens = data['seq_lens']
+                    term_lens = data['term_lens']
 
 
                     loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
@@ -174,17 +205,26 @@ def main(args):
             if val_prob < best_validation:
                 best_validation = val_prob
                 best_checkpoint = terminator.state_dict()
+                checkpoint_state = {'epoch': epoch, 'state_dict': best_checkpoint, 'best_model': True, 'val_prob': best_validation, 'optimizer_state': optimizer.state_dict()}
+                torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_best_checkpoint.pt'))
+                torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
+            else:
+                checkpoint_state = {'epoch': epoch, 'state_dict': terminator.state_dict(), 'best_model': False, 'val_prob': val_prob, 'optimizer_state': optimizer.state_dict()}
+                torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
+
+            with open(os.path.join(run_output_dir, 'training_curves.pk'), 'wb') as fp:
+                pickle.dump(save, fp)
 
     except KeyboardInterrupt:
         pass
 
     print(save)
 
-    torch.save(terminator.state_dict(), outputdir + '/runs/net_last.pt')
-    torch.save(best_checkpoint, outputdir + '/runs/net_best.pt')
+    torch.save(terminator.state_dict(), os.path.join(run_output_dir, 'net_last.pt'))
+    torch.save(best_checkpoint, os.path.join(run_output_dir, 'net_best.pt'))
  
 
-    with open(outputdir+'/runs/training_curves.pk', 'wb') as fp:
+    with open(os.path.join(run_output_dir, 'training_curves.pk'), 'wb') as fp:
         pickle.dump(save, fp)
 
     dump = []
@@ -202,7 +242,8 @@ def main(args):
             X = data['X'].to(dev)
             x_mask = data['x_mask'].to(dev)
             seqs = data['seqs'].to(dev)
-            seq_lens = data['seq_lens'].to(dev)
+            seq_lens = data['seq_lens']
+            term_lens = data['term_lens']
 
             loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
             
@@ -234,17 +275,21 @@ def main(args):
 
     print('avg p recov:', torch.stack(recovery).mean())
 
-    with open(outputdir + '/runs/net.out', 'wb') as fp:
+    with open(run_output_dir + '/net.out', 'wb') as fp:
         pickle.dump(dump, fp)
 
     writer.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
-    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $ifsdata/', default = "features_7000")
+    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $INPUT_DATA/', default = "features_7000")
     parser.add_argument('--dev', help = 'device to train on', default = 'cuda:0')
     parser.add_argument('--lazy', help = 'use lazy data loading', default = True, type = bool)
-    parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
+    parser.add_argument('--train', help = 'file with training dataset', default = 'train.in')
+    parser.add_argument('--validation', help = 'file with validation dataset', default = 'validation.in')
+    parser.add_argument('--test', help = 'file with test dataset', default = 'test.in')
+    # parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
+    parser.add_argument('--run_name', help = 'name for run, to use for output subfolder', default = 'test_run')
     args = parser.parse_args()
     main(args)
  

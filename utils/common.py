@@ -26,7 +26,7 @@ AA_to_int = {
 
 AA_to_int = {key: val-1 for key, val in AA_to_int.items()}
 
-int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) is 1}
+int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 1}
 
 """
 Given a string of one-letter encoded AAs, return its corresponding integer encoding
