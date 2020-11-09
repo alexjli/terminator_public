@@ -13,8 +13,8 @@ from struct2seq.noam_opt import *
 import argparse
 import os
 
-INPUT_DATA = '/nobackup1c/users/vsundar/TERMinator/'
-OUTPUT_DIR = '/nobackup1c/users/vsundar/TERMinator/'
+INPUT_DATA = '/pool001/users/vsundar/TERMinator/'
+OUTPUT_DIR = '/pool001/users/vsundar/TERMinator/'
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -102,7 +102,7 @@ def main(args):
         last_checkpoint_state = torch.load(os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
         best_checkpoint = best_checkpoint_state['state_dict']
         best_validation = best_checkpoint_state['val_prob']
-        start_epoch = last_checkpoint_state['epoch']
+        start_epoch = last_checkpoint_state['epoch'] + 1
         terminator.load_state_dict(last_checkpoint_state['state_dict'])
         optimizer.load_state_dict(last_checkpoint_state['optimizer_state'])
         with open(os.path.join(run_output_dir, 'training_curves.pk'), 'rb') as fp:
@@ -282,7 +282,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
-    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $INPUT_DATA/', default = "features_7000")
+    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $INPUT_DATA/', default = "features_singlechain")
     parser.add_argument('--dev', help = 'device to train on', default = 'cuda:0')
     parser.add_argument('--lazy', help = 'use lazy data loading', default = True, type = bool)
     parser.add_argument('--train', help = 'file with training dataset', default = 'train.in')

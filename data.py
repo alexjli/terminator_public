@@ -185,8 +185,8 @@ class LazyDataset(Dataset):
         self.dataset = []
         if pdb_ids:
             for id in pdb_ids:
-                filename = '{}/{}.features'.format(in_folder, id)
-                with open('{}/{}.length'.format(in_folder, id)) as fp:
+                filename = '{}/{}/{}.features'.format(in_folder, id, id)
+                with open('{}/{}/{}.length'.format(in_folder, id, id)) as fp:
                     total_term_length = int(fp.readline().strip())
                     seq_len = int(fp.readline().strip())
                     if seq_len < min_protein_len:
@@ -212,7 +212,10 @@ class LazyDataset(Dataset):
 
     def __getitem__(self, idx):
         data_idx = self.shuffle_idx[idx]
-        return [self.dataset[i] for i in data_idx]
+        if isinstance(data_idx, list):
+            return [self.dataset[i] for i in data_idx]
+        else:
+            return self.dataset[data_idx]
 
 class TERMLazyDataLoader(Sampler):
     def __init__(self, dataset, batch_size=4, shuffle=True, batch_shuffle = True, drop_last = False, max_total_data_len = 55000):
