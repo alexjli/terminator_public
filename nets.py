@@ -28,8 +28,8 @@ def size(tensor):
 class Conv1DResidual(nn.Module):
     def __init__(self, filter_len = 3, channels = 64):
         super(Conv1DResidual, self).__init__()
-        self.filter_len = 3
-        self.channels = 64
+        self.filter_len = filter_len
+        self.channels = channels
 
         self.bn1 = nn.BatchNorm2d(channels)
         self.relu = nn.ReLU(inplace = True)
@@ -63,7 +63,7 @@ class Conv1DResidual(nn.Module):
 class Conv1DResNet(nn.Module):
     def __init__(self, filter_len = 3, channels = 64, num_blocks = 6):
         super(Conv1DResNet, self).__init__()
-        self.filter_len = 3
+        self.filter_len = filter_len
         self.channels = channels
         self.num_blocks = num_blocks
 

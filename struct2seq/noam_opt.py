@@ -48,5 +48,5 @@ class NoamOpt:
         
 def get_std_opt(parameters, d_model):
     return NoamOpt(
-        d_model, 2, 4000, torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9)
+        d_model, 2, 4000, torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=1e-3)
     )
