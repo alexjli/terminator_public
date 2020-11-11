@@ -13,8 +13,8 @@ from struct2seq.noam_opt import *
 import argparse
 import os
 
-INPUT_DATA = '/pool001/users/vsundar/TERMinator/'
-OUTPUT_DIR = '/pool001/users/vsundar/TERMinator/'
+INPUT_DATA = '/nobackup/users/vsundar/TERMinator/'
+OUTPUT_DIR = '/nobackup/users/vsundar/TERMinator/'
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -139,9 +139,9 @@ def main(args):
 
                 loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
 
-                torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.zero_grad()
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.step()
 
                 running_loss += loss.item()
