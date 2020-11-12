@@ -24,13 +24,14 @@ class TERMinator(nn.Module):
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''
     def _nlpl(self, etab, E_idx, ref_seqs, x_mask):
+        etab_device = etab.device
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
         
         # X is encoded as 20 so lets just add an extra row/col of zeros
         pad = (0, 1, 0, 1)
         etab = F.pad(etab, pad, "constant", 0)
-        isnt_x_aa = (ref_seqs != 20).float().to(self.dev)
+        isnt_x_aa = (ref_seqs != 20).float().to(etab_device)
 
         # separate selfE and pairE since we have to treat selfE differently
         self_etab = etab[:, :, 0:1] 
@@ -83,6 +84,7 @@ class TERMinator(nn.Module):
                 ]
         '''
     def _nlcpl(self, etab, E_idx, ref_seqs, x_mask):
+        etab_device = etab.device
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
         
@@ -90,7 +92,7 @@ class TERMinator(nn.Module):
         pad = (0, 1, 0, 1)
         etab = F.pad(etab, pad, "constant", 0)
 
-        isnt_x_aa = (ref_seqs != 20).float().to(self.dev)
+        isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
 
         # separate selfE and pairE since we have to treat selfE differently
         self_etab = etab[:, :, 0:1] 
@@ -177,8 +179,9 @@ class TERMinator(nn.Module):
                 src_key_mask,
                 X,
                 x_mask,
-                sequence):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+                sequence,
+                max_seq_len):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
         rms = torch.sqrt(torch.mean(etab**2))
         nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
         return nlpl, rms, avg_prob
@@ -192,8 +195,9 @@ class TERMinator(nn.Module):
               term_lens,
               src_key_mask,
               X,
-              x_mask):
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
+              x_mask,
+              max_seq_len):
+        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len)
         etab, E_idx = self.top(condense, X, x_mask)
         return etab, E_idx
 
@@ -207,8 +211,9 @@ class TERMinator(nn.Module):
                      src_key_mask,
                      X,
                      x_mask,
-                     sequences):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+                     sequences,
+                     max_seq_len):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
         int_seqs = self._seq(etab, E_idx, x_mask, sequences)
         int_seqs = int_seqs.cpu().numpy()
         char_seqs = self._int_to_aa(int_seqs)
@@ -223,8 +228,9 @@ class TERMinator(nn.Module):
                       term_lens,
                       src_key_mask,
                       X,
-                      x_mask):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+                      x_mask,
+                      max_seq_len):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -242,8 +248,9 @@ class TERMinator(nn.Module):
                          src_key_mask,
                          X,
                          x_mask,
-                         sequences):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+                         sequences,
+                         max_seq_len):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -621,6 +628,7 @@ class TERMinator3(nn.Module):
     ''' Negative log psuedo-likelihood '''
     ''' Averaged nlpl per residue, across batches '''
     def _nlpl(self, etab, E_idx, ref_seqs, x_mask):
+        etab_device = etab.device
         n_batch, L, k, _ = etab.shape
         etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
         
@@ -628,7 +636,7 @@ class TERMinator3(nn.Module):
         pad = (0, 1, 0, 1)
         etab = F.pad(etab, pad, "constant", 0)
 
-        isnt_x_aa = (ref_seqs != 20).float().to(self.dev)
+        isnt_x_aa = (ref_seqs != 20).float().to(etab_device)
 
         # separate selfE and pairE since we have to treat selfE differently
         self_etab = etab[:, :, 0:1] 

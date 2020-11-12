@@ -202,9 +202,16 @@ class CondenseMSA(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len):
         n_batches = X.shape[0]
-        max_seq_len = max(seq_lens)
+        seq_lens = seq_lens.tolist()
+        term_lens = term_lens.tolist()
+        for i in range(len(term_lens)):
+            for j in range(len(term_lens[i])):
+                if term_lens[i][j] == -1:
+                    term_lens[i] = term_lens[i][:j]
+                    break
+        local_dev = X.device
 
         # zero out all positions used as padding so they don't contribute to aggregation
         negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hidden_dim)
@@ -236,18 +243,18 @@ class CondenseMSA(nn.Module):
         if self.track_nan: process_nan(node_embeddings, convolution, 'transform')
 
         # we also need to batch focuses to we can aggregate data
-        batched_focuses = self.batchify(focuses, term_lens).to(self.dev)
+        batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(self.dev)
-        count = torch.zeros((n_batches, max_seq_len, 1)).to(self.dev).long()
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(local_dev)
+        count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
 
         # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(self.dev)
+        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
 
         # aggregate node embeddings and associated counts
         aggregate = aggregate.index_put((layer, batched_focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(self.dev)
+        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(local_dev)
         count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
 
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero

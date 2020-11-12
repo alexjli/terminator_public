@@ -88,6 +88,11 @@ def main(args):
 
 
     terminator = TERMinator(hidden_dim = 32, resnet_blocks = 4, term_layers = 4, conv_filter=3, device = dev)
+    if torch.cuda.device_count() > 1:
+        terminator = nn.DataParallel(terminator)
+        terminator_module = terminator.module
+    else:
+        terminator_module = terminator
     terminator.to(dev)
 
     optimizer = get_std_opt(terminator.parameters(), d_model=32)
@@ -133,19 +138,20 @@ def main(args):
                 X = data['X'].to(dev)
                 x_mask = data['x_mask'].to(dev)
                 seqs = data['seqs'].to(dev)
-                seq_lens = data['seq_lens']
-                term_lens = data['term_lens']
+                seq_lens = data['seq_lens'].to(dev)
+                term_lens = data['term_lens'].to(dev)
+                max_seq_len = max(seq_lens.tolist())
 
 
-                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
 
                 optimizer.zero_grad()
-                loss.backward()
+                loss.mean().backward()
                 torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.step()
 
-                running_loss += loss.item()
-                running_prob += prob.item()
+                running_loss += loss.mean().item()
+                running_prob += prob.mean().item()
                 count = i
 
                 avg_loss = running_loss / (count + 1)
@@ -178,16 +184,17 @@ def main(args):
                     X = data['X'].to(dev)
                     x_mask = data['x_mask'].to(dev)
                     seqs = data['seqs'].to(dev)
-                    seq_lens = data['seq_lens']
-                    term_lens = data['term_lens']
+                    seq_lens = data['seq_lens'].to(dev)
+                    term_lens = data['term_lens'].to(dev)
+                    max_seq_len = max(seq_lens.tolist())
 
 
-                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
-                    running_loss += loss.item()
-                    running_prob += prob.item()
+                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
+                    running_loss += loss.mean().item()
+                    running_prob += prob.mean().item()
                     count = i
 
-                    p_recov = terminator.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+                    p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
                     recovery.append(p_recov)
                     
                     val_progress.update(1)
@@ -204,12 +211,12 @@ def main(args):
 
             if val_prob < best_validation:
                 best_validation = val_prob
-                best_checkpoint = terminator.state_dict()
+                best_checkpoint = terminator_module.state_dict()
                 checkpoint_state = {'epoch': epoch, 'state_dict': best_checkpoint, 'best_model': True, 'val_prob': best_validation, 'optimizer_state': optimizer.state_dict()}
                 torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_best_checkpoint.pt'))
                 torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
             else:
-                checkpoint_state = {'epoch': epoch, 'state_dict': terminator.state_dict(), 'best_model': False, 'val_prob': val_prob, 'optimizer_state': optimizer.state_dict()}
+                checkpoint_state = {'epoch': epoch, 'state_dict': terminator_module.state_dict(), 'best_model': False, 'val_prob': val_prob, 'optimizer_state': optimizer.state_dict()}
                 torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
 
             with open(os.path.join(run_output_dir, 'training_curves.pk'), 'wb') as fp:
@@ -220,7 +227,7 @@ def main(args):
 
     print(save)
 
-    torch.save(terminator.state_dict(), os.path.join(run_output_dir, 'net_last.pt'))
+    torch.save(terminator_module.state_dict(), os.path.join(run_output_dir, 'net_last.pt'))
     torch.save(best_checkpoint, os.path.join(run_output_dir, 'net_best.pt'))
  
 
@@ -229,9 +236,9 @@ def main(args):
 
     dump = []
     recovery = []
-    terminator.load_state_dict(best_checkpoint)
+    terminator_module.load_state_dict(best_checkpoint)
 
-    terminator.eval()
+    terminator_module.eval()
     with torch.no_grad():
         for i, data in enumerate(test_dataloader):
             print('datapoint', i)
@@ -242,19 +249,20 @@ def main(args):
             X = data['X'].to(dev)
             x_mask = data['x_mask'].to(dev)
             seqs = data['seqs'].to(dev)
-            seq_lens = data['seq_lens']
-            term_lens = data['term_lens']
+            seq_lens = data['seq_lens'].to(dev)
+            term_lens = data['term_lens'].to(dev)
+            max_seq_len = max(seq_lens.tolist())
 
-            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
             
-            print(loss.item(), prob.item())
+            print(loss.mean().item(), prob.mean().item())
 
-            output, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
+            output, E_idx = terminator_module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
             
-            pred_seqs = terminator.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask)
-            opt_seqs = terminator.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+            pred_seqs = terminator_module.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
+            opt_seqs = terminator_module.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
             print(ids)
-            p_recov = terminator.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs)
+            p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
             print('pred', pred_seqs)
             print('opt', opt_seqs)
             print('p recov', p_recov)

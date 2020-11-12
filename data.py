@@ -316,6 +316,12 @@ class TERMLazyDataLoader(Sampler):
 
         X, x_mask, _ = self._featurize(coords, 'cpu')
 
+        seq_lens = torch.tensor(seq_lens)
+        max_all_term_lens = max([len(term) for term in term_lens])
+        for i in range(len(term_lens)):
+            term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
+        term_lens = torch.tensor(term_lens)
+
         """
         # pack all the etabs into one big sparse tensor
         idxs = []
