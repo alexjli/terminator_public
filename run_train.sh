@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -n 16
-#SBATCH --gres=gpu:4
+#SBATCH -n 8
+#SBATCH --gres=gpu:2
 #SBATCH --partition=sched_system_all
 #SBATCH --time=12:00:00
 #SBATCH -o logfiles/test-output_reg_par.out
