@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
+from torch.utils.data.distributed import DistributedSampler
 import pickle
 from scipy.linalg import block_diag
 import glob
@@ -382,4 +383,63 @@ class TERMLazyDataLoader(Sampler):
         X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
         mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
         return X, mask, lengths   
- 
+
+class TERMLazyDistributedSampler(DistributedSampler):
+    def __init__(self, dataset, num_replicas, rank, shuffle = False, batch_shuffle = False, seed = 0, drop_last = False, batch_size = 4, max_total_data_lens = 55000):
+        super.init(dataset, num_replicas, rank, shuffle = shuffle, seed = seed, drop_last = drop_last)
+        self.sampler = TERMLazyDataLoader(dataset, batch_size = batch_size, shuffle = shuffle, batch_shuffle = shuffle, drop_last = drop_last, max_total_data_lens = max_total_data_lens)
+        self.size = len(dataset)
+        self.filepaths, self.lengths = zip(*dataset)
+        self.batch_size = batch_size
+        sorted_idx = np.argsort(self.lengths)
+
+        indices = list(range(len(self.filepaths)))
+        if not self.drop_last:
+            indices += indices[:(self.total_size - len(indices))]
+        else:
+            indices = indices[:self.total_size]
+        indices = indices[self.rank:self.total_size:self.num_replicas]
+        self.filepaths = self.filepaths[indices]
+        self.lengths = self.lengths[indices]
+
+        # Cluster into batches of similar sizes
+        clusters, batch = [], []
+
+        # if batch_size is None, fit as many proteins we can into a batch
+        # without overloading the GPU
+        if max_total_data_len > 0 and batch_size is None:
+            current_batch_lens = []
+            total_data_len = 0
+            for count, idx in enumerate(sorted_idx):
+                current_batch_lens.append(self.lengths[idx])
+                total_data_len = max(current_batch_lens) * len(current_batch_lens)
+                if count != 0 and total_data_len > max_total_data_len:
+                    clusters.append(batch)
+                    batch = [idx]
+                    current_batch_lens = [self.lengths[idx]]
+                else:
+                    batch.append(idx)
+                    #current_batch_lens.append(self.lengths[idx])
+
+        else: # used fixed batch size
+            for count, idx in enumerate(sorted_idx):
+                if count != 0 and count % self.batch_size == 0:
+                    clusters.append(batch)
+                    batch = [idx]
+                else:
+                    batch.append(idx)
+
+        if len(batch) > 0 and not drop_last:
+            clusters.append(batch)
+        self.clusters = clusters
+
+    def _package(self, b_idx):
+        self.sample._package(b_idx)
+
+    def __iter__(self):
+        if self.shuffle:
+            rng = np.random.RandomState(seed = self.seed + self.epoch)
+            rng.shuffle(self.clusters)
+        for batch in self.clusters:
+            yield batch
+

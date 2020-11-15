@@ -4,6 +4,7 @@ import pickle
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import torch.multiprocessing as mp
 import numpy as np
 import time
 from tqdm import tqdm
@@ -12,6 +13,10 @@ from torch.utils.data import DataLoader
 from struct2seq.noam_opt import *
 import argparse
 import os
+try:
+    import horovod.torch as hvd
+except ImportError:
+    pass
 
 INPUT_DATA = '/nobackup/users/vsundar/TERMinator/'
 OUTPUT_DIR = '/nobackup/users/vsundar/TERMinator/'
@@ -28,6 +33,15 @@ def main(args):
     if not os.path.isdir(run_output_dir):
         os.makedirs(run_output_dir)
     train_dataloader, val_dataloader, test_dataloader = None, None, None
+    kwargs = {}
+    if args.horovod:
+        hvd.init()
+        torch.cuda.manual_seed(0)
+        if hasattr(mp, '_supports_context') and mp._supports_context and 'forkserver' in mp.get_all_start_methods():
+            kwargs['multiprocessing_context'] = 'forkserver'
+            kwargs['num_workers'] = 1
+    else:
+        kwargs['num_workers'] = 2
 
 
     if args.lazy:
@@ -46,25 +60,30 @@ def main(args):
         train_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = train_ids) 
         val_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
         test_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
-
-        train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=6, shuffle=True)
-        val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
-        test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
+        
+        if args.horovod:
+            train_batch_sampler = TERMLazyDistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=True, batch_size=6)
+            val_batch_sampler = TERMLazyDistributedSampler(val_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
+            test_batch_sampler = TERMLazyDistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
+        else:
+            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=6, shuffle=True)
+            val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
+            test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
         train_dataloader = DataLoader(train_dataset,
                                       batch_sampler = train_batch_sampler,
-                                      num_workers = 2,
                                       collate_fn = train_batch_sampler._package,
-                                      pin_memory=True)
+                                      pin_memory=True,
+                                      **kwargs)
         val_dataloader = DataLoader(val_dataset, 
                                       batch_sampler = val_batch_sampler,
-                                      num_workers = 2,
                                       collate_fn = val_batch_sampler._package,
-                                      pin_memory=True)
+                                      pin_memory=True,
+                                      **kwargs)
         test_dataloader = DataLoader(test_dataset, 
                                       batch_sampler = test_batch_sampler,
-                                      num_workers = 2,
-                                      collate_fn = test_batch_sampler._package)
+                                      collate_fn = test_batch_sampler._package,
+                                      **kwargs)
     else:
         train_ids = []
         with open(os.path.join(INPUT_DATA, args.dataset, args.train), 'r') as f:
@@ -89,13 +108,28 @@ def main(args):
 
     terminator = TERMinator(hidden_dim = 32, resnet_blocks = 4, term_layers = 4, conv_filter=3, device = dev)
     if torch.cuda.device_count() > 1:
-        terminator = nn.DataParallel(terminator)
-        terminator_module = terminator.module
+        if args.horovod:
+            torch.cuda.set_device(hvd.local_rank())
+            terminator_module = terminator
+        else:
+            terminator = nn.DataParallel(terminator)
+            terminator_module = terminator.module
     else:
         terminator_module = terminator
     terminator.to(dev)
 
-    optimizer = get_std_opt(terminator.parameters(), d_model=32)
+    if args.horovod:
+        lr_multiplier = hvd.size()
+    else:
+        lr_multiplier = 1
+
+    optimizer = get_std_opt(terminator.parameters(), d_model=32, lr_multiplier=lr_multiplier)
+
+    if args.horovod:
+        hvd.broadcast_parameters(terminator.state_dict(), root_rank=0)
+        hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=terminator.named_parameters())
 
     lam = 0.1
     max_grad_norm = 1
@@ -108,22 +142,24 @@ def main(args):
         best_checkpoint = best_checkpoint_state['state_dict']
         best_validation = best_checkpoint_state['val_prob']
         start_epoch = last_checkpoint_state['epoch'] + 1
-        terminator.load_state_dict(last_checkpoint_state['state_dict'])
+        terminator_module.load_state_dict(last_checkpoint_state['state_dict'])
         optimizer.load_state_dict(last_checkpoint_state['optimizer_state'])
         with open(os.path.join(run_output_dir, 'training_curves.pk'), 'rb') as fp:
             save = pickle.load(fp)
         writer = SummaryWriter(log_dir = os.path.join(run_output_dir, 'tensorboard'), purge_step = start_epoch+1)
     else:
         best_checkpoint = None
-        best_validation = 999
+        best_validation = -1  
         start_epoch = 0
         writer = SummaryWriter(log_dir = os.path.join(run_output_dir, 'tensorboard'))
 
     try:
-        for epoch in range(start_epoch, 100):
+        for epoch in range(start_epoch, 50):
             print('epoch', epoch)
 
             # train
+            if args.horovod:
+                train_batch_sampler.set_epoch(epoch)
             running_loss = 0
             running_prob = 0
             count = 0
@@ -145,13 +181,17 @@ def main(args):
 
                 loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
 
+                if torch.cuda.device_count() > 1 and not args.horovod:
+                    loss = loss.mean()
+                    prob = prob.mean()
+
                 optimizer.zero_grad()
-                loss.mean().backward()
+                loss.backward()
                 torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.step()
 
-                running_loss += loss.mean().item()
-                running_prob += prob.mean().item()
+                running_loss += loss.item()
+                running_prob += prob.item()
                 count = i
 
                 avg_loss = running_loss / (count + 1)
@@ -190,8 +230,11 @@ def main(args):
 
 
                     loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
-                    running_loss += loss.mean().item()
-                    running_prob += prob.mean().item()
+                    if torch.cuda.device_count() > 1 and not args.horovod:
+                        loss = loss.mean()
+                        prob = prob.mean()
+                    running_loss += loss.item()
+                    running_prob += prob.item()
                     count = i
 
                     p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
@@ -209,7 +252,7 @@ def main(args):
                 print('val p recov', torch.stack(recovery).mean().item())
                 save.append([epoch_loss, val_loss])
 
-            if val_prob < best_validation:
+            if val_prob > best_validation:
                 best_validation = val_prob
                 best_checkpoint = terminator_module.state_dict()
                 checkpoint_state = {'epoch': epoch, 'state_dict': best_checkpoint, 'best_model': True, 'val_prob': best_validation, 'optimizer_state': optimizer.state_dict()}
@@ -250,12 +293,16 @@ def main(args):
             x_mask = data['x_mask'].to(dev)
             seqs = data['seqs'].to(dev)
             seq_lens = data['seq_lens'].to(dev)
+            ids = data['ids']
             term_lens = data['term_lens'].to(dev)
             max_seq_len = max(seq_lens.tolist())
 
             loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len)
+            if torch.cuda.device_count() > 1 and not args.horovod:
+                loss = loss.mean()
+                prob = prob.mean()
             
-            print(loss.mean().item(), prob.mean().item())
+            print(loss.item(), prob.item())
 
             output, E_idx = terminator_module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
             
@@ -298,6 +345,7 @@ if __name__ == '__main__':
     parser.add_argument('--test', help = 'file with test dataset', default = 'test.in')
     # parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
     parser.add_argument('--run_name', help = 'name for run, to use for output subfolder', default = 'test_run')
+    parser.add_argument('--horovod', help = 'use Horovod for parallelization', default = False, type = bool)
     args = parser.parse_args()
     main(args)
  
