@@ -325,7 +325,11 @@ def main(args):
             """
             dump.append({'out': output.view(n_batch, l, n, 20, 20).cpu().numpy(),
                          'idx': E_idx.cpu().numpy(),
-                         'ids': ids
+                         'ids': ids,
+                         'pred': pred_seqs,
+                         'opt': opt_seqs,
+                         'p_recovery': p_recov,
+                         'prob': prob
                         })
 
     print('avg p recov:', torch.stack(recovery).mean())

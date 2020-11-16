@@ -2,10 +2,12 @@ import numpy as np
 import pickle
 import os
 from utils.common import AA_to_int
+import argparse
 
-int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) is 3}
+int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 3}
 
-ifsdata = '/home/ifsdata/scratch/grigoryanlab/alexjli'
+INPUT_DATA = '/scratch/users/alexjli/TERMinator'
+OUTPUT_FILES = '/scratch/users/vsundar/TERMinator/outputs/'
 
 # should work for multi-chain proteins now
 def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
@@ -81,19 +83,23 @@ def get_idx_dict(pdb):
     return idx_dict
 
 if __name__ == '__main__':
-    ironfs = '/home/ironfs/scratch/grigoryanlab/alexjli/'
-    #os.chdir(ifsdata)
-    p1 = ironfs + 'dTERMen_speedtest200_clique1/'
-    p2 = ironfs + 'dTERMen_speedtest200_clique1_p2/'
-    p3 = ironfs + 'dTERMen_speedtest200_clique1_p3/'
-    p4 = ironfs + 'monomer_DB_1/'
-    p5 = ironfs + 'monomer_DB_2/'
-    p6 = ironfs + 'monomer_DB_3/'
+    parser = argparse.ArgumentParser('Generate etabs')
+    parser.add_argument('--output_dir', help = 'output directory', default = 'test_run')
+    args = parser.parse_args()
 
-    if not os.path.isdir('etabs'):
-        os.mkdir('etabs')
+    output_dir = os.path.join(OUTPUT_FILES, args.output_dir)
 
-    with open('net.out', 'rb') as fp:
+    p1 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1/')
+    p2 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p2/')
+    p3 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p3/')
+    p4 = os.path.join(INPUT_DATA, 'monomer_DB_1/')
+    p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
+    p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
+
+    if not os.path.isdir(os.path.join(output_dir, 'etabs')):
+        os.mkdir(os.path.join(output_dir, 'etabs'))
+
+    with open(os.path.join(output_dir, 'net.out'), 'rb') as fp:
         dump = pickle.load(fp)
 
     for data in dump:
@@ -118,7 +124,7 @@ if __name__ == '__main__':
         E_idx = data['idx'][0]
         etab = data['out'][0]
 
-        out_path = 'etabs/' + pdb + '.etab'
+        out_path = os.path.join(output_dir, 'etabs/' + pdb + '.etab')
         if os.path.exists(out_path):
             continue
         to_etab_file(etab, E_idx, idx_dict, out_path)
