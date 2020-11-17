@@ -11,7 +11,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, args.output_dir, 'etabs')
-    print(output_path)
     for filename in glob.glob(os.path.join(output_path, '*.etab')):
         pdb_id = filename[-9:-5]
         print(pdb_id)
