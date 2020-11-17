@@ -3,6 +3,7 @@ import pickle
 import os
 from utils.common import AA_to_int
 import argparse
+from shutil import copyfile
 
 int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 3}
 
@@ -21,7 +22,10 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
     # l x 20
     self_nrgs = np.diagonal(self_etab, offset=0, axis1=-2, axis2=-1)
     for aa_idx, aa_nrgs in enumerate(self_nrgs):
-        chain, resid = idx_dict[aa_idx]
+        try:
+            chain, resid = idx_dict[aa_idx]
+        except Exception as e:
+            return False
         for aa_int_id, nrg in enumerate(aa_nrgs):
             aa_3lt_id = int_to_AA[aa_int_id]
             out_file.write('{},{} {} {}\n'.format(chain, resid, aa_3lt_id, nrg))
@@ -60,6 +64,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
                                                        nrg))
 
     out_file.close()
+    return True
 
 def get_idx_dict(pdb): 
     idx_dict = {}
@@ -108,16 +113,22 @@ if __name__ == '__main__':
         idx_dict = None
         if os.path.isdir(p1 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p1, pdb, pdb))
+            copyfile(f'{p1}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p2 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p2, pdb, pdb))
+            copyfile(f'{p2}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p3 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p3, pdb, pdb))
+            copyfile(f'{p3}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p4 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p4, pdb, pdb))
+            copyfile(f'{p4}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p5 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p5, pdb, pdb))
+            copyfile(f'{p5}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p6 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p6, pdb, pdb))
+            copyfile(f'{p6}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         else:
             raise Exception('umwhat')
 
@@ -127,6 +138,8 @@ if __name__ == '__main__':
         out_path = os.path.join(output_dir, 'etabs/' + pdb + '.etab')
         if os.path.exists(out_path):
             continue
-        to_etab_file(etab, E_idx, idx_dict, out_path)
+        worked = to_etab_file(etab, E_idx, idx_dict, out_path)
+        if not worked:
+            os.remove(out_path)
 
 

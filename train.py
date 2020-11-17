@@ -36,6 +36,7 @@ def main(args):
     kwargs = {}
     if args.horovod:
         hvd.init()
+        torch.set_num_threads(1)
         torch.cuda.manual_seed(0)
         if hasattr(mp, '_supports_context') and mp._supports_context and 'forkserver' in mp.get_all_start_methods():
             kwargs['multiprocessing_context'] = 'forkserver'
