@@ -10,4 +10,4 @@
 module add gcc
 module add slurm
 module add c3ddb/miniconda
-python to_etab.py --output_dir=test_run_fold0_reg_par_fixed
+python to_etab.py --output_dir=test_run_fold2_pyold

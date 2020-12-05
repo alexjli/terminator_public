@@ -113,22 +113,22 @@ if __name__ == '__main__':
         idx_dict = None
         if os.path.isdir(p1 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p1, pdb, pdb))
-            copyfile(f'{p1}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+            # copyfile(f'{p1}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p2 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p2, pdb, pdb))
-            copyfile(f'{p2}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+            # copyfile(f'{p2}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p3 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p3, pdb, pdb))
-            copyfile(f'{p3}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+            # copyfile(f'{p3}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p4 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p4, pdb, pdb))
-            copyfile(f'{p4}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+            # copyfile(f'{p4}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p5 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p5, pdb, pdb))
-            copyfile(f'{p5}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+            # copyfile(f'{p5}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p6 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p6, pdb, pdb))
-            copyfile(f'{p6}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+            # copyfile(f'{p6}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         else:
             raise Exception('umwhat')
 

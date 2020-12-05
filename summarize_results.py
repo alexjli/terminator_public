@@ -12,15 +12,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, args.output_dir, 'etabs')
-    # p0 = '/scratch/users/vsundar/TERMinator/fixed_dTERMen/'
+    p0 = '/scratch/users/vsundar/TERMinator/fixed_dTERMen/'
     p1 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1/')
     p2 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p2/')
     p3 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p3/')
     p4 = os.path.join(INPUT_DATA, 'monomer_DB_1/')
     p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
-    # p = [p0, p1, p2, p3, p4, p5, p6]
-    p = [p1, p2, p3, p4, p5, p6]
+    p = [p0, p1, p2, p3, p4, p5, p6]
+    # p = [p1, p2, p3, p4, p5, p6]
     ids = []
     pred_sequences = []
     real_sequences = []
@@ -30,6 +30,7 @@ if __name__ == '__main__':
     for filename in glob.glob(os.path.join(output_path, '*-output.out')):
         pdb_id = filename[-len('-output.out')-4:-len('-output.out')]
         ids += [pdb_id]
+        print(pdb_id)
         with open(filename, 'r') as f:
             f.readline()
             f.readline()
@@ -38,8 +39,9 @@ if __name__ == '__main__':
             recovery += [float(f.readline().split('|')[0][:-2])]
 
         for testfolder in p:
+            already_found = False
+            already_found_recov = False
             if os.path.isdir(os.path.join(testfolder, pdb_id)):
-                already_found = False
                 for dtermen_filename in glob.glob(os.path.join(testfolder, pdb_id, 'design.o*')):
                     with open(dtermen_filename, 'r') as f:
                         for line in f:
@@ -48,9 +50,11 @@ if __name__ == '__main__':
                                 if linesplit[2] == ' lowest-energy sequence\n' and not already_found:
                                     dtermen_pred_sequences += [linesplit[0]]
                                     already_found = True
-                                elif len(linesplit) >= 4 and linesplit[3] == ' recovery\n':
+                                elif len(linesplit) >= 4 and linesplit[3] == ' recovery\n' and not already_found_recov:
                                     dtermen_recovery += [float(linesplit[0][:-2])]
+                                    already_found_recov = True
                                     break
+            if already_found_recov:
                 break
         
         if len(dtermen_pred_sequences) < len(pred_sequences):

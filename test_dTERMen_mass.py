@@ -3,7 +3,7 @@ import argparse
 import glob
 
 OUTPUT_DIR = '/scratch/users/vsundar/TERMinator/outputs/'
-
+PDB_PATH = '/scratch/users/swans/ironfs_swans/monomer_DB/out/PDB/'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Run dTERMen for testing.')
@@ -11,9 +11,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, args.output_dir, 'etabs')
+
     for filename in glob.glob(os.path.join(output_path, '*.etab')):
         pdb_id = filename[-9:-5]
         print(pdb_id)
-        os.system(f"gunzip -c /scratch/users/vsundar/pdb/{pdb_id[1:3]}/pdb{pdb_id}.ent.gz > {output_path}/{pdb_id}.pdb")
-        os.system(f"sed -e \"s/ID/{pdb_id}/g\" </home/vsundar/TERMinator_code/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
+        os.system(f"cp {PDB_PATH}{pdb_id.lower()[1:3]}/{pdb_id}.pdb {output_path}/{pdb_id}.pdb")
+        os.system(f"sed -e \"s/ID/{pdb_id}/g\" -e 's/OUTPUTDIR/{args.output_dir}/g' </home/vsundar/TERMinator_code/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
         os.system(f"cd {output_path} && sbatch run_{pdb_id}.sh")
