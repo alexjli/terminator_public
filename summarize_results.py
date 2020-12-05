@@ -12,14 +12,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, args.output_dir, 'etabs')
-    p0 = '/scratch/users/vsundar/TERMinator/fixed_dTERMen/'
+    # p0 = '/scratch/users/vsundar/TERMinator/fixed_dTERMen/'
     p1 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1/')
     p2 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p2/')
     p3 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p3/')
     p4 = os.path.join(INPUT_DATA, 'monomer_DB_1/')
     p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
-    p = [p0, p1, p2, p3, p4, p5, p6]
+    # p = [p0, p1, p2, p3, p4, p5, p6]
+    p = [p1, p2, p3, p4, p5, p6]
     ids = []
     pred_sequences = []
     real_sequences = []

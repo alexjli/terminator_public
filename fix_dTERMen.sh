@@ -7,4 +7,4 @@
 #SBATCH -e /scratch/users/vsundar/TERMinator/fixed_dTERMen/ID/design.eFIXED
 
 . /etc/profile.d/modules.sh
-/scratch/users/swans/MST_workspace/MST/bin/design --p ID.red.pdb --o ID --c /scratch/users/vsundar/TERMinator/default_configfile
+/scratch/users/swans/MST_workspace/MST/bin/design --p ID.pdb --o ID --c /scratch/users/vsundar/TERMinator/default_configfile

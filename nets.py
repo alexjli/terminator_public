@@ -7,7 +7,6 @@ import numpy as np
 import math
 from scipy.linalg import block_diag
 
-from batched_attn_mask.transformer import TransformerEncoderLayer
 from batched_term_transformer.term_attn import *
 
 NUM_AA = 21

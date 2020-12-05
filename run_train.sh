@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=2
+#SBATCH -n 16
 #SBATCH --mem=256GB
 #SBATCH --gres=gpu:2
 #SBATCH --partition=sched_system_all

@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from struct2seq.noam_opt import *
 import argparse
 import os
+import sys
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -63,11 +64,11 @@ def main(args):
         test_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
         
         if args.horovod:
-            train_batch_sampler = TERMLazyDistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=True, batch_size=6)
+            train_batch_sampler = TERMLazyDistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=True, batch_size=12)
             val_batch_sampler = TERMLazyDistributedSampler(val_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
             test_batch_sampler = TERMLazyDistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
         else:
-            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=6, shuffle=True)
+            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=12, shuffle=True)
             val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
             test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -77,14 +78,14 @@ def main(args):
                                       pin_memory=True,
                                       **kwargs)
         val_dataloader = DataLoader(val_dataset, 
-                                      batch_sampler = val_batch_sampler,
-                                      collate_fn = val_batch_sampler._package,
-                                      pin_memory=True,
-                                      **kwargs)
+                                    batch_sampler = val_batch_sampler,
+                                    collate_fn = val_batch_sampler._package,
+                                    pin_memory=True,
+                                    **kwargs)
         test_dataloader = DataLoader(test_dataset, 
-                                      batch_sampler = test_batch_sampler,
-                                      collate_fn = test_batch_sampler._package,
-                                      **kwargs)
+                                     batch_sampler = test_batch_sampler,
+                                     collate_fn = test_batch_sampler._package,
+                                     **kwargs)
     else:
         train_ids = []
         with open(os.path.join(INPUT_DATA, args.dataset, args.train), 'r') as f:
@@ -102,7 +103,7 @@ def main(args):
         val_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
         test_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
 
-        train_dataloader = TERMDataLoader(train_dataset, batch_size=6, shuffle=True)
+        train_dataloader = TERMDataLoader(train_dataset, batch_size=12, shuffle=True)
         val_dataloader = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -326,11 +327,7 @@ def main(args):
             """
             dump.append({'out': output.view(n_batch, l, n, 20, 20).cpu().numpy(),
                          'idx': E_idx.cpu().numpy(),
-                         'ids': ids,
-                         'pred': pred_seqs,
-                         'opt': opt_seqs,
-                         'p_recovery': p_recov,
-                         'prob': prob
+                         'ids': ids
                         })
 
     print('avg p recov:', torch.stack(recovery).mean())

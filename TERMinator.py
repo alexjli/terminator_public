@@ -269,7 +269,7 @@ class TERMinator(nn.Module):
     def _percent(self, pred_seqs, true_seqs, x_mask):
         is_same = (pred_seqs == true_seqs)
         lens = torch.sum(x_mask, dim=-1)
-        is_same *= x_mask.bool()
+        is_same *= x_mask.byte()
         #print(is_same)
         num_same = torch.sum(is_same.float(), dim=-1)
         #print(num_same, lens)
@@ -566,7 +566,7 @@ class TERMinator2(nn.Module):
     def _percent(self, pred_seqs, true_seqs, x_mask):
         is_same = (pred_seqs == true_seqs)
         lens = torch.sum(x_mask, dim=-1)
-        is_same *= x_mask.bool()
+        is_same *= x_mask.byte()
         #print(is_same)
         num_same = torch.sum(is_same.float(), dim=-1)
         #print(num_same, lens)
@@ -785,7 +785,7 @@ class TERMinator3(nn.Module):
     def _percent(self, pred_seqs, true_seqs, x_mask):
         is_same = (pred_seqs == true_seqs)
         lens = torch.sum(x_mask, dim=-1)
-        is_same *= x_mask.bool()
+        is_same *= x_mask.byte()
         #print(is_same)
         num_same = torch.sum(is_same.float(), dim=-1)
         #print(num_same, lens)

@@ -14,5 +14,6 @@ if __name__ == '__main__':
     for filename in glob.glob(os.path.join(output_path, '*.etab')):
         pdb_id = filename[-9:-5]
         print(pdb_id)
+        os.system(f"gunzip -c /scratch/users/vsundar/pdb/{pdb_id[1:3]}/pdb{pdb_id}.ent.gz > {output_path}/{pdb_id}.pdb")
         os.system(f"sed -e \"s/ID/{pdb_id}/g\" </home/vsundar/TERMinator_code/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
         os.system(f"cd {output_path} && sbatch run_{pdb_id}.sh")
