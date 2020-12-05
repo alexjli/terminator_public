@@ -125,7 +125,7 @@ def main(args):
     else:
         lr_multiplier = 1
 
-    optimizer = get_std_opt(terminator.parameters(), d_model=32, lr_multiplier=lr_multiplier)
+    optimizer = get_std_opt(terminator.parameters(), d_model=32, lr_multiplier=lr_multiplier, regularization=args.regularization)
 
     if args.horovod:
         hvd.broadcast_parameters(terminator.state_dict(), root_rank=0)
@@ -348,6 +348,7 @@ if __name__ == '__main__':
     # parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
     parser.add_argument('--run_name', help = 'name for run, to use for output subfolder', default = 'test_run')
     parser.add_argument('--horovod', help = 'use Horovod for parallelization', default = False, type = bool)
+    parser.add_argument('--regularization', help = 'how much regularization to use', default = 0.001, type = float)
     args = parser.parse_args()
     main(args)
  

@@ -46,7 +46,7 @@ class NoamOpt:
         self._rate = state_dict['rate']
         self.optimizer.load_state_dict(state_dict['optimizer_state'])
         
-def get_std_opt(parameters, d_model, lr_multiplier = 1):
+def get_std_opt(parameters, d_model, lr_multiplier = 1, regularization = 1e-3):
     return NoamOpt(
-        d_model, 2*lr_multiplier, 4000, torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=1e-3)
+        d_model, 2*lr_multiplier, 4000, torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=regularization)
     )
