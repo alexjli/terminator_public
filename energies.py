@@ -87,7 +87,7 @@ class PairEnergies(nn.Module):
         hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
         vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
         dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
-        output_dim = 20 * 20):
+        output_dim = 20 * 20, linear = False):
         """ Graph labeling network """
         super(PairEnergies, self).__init__()
 
@@ -97,6 +97,7 @@ class PairEnergies(nn.Module):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
+        self.linear = linear
 
         # Featurization layers
         self.features = ProteinFeatures(

@@ -60,11 +60,12 @@ class Conv1DResidual(nn.Module):
         return out
 
 class Conv1DResNet(nn.Module):
-    def __init__(self, filter_len = 3, channels = 64, num_blocks = 6):
+    def __init__(self, filter_len = 3, channels = 64, num_blocks = 6, linear = self.linear):
         super(Conv1DResNet, self).__init__()
         self.filter_len = filter_len
         self.channels = channels
         self.num_blocks = num_blocks
+        self.linear = linear
 
         #self.bn = BatchNorm2d(channels)
 
@@ -79,7 +80,8 @@ class Conv1DResNet(nn.Module):
         # X: num batches x num channels x TERM length x num alignments
         # out retains the shape of X
         # X = self.bn(X)
-        out = self.resnet(X)
+        if not self.linear:
+            out = self.resnet(X)
 
         # average along axis of alignments
         # out: num batches x hidden dim x TERM length
@@ -92,10 +94,11 @@ class Conv1DResNet(nn.Module):
         return out
 
 class ResidueFeatures(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, linear = False):
         super(ResidueFeatures, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_features = num_features
+        self.is_linear = linear
         
         self.embedding = nn.Embedding(NUM_AA, hidden_dim - num_features)
         self.linear = nn.Linear(hidden_dim, hidden_dim)
@@ -135,9 +138,10 @@ class ResidueFeatures(nn.Module):
         # embed features using ffn
         out = out.transpose(1,3)
         out = self.lin1(out)
-        out = self.relu(out)
-        out = self.lin2(out)
-        out = self.tanh(out)
+        if not self.is_linear:
+            out = self.relu(out)
+            out = self.lin2(out)
+            out = self.tanh(out)
 
         # retranspose so features are channels
         out = out.transpose(1,3)
@@ -168,17 +172,18 @@ class FocusEncoding(nn.Module):
 # TODO: differential positional encodings
 
 class CondenseMSA(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0', track_nans = True):
+    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0', track_nans = True, linear = False):
         super(CondenseMSA, self).__init__()
         channels = hidden_dim
         self.hidden_dim = hidden_dim
         self.nheads = nheads
-        self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features)
+        self.linear = linear
+        self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features, linear = self.linear)
         self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000)
-        self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks)
+        self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks, linear = self.linear)
         self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
         self.encoder = TERMTransformer(self.transformer, num_layers=num_transformers)
-        self.batchify = BatchifyTERM()
+        self.batchify = BatchifyTERM(linear = self.linear)
         self.track_nan = track_nans
 
         if torch.cuda.is_available():
@@ -231,13 +236,19 @@ class CondenseMSA(nn.Module):
 
         #print("embed", torch.isnan(convolution).any())
         # add absolute positional encodings before transformer
-        batched_flat_terms = self.fe(convolution, focuses, mask = ~src_key_mask)
+        if self.linear:
+            batched_flat_terms = convolution
+        else:
+            batched_flat_terms = self.fe(convolution, focuses, mask = ~src_key_mask)
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(batched_flat_terms, term_lens)
         # also reshape the mask
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
-        node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask.float(), mask_attend = batchify_src_key_mask)
+        if self.linear:
+            node_embeddings = batchify_terms
+        else:
+            node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask.float(), mask_attend = batchify_src_key_mask)
 
         if self.track_nan: process_nan(node_embeddings, convolution, 'transform')
 
