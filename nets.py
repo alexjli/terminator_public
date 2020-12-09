@@ -60,7 +60,7 @@ class Conv1DResidual(nn.Module):
         return out
 
 class Conv1DResNet(nn.Module):
-    def __init__(self, filter_len = 3, channels = 64, num_blocks = 6, linear = self.linear):
+    def __init__(self, filter_len = 3, channels = 64, num_blocks = 6, linear = False):
         super(Conv1DResNet, self).__init__()
         self.filter_len = filter_len
         self.channels = channels
@@ -80,7 +80,9 @@ class Conv1DResNet(nn.Module):
         # X: num batches x num channels x TERM length x num alignments
         # out retains the shape of X
         # X = self.bn(X)
-        if not self.linear:
+        if self.linear:
+            out = X
+        else:
             out = self.resnet(X)
 
         # average along axis of alignments
@@ -183,7 +185,7 @@ class CondenseMSA(nn.Module):
         self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks, linear = self.linear)
         self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
         self.encoder = TERMTransformer(self.transformer, num_layers=num_transformers)
-        self.batchify = BatchifyTERM(linear = self.linear)
+        self.batchify = BatchifyTERM()
         self.track_nan = track_nans
 
         if torch.cuda.is_available():
