@@ -108,7 +108,7 @@ def main(args):
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
 
-    terminator = TERMinator(hidden_dim = 32, resnet_blocks = 4, term_layers = 4, conv_filter = 3, device = dev, linear = args.linear)
+    terminator = TERMinator(hidden_dim = 32, resnet_blocks = 4, term_layers = 4, conv_filter = 3, device = dev, linear = args.linear, struct2seq = args.struct2seq)
     if torch.cuda.device_count() > 1:
         if args.horovod:
             torch.cuda.set_device(hvd.local_rank())
@@ -349,7 +349,8 @@ if __name__ == '__main__':
     parser.add_argument('--run_name', help = 'name for run, to use for output subfolder', default = 'test_run')
     parser.add_argument('--horovod', help = 'use Horovod for parallelization', default = False, type = bool)
     parser.add_argument('--regularization', help = 'how much regularization to use', default = 0.001, type = float)
-    parser.add_argument('--linear', help = 'run linear regression', default = False, type = bool)
+    parser.add_argument('--linear', help = 'run linear regression + struct2seq', default = False, type = bool)
+    parser.add_argument('--struct2seq', help = 'just run modified transformer', default = False, type = bool)
     args = parser.parse_args()
     main(args)
  

@@ -125,10 +125,11 @@ class PairEnergies(nn.Module):
                 nn.init.xavier_uniform_(p)
 
 
-    def forward(self, V_embed, X, x_mask, sparse = False):
+    def forward(self, X, x_mask, V_embed = [], sparse = False):
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, x_mask)
-        V = torch.cat([V, V_embed], dim = -1)
+        if V_embed != []:
+            V = torch.cat([V, V_embed], dim = -1)
         h_V = self.W_v(V)
         h_E = self.W_e(E)
 
