@@ -14,6 +14,7 @@ from struct2seq.noam_opt import *
 import argparse
 import os
 import sys
+import copy
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -256,7 +257,7 @@ def main(args):
 
             if val_prob > best_validation:
                 best_validation = val_prob
-                best_checkpoint = terminator_module.state_dict()
+                best_checkpoint = copy.deepcopy(terminator_module.state_dict())
                 checkpoint_state = {'epoch': epoch, 'state_dict': best_checkpoint, 'best_model': True, 'val_prob': best_validation, 'optimizer_state': optimizer.state_dict()}
                 torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_best_checkpoint.pt'))
                 torch.save(checkpoint_state, os.path.join(run_output_dir, 'net_last_checkpoint.pt'))
