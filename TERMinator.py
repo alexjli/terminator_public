@@ -11,7 +11,7 @@ from utils.common import int_to_aa
 
 
 class TERMinator(nn.Module):
-    def __init__(self, hparams):
+    def __init__(self, hparams, device = 'cuda:0'):
         super(TERMinator, self).__init__()
         self.dev = device
         self.hparams = hparams

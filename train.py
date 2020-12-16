@@ -86,7 +86,7 @@ def main(args):
         if previous_hparams != hparams:
             raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
     else:
-        json.dump(hparams, open(hparams_path, 'w')))
+        json.dump(hparams, open(hparams_path, 'w'))
 
     if args.lazy:
         train_ids = []
