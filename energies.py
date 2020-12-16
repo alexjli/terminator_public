@@ -83,41 +83,26 @@ class RawSelfEnergies(Struct2Seq):
 
 
 class PairEnergies(nn.Module):
-    def __init__(self, num_letters, node_features, edge_features, input_dim,
-        hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
-        vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
-        dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
-        output_dim = 20 * 20, linear = False):
+    def __init__(self, hparams):
         """ Graph labeling network """
         super(PairEnergies, self).__init__()
-
-        # Hyperparameters
-        self.node_features = node_features
-        self.edge_features = edge_features
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
-        self.linear = linear
+        self.hparams = hparams
 
         # Featurization layers
-        self.features = ProteinFeatures(
-            node_features, edge_features, top_k=k_neighbors,
-            features_type=protein_features, augment_eps=augment_eps,
-            dropout=dropout
-        )
+        self.features = ProteinFeatures(node_features = hparams['hidden_dim'], edge_features = hparams['hidden_dim'], top_k = hparams['k_neighbors'], features_type = hparams['energies_protein_features'], augment_eps = hparams['energies_augment_eps'], dropout = hparams['energies_dropout'])
 
         # Embedding layers
-        self.W_v = nn.Linear(node_features + input_dim, hidden_dim, bias=True)
-        self.W_e = nn.Linear(edge_features, hidden_dim, bias=True)
+        self.W_v = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
+        self.W_e = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=True)
         layer = EdgeTransformerLayer
 
         # Encoder layers
         self.encoder_layers = nn.ModuleList([
-            layer(hidden_dim, hidden_dim*3, dropout=dropout)
-            for _ in range(num_encoder_layers)
+            layer(hparams['hidden_dim'], hparams['hidden_dim']*3, dropout=hparams['energies_dropout'])
+            for _ in range(hparams['energies_encoder_layers'])
         ])
 
-        self.W_out = nn.Linear(hidden_dim, output_dim, bias=True)
+        self.W_out = nn.Linear(hparams['hidden_dim'], hparams['energies_output_dim'], bias=True)
 
         # Initialization
         for p in self.parameters():
@@ -155,7 +140,7 @@ class PairEnergies(nn.Module):
             ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
 
             flat_ij = ij.view(-1, 3).transpose(0,1)
-            flat_h_E = h_E.view(-1, self.output_dim).float()
+            flat_h_E = h_E.view(-1, self.hparams['energies_output_dim']).float()
 
             etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
 

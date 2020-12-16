@@ -61,17 +61,15 @@ class BatchifyTERM(nn.Module):
 
 
 class TERMAttention(nn.Module):
-    def __init__(self, num_hidden, num_in, num_heads=4):
+    def __init__(self, hparams):
         super(TERMAttention, self).__init__()
-        self.num_heads = num_heads
-        self.num_hidden = num_hidden
-        self.num_in = num_in
+        self.hparams = hparams
 
         # Self-attention layers: {queries, keys, values, output}
-        self.W_Q = nn.Linear(num_hidden, num_hidden, bias=False)
-        self.W_K = nn.Linear(num_in, num_hidden, bias=False)
-        self.W_V = nn.Linear(num_in, num_hidden, bias=False)
-        self.W_O = nn.Linear(num_hidden, num_hidden, bias=False)
+        self.W_Q = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
+        self.W_K = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
+        self.W_V = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
+        self.W_O = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
 
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
@@ -86,11 +84,12 @@ class TERMAttention(nn.Module):
         query, key, value = src, src, src
 
         n_batches, n_terms, n_aa = query.shape[:3]
-        n_heads = self.num_heads
+        n_heads = self.hparams['term_heads']
+        num_hidden = self.hparams['hidden_dim']
 
-        assert self.num_hidden % n_heads == 0
+        assert num_hidden % n_heads == 0
 
-        d = self.num_hidden // n_heads
+        d = num_hidden // n_heads
         Q = self.W_Q(query).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2,3)
         K = self.W_K(key).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2,3)
         V = self.W_V(value).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2,3)
@@ -111,7 +110,7 @@ class TERMAttention(nn.Module):
             attend = F.softmax(attend_logits, -1)
 
         src_update = torch.matmul(attend, V).transpose(2,3).contiguous()
-        src_update = src_update.view([n_batches, n_terms, n_aa, self.num_hidden])
+        src_update = src_update.view([n_batches, n_terms, n_aa, num_hidden])
         src_update = self.W_O(src_update)
         return src_update
 
@@ -176,15 +175,14 @@ class TERMNeighborAttention(nn.Module):
 
 
 class TERMTransformerLayer(nn.Module):
-    def __init__(self, num_hidden, num_heads=4, dropout=0.1):
+    def __init__(self, hparams):
         super(TERMTransformerLayer, self).__init__()
-        self.num_heads = num_heads
-        self.num_hidden = num_hidden
-        self.dropout = nn.Dropout(dropout)
-        self.norm = nn.ModuleList([Normalize(num_hidden) for _ in range(2)])
+        self.hparams = hparams
+        self.dropout = nn.Dropout(hparams['transformer_dropout'])
+        self.norm = nn.ModuleList([Normalize(hparams['hidden_dim']) for _ in range(2)])
 
-        self.attention = TERMAttention(num_hidden, num_hidden, num_heads)
-        self.dense = PositionWiseFeedForward(num_hidden, num_hidden * 4)
+        self.attention = TERMAttention(hparams = self.hparams)
+        self.dense = PositionWiseFeedForward(hparams['hidden_dim'], hparams['hidden_dim'] * 4)
 
     def forward(self, src, src_mask=None, mask_attend=None):
         """ Parallel computation of full transformer layer """
@@ -268,9 +266,10 @@ class S2STERMTransformerEncoder(nn.Module):
 
 # from pytorch docs for 1.5
 class TERMTransformer(nn.Module):
-    def __init__(self, transformer, num_layers = 4):
+    def __init__(self, transformer, hparams):
         super(TERMTransformer, self).__init__()
-        self.layers = _get_clones(transformer, num_layers)
+        self.hparams = hparams
+        self.layers = _get_clones(transformer, hparams['term_layers'])
 
     def forward(self, src, src_mask = None, mask_attend = None):
         output = src

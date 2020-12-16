@@ -25,16 +25,14 @@ def size(tensor):
     return str((tensor.element_size() * tensor.nelement())/(1<<20)) + " MB"
 
 class Conv1DResidual(nn.Module):
-    def __init__(self, filter_len = 3, channels = 64):
+    def __init__(self, hparams):
         super(Conv1DResidual, self).__init__()
-        self.filter_len = filter_len
-        self.channels = channels
 
         self.bn1 = nn.BatchNorm2d(channels)
         self.relu = nn.ReLU(inplace = True)
-        self.conv1 = conv1xN(channels, filter_len)
+        self.conv1 = conv1xN(hparams['hidden_dim'], hparams['conv_filter'])
         self.bn2 = nn.BatchNorm2d(channels)
-        self.conv2 = conv1xN(channels, filter_len)
+        self.conv2 = conv1xN(hparams['hidden_dim'], hparams['conv_filter'])
 
         self.bn1.register_forward_hook(inf_nan_hook_fn)
         self.conv1.register_forward_hook(inf_nan_hook_fn)
@@ -60,27 +58,24 @@ class Conv1DResidual(nn.Module):
         return out
 
 class Conv1DResNet(nn.Module):
-    def __init__(self, filter_len = 3, channels = 64, num_blocks = 6, linear = False):
+    def __init__(self, hparams):
         super(Conv1DResNet, self).__init__()
-        self.filter_len = filter_len
-        self.channels = channels
-        self.num_blocks = num_blocks
-        self.linear = linear
+        self.hparams = hparams
 
         #self.bn = BatchNorm2d(channels)
 
-        blocks = [self._make_layer(filter_len, channels) for _ in range(num_blocks)]
+        blocks = [self._make_layer(hparams) for _ in range(hparams['resnet_blocks'])]
         self.resnet = nn.Sequential(*blocks)
 
 
-    def _make_layer(self, filter_len, channels):
-        return Conv1DResidual(filter_len = filter_len, channels = channels)
+    def _make_layer(self, hparams):
+        return Conv1DResidual(hparams)
 
     def forward(self, X):
         # X: num batches x num channels x TERM length x num alignments
         # out retains the shape of X
         # X = self.bn(X)
-        if self.linear:
+        if self.hparams['resnet_linear']:
             out = X
         else:
             out = self.resnet(X)
@@ -96,35 +91,24 @@ class Conv1DResNet(nn.Module):
         return out
 
 class ResidueFeatures(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, linear = False):
+    def __init__(self, hparams):
         super(ResidueFeatures, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.num_features = num_features
-        self.is_linear = linear
+        self.hparams = hparams
         
-        self.embedding = nn.Embedding(NUM_AA, hidden_dim - num_features)
-        self.linear = nn.Linear(hidden_dim, hidden_dim)
-        """
-        assert hidden_dim%2 == 0, "please choose a hidden dim that's a multiple of 2"
-        self.embedding = nn.Embedding(NUM_AA, hidden_dim//2)
-        self.linear = nn.Linear(num_features, hidden_dim//2)
-        """
+        self.embedding = nn.Embedding(NUM_AA, hparams['hidden_dim'] - hparams['num_features'])
+        self.linear = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'])
+        
         self.relu = nn.ReLU(inplace = True)
         self.tanh = nn.Tanh()
-        self.lin1 = nn.Linear(hidden_dim, hidden_dim)
-        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
-        self.bn = nn.BatchNorm2d(hidden_dim)
+        self.lin1 = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'])
+        self.lin2 = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'])
+        self.bn = nn.BatchNorm2d(hparams['hidden_dim'])
 
     def forward(self, X, features):
         # X: num batches x num alignments x sum TERM length
         # features: num_batches x num alignments x sum TERM length x num features
         # samples in X are in rows
         embedded = self.embedding(X)
-
-        """
-        features = self.bn(features.transpose(1,3))
-        embed_features = self.linear(features.transpose(1,3))
-        """
 
         # hidden dim = embedding hidden dim + num features
         # out: num batches x num alignments x TERM length x hidden dim
@@ -140,7 +124,7 @@ class ResidueFeatures(nn.Module):
         # embed features using ffn
         out = out.transpose(1,3)
         out = self.lin1(out)
-        if not self.is_linear:
+        if not self.hparams['resnet_linear']:
             out = self.relu(out)
             out = self.lin2(out)
             out = self.tanh(out)
@@ -152,14 +136,15 @@ class ResidueFeatures(nn.Module):
 
 # from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class FocusEncoding(nn.Module):
-    def __init__(self, hidden_dim = 64, dropout = 0.1, max_len = 1000):
+    def __init__(self, hparams):
         super(FocusEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.hidden_dim = hidden_dim
+        self.hparams = hparams
+        self.dropout = nn.Dropout(p=hparams['fe_dropout'])
+        self.hidden_dim = hparams['hidden_dim']
 
-        pe = torch.zeros(max_len, hidden_dim)
-        position = torch.arange(0, max_len, dtype=torch.double).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hidden_dim, 2).double() * (-math.log(10000.0) / hidden_dim))
+        pe = torch.zeros(hparams['fe_max_len'], hparams['hidden_dim'])
+        position = torch.arange(0, hparams['fe_max_len'], dtype=torch.double).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, hparams['hidden_dim'], 2).double() * (-math.log(10000.0) / hidden_dim))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
@@ -174,17 +159,14 @@ class FocusEncoding(nn.Module):
 # TODO: differential positional encodings
 
 class CondenseMSA(nn.Module):
-    def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, num_transformers = 4, nheads = 8, device = 'cuda:0', track_nans = True, linear = False):
+    def __init__(self, hparams, device = 'cuda:0', track_nans = True):
         super(CondenseMSA, self).__init__()
-        channels = hidden_dim
-        self.hidden_dim = hidden_dim
-        self.nheads = nheads
-        self.linear = linear
-        self.embedding = ResidueFeatures(hidden_dim = hidden_dim, num_features = num_features, linear = self.linear)
-        self.fe = FocusEncoding(hidden_dim = self.hidden_dim, dropout = 0.1, max_len = 1000)
-        self.resnet = Conv1DResNet(filter_len = filter_len, channels = channels, num_blocks = num_blocks, linear = self.linear)
-        self.transformer = TERMTransformerLayer(num_hidden = hidden_dim, num_heads = nheads)
-        self.encoder = TERMTransformer(self.transformer, num_layers=num_transformers)
+        self.hparams = hparams
+        self.embedding = ResidueFeatures(hparams = self.hparams)
+        self.fe = FocusEncoding(hparams = self.hparams)
+        self.resnet = Conv1DResNet(hparams = self.hparams)
+        self.transformer = TERMTransformerLayer(hparams = self.hparams)
+        self.encoder = TERMTransformer(hparams = self.hparams)
         self.batchify = BatchifyTERM()
         self.track_nan = track_nans
 
@@ -220,7 +202,7 @@ class CondenseMSA(nn.Module):
         local_dev = X.device
 
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hidden_dim)
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['hidden_dim'])
 
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
@@ -238,7 +220,7 @@ class CondenseMSA(nn.Module):
 
         #print("embed", torch.isnan(convolution).any())
         # add absolute positional encodings before transformer
-        if self.linear:
+        if self.hparams['resnet_linear']:
             batched_flat_terms = convolution
         else:
             batched_flat_terms = self.fe(convolution, focuses, mask = ~src_key_mask)
@@ -247,7 +229,7 @@ class CondenseMSA(nn.Module):
         # also reshape the mask
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
-        if self.linear:
+        if self.hparams['transformer_linear']:
             node_embeddings = batchify_terms
         else:
             node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask.float(), mask_attend = batchify_src_key_mask)
@@ -258,7 +240,7 @@ class CondenseMSA(nn.Module):
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hidden_dim)).to(local_dev)
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
 
         # this make sure each batch stays in the same layer during aggregation

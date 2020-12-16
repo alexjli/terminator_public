@@ -11,19 +11,16 @@ from utils.common import int_to_aa
 
 
 class TERMinator(nn.Module):
-    def __init__(self, hidden_dim = 64, resnet_blocks = 1, conv_filter = 9, term_heads = 4, term_layers = 4, k_neighbors = 30, device = 'cuda:0', linear = False, struct2seq = False):
+    def __init__(self, hparams):
         super(TERMinator, self).__init__()
         self.dev = device
-        self.k_neighbors = k_neighbors
-        self.hidden_dim = hidden_dim
-        self.linear = linear
-        self.struct2seq = struct2seq
-        self.bot = CondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev, linear = self.linear)
-        if self.struct2seq:
-            input_dim = 0
+        self.hparams = hparams
+        self.bot = CondenseMSA(hparams = self.hparams, device = self.dev)
+        if self.hparams['use_terms']:
+            self.hparams['energies_input_dim'] = self.hparams['hidden_dim']
         else:
-            input_dim = hidden_dim
-        self.top = PairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = 0, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 3, linear = self.linear).to(self.dev)
+            self.hparams['energies_input_dim'] = 0
+        self.top = PairEnergies(hparams = self.hparams).to(self.dev)
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
@@ -203,11 +200,11 @@ class TERMinator(nn.Module):
               X,
               x_mask,
               max_seq_len):
-        if self.struct2seq:
-            etab, E_idx = self.top(X, x_mask)
-        else:
+        if self.hparams['use_terms']:
             condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len)
             etab, E_idx = self.top(X, x_mask, V_embed = condense)
+        else:
+            etab, E_idx = self.top(X, x_mask)
         return etab, E_idx
 
     ''' Optimize the sequence using max psuedo-likelihood '''

@@ -15,6 +15,7 @@ import argparse
 import os
 import sys
 import copy
+import json
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -22,6 +23,34 @@ except ImportError:
 
 INPUT_DATA = '/nobackup/users/vsundar/TERMinator/'
 OUTPUT_DIR = '/nobackup/users/vsundar/TERMinator/'
+
+DEFAULT_HPARAMS = {
+            'hidden_dim': 32,
+            'resnet_blocks': 4,
+            'term_layers': 4,
+            'conv_filter': 3,
+            'term_heads': 4,
+            'k_neighbors': 30,
+            'fe_dropout': 0.1,
+            'fe_max_len': 1000,
+            'transformer_dropout': 0.1,
+            'energies_num_letters': 20,
+            'energies_encoder_layers': 3,
+            'energies_decoder_layers': 3,
+            'energies_vocab': 20,
+            'energies_protein_features': 'full',
+            'energies_augment_eps': 0,
+            'energies_dropout': 0.1,
+            'energies_forward_attention_decoder': True,
+            'energies_use_mpnn': False,
+            'energies_output_dim': 20*20,
+            'resnet_linear': False,
+            'transformer_linear': False,
+            'use_terms': True,
+            'train_batch_size': 12,
+            'regularization': 0,
+            'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
+        }
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -46,6 +75,18 @@ def main(args):
     else:
         kwargs['num_workers'] = 2
 
+    hparams = json.load(open(args.hparams, 'r'))
+    for key in DEFAULT_HPARAMS:
+        if key not in hparams:
+            hparams[key] = DEFAULT_HPARAMS[key]
+
+    hparams_path = os.path.join(run_output_dir, 'hparams.json')
+    if os.path.isfile(hparams_path):
+        previous_hparams = json.load(hparams_path)
+        if previous_hparams != hparams:
+            raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
+    else:
+        json.dump(hparams, open(hparams_path, 'w')))
 
     if args.lazy:
         train_ids = []
@@ -65,11 +106,11 @@ def main(args):
         test_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
         
         if args.horovod:
-            train_batch_sampler = TERMLazyDistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=True, batch_size=12)
+            train_batch_sampler = TERMLazyDistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=True, batch_size=hparams['train_batch_size'])
             val_batch_sampler = TERMLazyDistributedSampler(val_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
             test_batch_sampler = TERMLazyDistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
         else:
-            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=12, shuffle=True)
+            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=True)
             val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
             test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -104,12 +145,12 @@ def main(args):
         val_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
         test_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
 
-        train_dataloader = TERMDataLoader(train_dataset, batch_size=12, shuffle=True)
+        train_dataloader = TERMDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=True)
         val_dataloader = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
 
-    terminator = TERMinator(hidden_dim = 32, resnet_blocks = 4, term_layers = 4, conv_filter = 3, device = dev, linear = args.linear, struct2seq = args.struct2seq)
+    terminator = TERMinator(hparams = hparams, device = dev)
     if torch.cuda.device_count() > 1:
         if args.horovod:
             torch.cuda.set_device(hvd.local_rank())
@@ -126,7 +167,7 @@ def main(args):
     else:
         lr_multiplier = 1
 
-    optimizer = get_std_opt(terminator.parameters(), d_model=32, lr_multiplier=lr_multiplier, regularization=args.regularization)
+    optimizer = get_std_opt(terminator.parameters(), d_model = hparams['hidden_dim'], lr_multiplier=lr_multiplier, regularization = hparams['regularization'])
 
     if args.horovod:
         hvd.broadcast_parameters(terminator.state_dict(), root_rank=0)
@@ -348,10 +389,8 @@ if __name__ == '__main__':
     parser.add_argument('--test', help = 'file with test dataset', default = 'test.in')
     # parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
     parser.add_argument('--run_name', help = 'name for run, to use for output subfolder', default = 'test_run')
+    parser.add_argument('--hparams', help = 'hparams file name', default = 'hparams/default.json')
     parser.add_argument('--horovod', help = 'use Horovod for parallelization', default = False, type = bool)
-    parser.add_argument('--regularization', help = 'how much regularization to use', default = 0.001, type = float)
-    parser.add_argument('--linear', help = 'run linear regression + struct2seq', default = False, type = bool)
-    parser.add_argument('--struct2seq', help = 'just run modified transformer', default = False, type = bool)
     args = parser.parse_args()
     main(args)
  
