@@ -113,7 +113,7 @@ class PairEnergies(nn.Module):
     def forward(self, X, x_mask, V_embed = [], sparse = False):
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, x_mask)
-        if V_embed != []:
+        if not isinstance(V_embed, list) or V_embed != []:
             V = torch.cat([V, V_embed], dim = -1)
         h_V = self.W_v(V)
         h_E = self.W_e(E)

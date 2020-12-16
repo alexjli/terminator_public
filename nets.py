@@ -28,10 +28,10 @@ class Conv1DResidual(nn.Module):
     def __init__(self, hparams):
         super(Conv1DResidual, self).__init__()
 
-        self.bn1 = nn.BatchNorm2d(channels)
+        self.bn1 = nn.BatchNorm2d(hparams['hidden_dim'])
         self.relu = nn.ReLU(inplace = True)
         self.conv1 = conv1xN(hparams['hidden_dim'], hparams['conv_filter'])
-        self.bn2 = nn.BatchNorm2d(channels)
+        self.bn2 = nn.BatchNorm2d(hparams['hidden_dim'])
         self.conv2 = conv1xN(hparams['hidden_dim'], hparams['conv_filter'])
 
         self.bn1.register_forward_hook(inf_nan_hook_fn)
@@ -61,8 +61,6 @@ class Conv1DResNet(nn.Module):
     def __init__(self, hparams):
         super(Conv1DResNet, self).__init__()
         self.hparams = hparams
-
-        #self.bn = BatchNorm2d(channels)
 
         blocks = [self._make_layer(hparams) for _ in range(hparams['resnet_blocks'])]
         self.resnet = nn.Sequential(*blocks)
@@ -144,7 +142,7 @@ class FocusEncoding(nn.Module):
 
         pe = torch.zeros(hparams['fe_max_len'], hparams['hidden_dim'])
         position = torch.arange(0, hparams['fe_max_len'], dtype=torch.double).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hparams['hidden_dim'], 2).double() * (-math.log(10000.0) / hidden_dim))
+        div_term = torch.exp(torch.arange(0, hparams['hidden_dim'], 2).double() * (-math.log(10000.0) / hparams['hidden_dim']))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
@@ -166,7 +164,7 @@ class CondenseMSA(nn.Module):
         self.fe = FocusEncoding(hparams = self.hparams)
         self.resnet = Conv1DResNet(hparams = self.hparams)
         self.transformer = TERMTransformerLayer(hparams = self.hparams)
-        self.encoder = TERMTransformer(hparams = self.hparams)
+        self.encoder = TERMTransformer(hparams = self.hparams, transformer = self.transformer)
         self.batchify = BatchifyTERM()
         self.track_nan = track_nans
 

@@ -82,7 +82,7 @@ def main(args):
 
     hparams_path = os.path.join(run_output_dir, 'hparams.json')
     if os.path.isfile(hparams_path):
-        previous_hparams = json.load(hparams_path)
+        previous_hparams = json.load(open(hparams_path, 'r'))
         if previous_hparams != hparams:
             raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
     else:
