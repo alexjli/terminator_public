@@ -8,10 +8,10 @@
 #SBATCH -o logfiles/test-output_RUNNAME_foldFOLD_runRUNNO.out
 #SBATCH -e logfiles/test-error_RUNNAME_foldFOLD_runRUNNO.out
 
-HOME2=/nobackup/users/vsundar
+HOME2=/nobackup/users/alexjli
 CONDA_ROOT=$HOME2/anaconda3
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
-conda activate pyold
+conda activate pytorch1.1
 ulimit -s unlimited
 
 python train.py --dataset=features_singlechain --train=fold_splits/train_foldFOLD.in --val=fold_splits/val_foldFOLD.in --test=fold_splits/test_foldFOLD.in --run_name=test_run_foldFOLD_RUNNAME --hparams=hparams/HPARAMS.json

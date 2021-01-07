@@ -20,7 +20,11 @@ class TERMinator(nn.Module):
             self.hparams['energies_input_dim'] = self.hparams['hidden_dim']
         else:
             self.hparams['energies_input_dim'] = 0
-        self.top = PairEnergies(hparams = self.hparams).to(self.dev)
+
+        if self.hparams['struct2seq_linear']:
+            self.top = AblatedPairEnergies(hparams = self.hparams).to(self.dev)
+        else:
+            self.top = PairEnergies(hparams = self.hparams).to(self.dev)
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 

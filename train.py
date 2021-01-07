@@ -21,8 +21,8 @@ try:
 except ImportError:
     pass
 
-INPUT_DATA = '/nobackup/users/vsundar/TERMinator/'
-OUTPUT_DIR = '/nobackup/users/vsundar/TERMinator/'
+INPUT_DATA = '/nobackup/users/alexjli/TERMinator/'
+OUTPUT_DIR = '/nobackup/users/alexjli/TERMinator/'
 
 DEFAULT_HPARAMS = {
             'hidden_dim': 32,
@@ -46,6 +46,7 @@ DEFAULT_HPARAMS = {
             'energies_output_dim': 20*20,
             'resnet_linear': False,
             'transformer_linear': False,
+            'struct2seq_linear': False,
             'use_terms': True,
             'train_batch_size': 12,
             'regularization': 0,

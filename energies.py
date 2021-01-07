@@ -147,6 +147,31 @@ class PairEnergies(nn.Module):
             return etab, E_idx
 
 
+class AblatedPairEnergies(PairEnergies):
+    def __init__(self, hparams):
+        """ Graph labeling network """
+        super(AblatedPairEnergies, self).__init__(hparams)
+
+        self.k_neighbors = hparams['k_neighbors']
+        self.W = nn.Linear(hparams['hidden_dim'] * 2, hparams['energies_output_dim'])
+
+    def forward(self, X, x_mask, V_embed, sparse = False):
+        # Prepare node and edge embeddings
+        _, _, E_idx = self.features(X, x_mask)
+
+        h_nodes = V_embed
+
+        h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, self.k_neighbors).contiguous()
+        h_j_idx = E_idx
+
+        h_i = gather_nodes(h_nodes, h_i_idx)
+        h_j = gather_nodes(h_nodes, h_j_idx)
+
+        h_E = torch.cat((h_i, h_j), -1)
+        h_EV = self.W(h_E)
+
+        return h_EV, E_idx
+
 class MultiChainProteinFeatures(ProteinFeatures):
     def __init__(self, edge_features, node_features, num_positional_embeddings=16,
         num_rbf=16, top_k=30, features_type='full', augment_eps=0., dropout=0.1):
