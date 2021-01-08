@@ -184,14 +184,20 @@ class TERMTransformerLayer(nn.Module):
         self.attention = TERMAttention(hparams = self.hparams)
         self.dense = PositionWiseFeedForward(hparams['hidden_dim'], hparams['hidden_dim'] * 4)
 
-    def forward(self, src, src_mask=None, mask_attend=None):
+    def forward(self, src, src_mask=None, mask_attend=None, checkpoint = False):
         """ Parallel computation of full transformer layer """
         # Self-attention
-        dsrc = self.attention(src, mask_attend = mask_attend)
+        if checkpoint:
+            dsrc = torch.utils.checkpoint.checkpoint(self.attention, src, mask_attend)
+        else:
+            dsrc = self.attention(src, mask_attend = mask_attend)
         src = self.norm[0](src + self.dropout(dsrc))
 
         # Position-wise feedforward
-        dsrc = self.dense(src)
+        if checkpoint:
+            dsrc = torch.utils.checkpoint.checkpoint(self.dense, src)
+        else:
+            dsrc = self.dense(src)
         src = self.norm[1](src + self.dropout(dsrc))
 
         if src_mask is not None:
@@ -263,6 +269,49 @@ class S2STERMTransformerEncoder(nn.Module):
             h_V = layer(h_V, h_EV, mask_V=mask, mask_attend=mask_attend)
 
         return self.W_out(h_V)
+
+
+class TERMMatchTransformerEncoder(nn.Module):
+    def __init__(self, hidden_dim, num_encoder_layers=1, dropout=0.1, num_heads = 4):
+        super(TERMMatchTransformerEncoder, self).__init__()
+
+        # Hyperparameters
+        self.hidden_dim = hidden_dim
+
+        # Embedding layers
+        self.W_v = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        layer = TERMTransformerLayer # happens to be the math is the same
+
+        # Encoder layers
+        self.encoder_layers = nn.ModuleList([
+            layer(hidden_dim, num_heads, dropout=dropout)
+            for _ in range(num_encoder_layers)
+        ])
+
+        self.W_out = nn.Linear(hidden_dim, hidden_dim, bias=True)
+
+        # lets try [CLS]-style pooling
+        pool_token_init = torch.zeros(1, hidden_dim)
+        torch.nn.init.xavier_uniform_(pool_token_init)
+
+        self.pool_token = nn.Parameter(pool_token_init, requires_grad=True)
+
+    def forward(self, V, mask):
+        dev = V.device
+        n_batches, sum_term_len, n_align = V.shape[:3]
+        pool = self.pool_token.view([1, 1, 1, self.hidden_dim]).expand(n_batches, sum_term_len, 1, -1)
+
+        V = torch.cat([V, pool], dim = -2)
+
+        h_V = self.W_v(V)
+
+        # Encoder is unmasked self-attention
+        for layer in self.encoder_layers:
+            h_V = layer(h_V, mask.unsqueeze(-1).float(), checkpoint = True)
+
+        h_V = self.W_out(h_V)
+        return h_V[:, :, 0, :]
+
 
 # from pytorch docs for 1.5
 class TERMTransformer(nn.Module):
