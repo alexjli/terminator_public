@@ -234,10 +234,15 @@ class S2STERMTransformerLayer(nn.Module):
 
 
 class S2STERMTransformerEncoder(nn.Module):
-    def __init__(self, node_features, edge_features,
-        hidden_dim, num_encoder_layers=3, protein_features='full', augment_eps=0.,
-        dropout=0.1, num_heads = 4):
+    def __init__(self, hparams):
         super(S2STERMTransformerEncoder, self).__init__()
+        self.hparams = hparams
+        node_features = hparams['hidden_dim']
+        edge_features = hparams['hidden_dim']
+        hidden_dim = hparams['hidden_dim']
+        num_heads = hparams['term_heads']
+        dropout = hparams['transformer_dropout']
+        num_encoder_layers = hparams['term_layers']
 
         # Hyperparameters
         self.node_features = node_features
@@ -270,13 +275,75 @@ class S2STERMTransformerEncoder(nn.Module):
 
         return self.W_out(h_V)
 
-
-class TERMMatchTransformerEncoder(nn.Module):
-    def __init__(self, hidden_dim, num_encoder_layers=1, dropout=0.1, num_heads = 4):
-        super(TERMMatchTransformerEncoder, self).__init__()
+class TERMGraphTransformerEncoder(nn.Module):
+    def __init__(self, node_features, edge_features,
+        hidden_dim, num_encoder_layers=3, protein_features='full', augment_eps=0.,
+        dropout=0.1, num_heads = 4):
+        """ Graph labeling network """
+        super(TERMGraphTransformerEncoder, self).__init__()
 
         # Hyperparameters
+        self.node_features = node_features
+        self.edge_features = edge_features
+        self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+
+        # Embedding layers
+        self.W_v = nn.Linear(node_features + input_dim, hidden_dim, bias=True)
+        self.W_e = nn.Linear(edge_features, hidden_dim, bias=True)
+        edge_layer = TERMEdgeTransformerLayer
+        node_layer = S2STERMTransformerLayer
+
+        # Encoder layers
+        self.edge_encoder = nn.ModuleList([
+            edge_layer(hidden_dim, hidden_dim*3, dropout=dropout)
+            for _ in range(num_encoder_layers)
+        ])
+        self.node_encoder = nn.ModuleList([
+            node_layer(hidden_dim, hidden_dim*2, dropout=dropout)
+            for _ in range(num_encoder_layers)
+        ])
+
+        self.W_out = nn.Linear(hidden_dim, output_dim, bias=True)
+
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    def forward(self, V, E, E_idx, mask):
+        h_V = self.W_v(V)
+        h_E = self.W_e(E)
+
+        # Encoder is unmasked self-attention
+        mask_attend = gather_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
+        mask_attend = mask.unsqueeze(-1) * mask_attend
+        for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
+            h_EV_edges = cat_edge_endpoints(h_E, h_V, E_idx)
+            h_E_new = edge_layer(h_E, h_EV_edges, E_idx, mask_E=x_mask, mask_attend=mask_attend)
+
+            h_EV_nodes = cat_neighbors_nodes(h_V, h_E, E_idx)
+            h_V = node_layer(h_V, h_EV_nodes, mask_V = x_mask, mask_attend = mask_attend)
+            h_E = h_E_new
+
+        h_E = self.W_out(h_E)
+        h_E = merge_duplicate_term_edges(h_E, E_idx)
+
+        return h_V, h_E
+ 
+
+class TERMMatchTransformerEncoder(nn.Module):
+    def __init__(self, hparams):
+        super(TERMMatchTransformerEncoder, self).__init__()
+        self.hparams = hparams
+        
+        # Hyperparameters
+        hidden_dim = hparams['hidden_dim']
+        self.hidden_dim = hidden_dim
+        num_encoder_layers = hparams['matches_layers']
+        num_heads = hparams['matches_num_heads']
+        dropout = hparams['transformer_dropout']
 
         # Embedding layers
         self.W_v = nn.Linear(hidden_dim, hidden_dim, bias=True)
@@ -284,7 +351,7 @@ class TERMMatchTransformerEncoder(nn.Module):
 
         # Encoder layers
         self.encoder_layers = nn.ModuleList([
-            layer(hidden_dim, num_heads, dropout=dropout)
+            layer(hparams)
             for _ in range(num_encoder_layers)
         ])
 
@@ -307,7 +374,7 @@ class TERMMatchTransformerEncoder(nn.Module):
 
         # Encoder is unmasked self-attention
         for layer in self.encoder_layers:
-            h_V = layer(h_V, mask.unsqueeze(-1).float(), checkpoint = True)
+            h_V = layer(h_V, mask.unsqueeze(-1).float(), checkpoint = self.hparams['gradient_checkpointing'])
 
         h_V = self.W_out(h_V)
         return h_V[:, :, 0, :]
