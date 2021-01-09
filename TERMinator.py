@@ -334,10 +334,13 @@ class TERMinator(nn.Module):
 
 
 class MultiChainTERMinator(TERMinator):
-    def __init__(self, hidden_dim = 64, resnet_blocks = 1, conv_filter = 9, term_heads = 4, term_layers = 4, k_neighbors = 30, device = 'cuda:0'):
-        super(MultiChainTERMinator, self).__init__(hidden_dim = hidden_dim, resnet_blocks = resnet_blocks, conv_filter = conv_filter, term_heads = term_heads, term_layers = term_layers, k_neighbors = k_neighbors, device = device)
-        self.bot = MultiChainCondenseMSA(hidden_dim = hidden_dim, filter_len = conv_filter, num_blocks = resnet_blocks, nheads = term_heads, num_transformers = term_layers, device = self.dev)
-        self.top = MultiChainPairEnergies(num_letters = 20, node_features = hidden_dim, edge_features = hidden_dim, input_dim = hidden_dim, hidden_dim = hidden_dim, k_neighbors=k_neighbors, num_encoder_layers = 3).to(self.dev)
+    def __init__(self, hparams, device = 'cuda:0'):
+        super(MultiChainTERMinator, self).__init__(hparams, device)
+        self.dev = device
+        self.hparams = hparams
+        self.bot = MultiChainCondenseMSA(hparams, device = self.dev)
+        self.top = MultiChainPairEnergies(hparams).to(self.dev)
+
         # Initialization
         for p in self.parameters():
             if p.dim() > 1:
@@ -353,8 +356,9 @@ class MultiChainTERMinator(TERMinator):
                 X,
                 x_mask,
                 sequence,
+                max_seq_len,
                 chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
         rms = torch.sqrt(torch.mean(etab**2))
         nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
         return nlpl, rms, avg_prob
@@ -369,6 +373,7 @@ class MultiChainTERMinator(TERMinator):
               src_key_mask,
               X,
               x_mask,
+              max_seq_len,
               chain_lens):
 
         # generate chain_idx from chain_lens
@@ -381,7 +386,7 @@ class MultiChainTERMinator(TERMinator):
             chain_idx.append(torch.cat(arrs, dim = -1))
         chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
 
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, chain_idx, X)
+        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X)
         etab, E_idx = self.top(condense, X, x_mask, chain_idx)
         return etab, E_idx
 
@@ -396,8 +401,9 @@ class MultiChainTERMinator(TERMinator):
                      X,
                      x_mask,
                      sequences,
+                     max_seq_len,
                      chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
         int_seqs = self._seq(etab, E_idx, x_mask, sequences)
         int_seqs = int_seqs.cpu().numpy()
         char_seqs = self._int_to_aa(int_seqs)
@@ -413,8 +419,9 @@ class MultiChainTERMinator(TERMinator):
                       src_key_mask,
                       X,
                       x_mask,
+                      max_seq_len,
                       chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -433,8 +440,9 @@ class MultiChainTERMinator(TERMinator):
                          X,
                          x_mask,
                          sequences,
+                         max_seq_len,
                          chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)

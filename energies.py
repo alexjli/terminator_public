@@ -89,7 +89,12 @@ class PairEnergies(nn.Module):
         self.hparams = hparams
 
         # Featurization layers
-        self.features = ProteinFeatures(node_features = hparams['hidden_dim'], edge_features = hparams['hidden_dim'], top_k = hparams['k_neighbors'], features_type = hparams['energies_protein_features'], augment_eps = hparams['energies_augment_eps'], dropout = hparams['energies_dropout'])
+        self.features = ProteinFeatures(node_features = hparams['hidden_dim'], 
+                                        edge_features = hparams['hidden_dim'], 
+                                        top_k = hparams['k_neighbors'], 
+                                        features_type = hparams['energies_protein_features'], 
+                                        augment_eps = hparams['energies_augment_eps'], 
+                                        dropout = hparams['energies_dropout'])
 
         # Embedding layers
         self.W_v = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
@@ -245,25 +250,21 @@ class MultiChainProteinFeatures(ProteinFeatures):
 
 
 class MultiChainPairEnergies(PairEnergies):
-    def __init__(self, num_letters, node_features, edge_features, input_dim,
-        hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
-        vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
-        dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
-        output_dim = 20 * 20):
+    def __init__(self, hparams):
         """ Graph labeling network """
-        super(MultiChainPairEnergies, self).__init__(num_letters, node_features, edge_features, 
-            input_dim, hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
-            vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
-            dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
-            output_dim = 20 * 20)
+        super(MultiChainPairEnergies, self).__init__(hparams)
+        self.hparams = hparams
+
     
         # Featurization layers
         self.features = MultiChainProteinFeatures(
-            node_features, edge_features, top_k=k_neighbors,
-            features_type=protein_features, augment_eps=augment_eps,
-            dropout=dropout
+            node_features = hparams['hidden_dim'], 
+            edge_features = hparams['hidden_dim'], 
+            top_k = hparams['k_neighbors'], 
+            features_type = hparams['energies_protein_features'], 
+            augment_eps = hparams['energies_augment_eps'], 
+            dropout = hparams['energies_dropout']
         )
-
 
     def forward(self, V_embed, X, x_mask, chain_idx, sparse = False):
         # Prepare node and edge embeddings

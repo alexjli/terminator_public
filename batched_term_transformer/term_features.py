@@ -17,7 +17,7 @@ class IndexDiffEncoding(PositionalEncodings):
         d_raw = (E_idx.float() - ii)
 
         chain_idx_expand = chain_idx.view(1, 1, -1, 1).expand((N_batch, N_terms, -1, N_neighbors))
-        E_chain_idx = torch.gather(chain_idx_expand, 2, E_idx)
+        E_chain_idx = torch.gather(chain_idx_expand.to(dev), 2, E_idx)
         same_chain = (E_chain_idx == E_chain_idx[:, :, :, 0:1]).to(dev)
         d = torch.where(same_chain, d_raw, torch.tensor(self.inf).float().to(dev)).unsqueeze(-1)
 
@@ -303,4 +303,4 @@ class TERMProteinFeatures(ProteinFeatures):
         # plt.imshow(U.data.numpy()[0,:,:,0])
         # plt.show()
         # exit(0)
-        return V, E, relative_E_idx
+        return V, E, relative_E_idx, absolute_E_idx
