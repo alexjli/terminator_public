@@ -51,7 +51,7 @@ DEFAULT_HPARAMS = {
             'transformer_linear': False,
             'struct2seq_linear': False,
             'use_terms': True,
-            'train_batch_size': 16,
+            'train_batch_size': 32,
             'regularization': 0,
             'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
         }
@@ -77,7 +77,7 @@ def main(args):
             kwargs['multiprocessing_context'] = 'forkserver'
             kwargs['num_workers'] = 1
     else:
-        kwargs['num_workers'] = 2
+        kwargs['num_workers'] = 16
 
     hparams = json.load(open(args.hparams, 'r'))
     for key in DEFAULT_HPARAMS:
@@ -154,7 +154,7 @@ def main(args):
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
 
-    terminator = MultiChainTERMinator(hparams = hparams, device = dev)
+    terminator = MultiChainTERMinator_g(hparams = hparams, device = dev)
     if torch.cuda.device_count() > 1:
         if args.horovod:
             torch.cuda.set_device(hvd.local_rank())

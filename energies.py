@@ -266,6 +266,12 @@ class MultiChainPairEnergies(PairEnergies):
             dropout = hparams['energies_dropout']
         )
 
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+
     def forward(self, V_embed, X, x_mask, chain_idx, sparse = False):
         # Prepare node and edge embeddings
         V, E, E_idx = self.features(X, chain_idx, x_mask)
@@ -300,7 +306,73 @@ class MultiChainPairEnergies(PairEnergies):
             etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
 
             return etab, E_idx
-   
+
+
+class MultiChainPairEnergies_g(PairEnergies):
+    def __init__(self, hparams):
+        """ Graph labeling network """
+        super(MultiChainPairEnergies_g, self).__init__(hparams)
+        self.hparams = hparams
+
+    
+        # Featurization layers
+        self.features = MultiChainProteinFeatures(
+            node_features = hparams['hidden_dim'], 
+            edge_features = hparams['hidden_dim'], 
+            top_k = hparams['k_neighbors'], 
+            features_type = hparams['energies_protein_features'], 
+            augment_eps = hparams['energies_augment_eps'], 
+            dropout = hparams['energies_dropout']
+        )
+        
+        self.W_e = nn.Linear(hparams['hidden_dim'] * 2, hparams['hidden_dim'], bias=True)
+
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+
+
+    def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse = False):
+        # Prepare node and edge embeddings
+        V, E, E_idx = self.features(X, chain_idx, x_mask)
+        V = torch.cat([V, V_embed], dim = -1)
+        E_embed_neighbors = gather_edges(E_embed, E_idx)
+        E = torch.cat([E, E_embed_neighbors], dim = -1)
+
+        h_V = self.W_v(V)
+        h_E = self.W_e(E)
+
+        # Encoder is unmasked self-attention
+        mask_attend = gather_nodes(x_mask.unsqueeze(-1),  E_idx).squeeze(-1)
+        mask_attend = x_mask.unsqueeze(-1) * mask_attend
+
+        for layer in self.encoder_layers:
+            h_EV = cat_edge_endpoints(h_E, h_V, E_idx)
+            h_E = layer(h_E, h_EV, E_idx, mask_E=x_mask, mask_attend=mask_attend)
+
+        h_EV = self.W_out(h_E)
+        h_EV = merge_duplicate_edges(h_EV, E_idx)
+
+        if not sparse:
+            return h_EV, E_idx
+        else:
+            n_batch, n_nodes, k = h_E.shape[:-1]
+
+            h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
+            h_j_idx = E_idx.unsqueeze(-1)
+            batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
+            ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
+
+            flat_ij = ij.view(-1, 3).transpose(0,1)
+            flat_h_E = h_E.view(-1, self.output_dim).float()
+
+            etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
+
+            return etab, E_idx
+ 
+
 
 class PairEnergiesFullGraph(nn.Module):
     def __init__(self, num_letters, node_features, edge_features, input_dim,

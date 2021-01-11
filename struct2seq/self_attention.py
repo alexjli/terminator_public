@@ -55,6 +55,49 @@ def cat_edge_endpoints(h_edges, h_nodes, E_idx):
     h_nn = torch.cat([h_i, h_j, e_ij], -1)
     return h_nn
 
+def gather_term_nodes(nodes, neighbor_idx):
+    # Features [B,T,N,C] at Neighbor indices [B,T,N,K] => [B,T,N,K,C]
+    # Flatten and expand indices per batch [B,T,N,K] => [B,T,NK] => [B,T,NK,C]
+    neighbors_flat = neighbor_idx.view((neighbor_idx.shape[0], neighbor_idx.shape[1], -1))
+    neighbors_flat = neighbors_flat.unsqueeze(-1).expand(-1, -1, -1, nodes.size(3))
+    # Gather and re-pack
+    neighbor_features = torch.gather(nodes, 2, neighbors_flat)
+    neighbor_features = neighbor_features.view(list(neighbor_idx.shape)[:4] + [-1])
+    return neighbor_features
+
+def gather_term_edges(edges, neighbor_idx):
+    # Features [B,T,N,N,C] at Neighbor indices [B,T,N,K] => Neighbor features [B,T,N,K,C]
+    neighbors = neighbor_idx.unsqueeze(-1).expand(-1, -1, -1, -1, edges.size(-1))
+    edge_features = torch.gather(edges, 3, neighbors)
+    return edge_features
+
+def cat_term_neighbors_nodes(h_nodes, h_neighbors, E_idx):
+    h_nodes = gather_term_nodes(h_nodes, E_idx)
+    h_nn = torch.cat([h_neighbors, h_nodes], -1)
+    return h_nn
+
+# check the shape of this
+def cat_term_edge_endpoints(h_edges, h_nodes, E_idx):
+    # Neighbor indices E_idx [B,T,N,K]
+    # Edge features h_edges [B,T,N,N,C]
+    # Node features h_nodes [B,T,N,C]
+    n_batches, n_terms, n_nodes, k = E_idx.shape
+
+    h_i_idx = E_idx[:, :, :, 0].unsqueeze(-1).expand(-1, -1, -1, k).contiguous()
+    h_j_idx = E_idx
+
+    h_i = gather_term_nodes(h_nodes, h_i_idx)
+    h_j = gather_term_nodes(h_nodes, h_j_idx)
+
+    #e_ij = gather_edges(h_edges, E_idx)
+    e_ij = h_edges
+
+    # output features [B, T, N, K, 3C]
+    h_nn = torch.cat([h_i, h_j, e_ij], -1)
+    return h_nn
+
+
+
 
 class Normalize(nn.Module):
     def __init__(self, features, epsilon=1e-6):
@@ -147,6 +190,34 @@ class EdgeTransformerLayer(nn.Module):
             mask_E = mask_E.unsqueeze(-1).unsqueeze(-1)
             h_E = mask_E * h_E
         return h_E
+
+class TERMEdgeTransformerLayer(nn.Module):
+    def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
+        super(TERMEdgeTransformerLayer, self).__init__()
+        self.num_heads = num_heads
+        self.num_hidden = num_hidden
+        self.num_in = num_in
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.ModuleList([Normalize(num_hidden) for _ in range(2)])
+
+        self.attention = TERMEdgeEndpointAttention(num_hidden, num_in, num_heads)
+        self.dense = PositionWiseFeedForward(num_hidden, num_hidden * 4)
+
+    def forward(self, h_E, h_EV, E_idx, mask_E=None, mask_attend=None):
+        """ Parallel computation of full transformer layer """
+        # Self-attention
+        dh = self.attention(h_E, h_EV, E_idx, mask_attend)
+        h_E = self.norm[0](h_E + self.dropout(dh))
+
+        # Position-wise feedforward
+        dh = self.dense(h_E)
+        h_E = self.norm[1](h_E + self.dropout(dh))
+
+        if mask_E is not None:
+            mask_E = mask_E.unsqueeze(-1).unsqueeze(-1)
+            h_E = mask_E * h_E
+        return h_E
+
 
 
 class MPNNLayer(nn.Module):
@@ -390,7 +461,7 @@ def merge_duplicate_edges(h_E_update, E_idx):
 
 class TERMEdgeEndpointAttention(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4):
-        super(EdgeEndpointAttention, self).__init__()
+        super(TERMEdgeEndpointAttention, self).__init__()
         self.num_heads = num_heads
         self.num_hidden = num_hidden
 
@@ -436,7 +507,7 @@ class TERMEdgeEndpointAttention(nn.Module):
         if mask_attend is not None:
             # we need to reshape the src key mask for edge-edge attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(0).unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).double()
+            mask = mask_attend.unsqueeze(3).expand(-1, -1, -1, n_heads, -1).unsqueeze(-1).double()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
@@ -465,7 +536,7 @@ def merge_duplicate_term_edges(h_E_update, E_idx):
     # transpose to get same edge in reverse direction
     collection = collection.transpose(2,3)
     # gather reverse edges
-    reverse_E_update = gather_edges(collection, E_idx)
+    reverse_E_update = gather_term_edges(collection, E_idx)
     # average h_E_update and reverse_E_update at non-zero positions
     merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update)/2, h_E_update)
     return merged_E_updates
