@@ -10,7 +10,6 @@ The living documentation for this package can be found [here](https://docs.googl
     * Later versions break the codebase for some reason.
 * numpy
 * scipy
-* mmtf-python
 
 ## Instructions for Running Pipeline
 
