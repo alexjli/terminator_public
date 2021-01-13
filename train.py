@@ -26,9 +26,12 @@ OUTPUT_DIR = '/nobackup/users/alexjli/TERMinator/'
 
 DEFAULT_HPARAMS = {
             'hidden_dim': 32,
+            'gradient_checkpointing': True,
             'resnet_blocks': 4,
             'term_layers': 4,
             'conv_filter': 3,
+            'matches_layers': 4,
+            'matches_num_heads': 4,
             'term_heads': 4,
             'k_neighbors': 30,
             'fe_dropout': 0.1,
@@ -48,7 +51,7 @@ DEFAULT_HPARAMS = {
             'transformer_linear': False,
             'struct2seq_linear': False,
             'use_terms': True,
-            'train_batch_size': 12,
+            'train_batch_size': 16,
             'regularization': 0,
             'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
         }

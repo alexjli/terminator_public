@@ -55,6 +55,49 @@ def cat_edge_endpoints(h_edges, h_nodes, E_idx):
     h_nn = torch.cat([h_i, h_j, e_ij], -1)
     return h_nn
 
+def gather_term_nodes(nodes, neighbor_idx):
+    # Features [B,T,N,C] at Neighbor indices [B,T,N,K] => [B,T,N,K,C]
+    # Flatten and expand indices per batch [B,T,N,K] => [B,T,NK] => [B,T,NK,C]
+    neighbors_flat = neighbor_idx.view((neighbor_idx.shape[0], neighbor_idx.shape[1], -1))
+    neighbors_flat = neighbors_flat.unsqueeze(-1).expand(-1, -1, -1, nodes.size(3))
+    # Gather and re-pack
+    neighbor_features = torch.gather(nodes, 2, neighbors_flat)
+    neighbor_features = neighbor_features.view(list(neighbor_idx.shape)[:4] + [-1])
+    return neighbor_features
+
+def gather_term_edges(edges, neighbor_idx):
+    # Features [B,T,N,N,C] at Neighbor indices [B,T,N,K] => Neighbor features [B,T,N,K,C]
+    neighbors = neighbor_idx.unsqueeze(-1).expand(-1, -1, -1, -1, edges.size(-1))
+    edge_features = torch.gather(edges, 3, neighbors)
+    return edge_features
+
+def cat_term_neighbors_nodes(h_nodes, h_neighbors, E_idx):
+    h_nodes = gather_term_nodes(h_nodes, E_idx)
+    h_nn = torch.cat([h_neighbors, h_nodes], -1)
+    return h_nn
+
+# check the shape of this
+def cat_term_edge_endpoints(h_edges, h_nodes, E_idx):
+    # Neighbor indices E_idx [B,T,N,K]
+    # Edge features h_edges [B,T,N,N,C]
+    # Node features h_nodes [B,T,N,C]
+    n_batches, n_terms, n_nodes, k = E_idx.shape
+
+    h_i_idx = E_idx[:, :, :, 0].unsqueeze(-1).expand(-1, -1, -1, k).contiguous()
+    h_j_idx = E_idx
+
+    h_i = gather_term_nodes(h_nodes, h_i_idx)
+    h_j = gather_term_nodes(h_nodes, h_j_idx)
+
+    #e_ij = gather_edges(h_edges, E_idx)
+    e_ij = h_edges
+
+    # output features [B, T, N, K, 3C]
+    h_nn = torch.cat([h_i, h_j, e_ij], -1)
+    return h_nn
+
+
+
 
 class Normalize(nn.Module):
     def __init__(self, features, epsilon=1e-6):
@@ -147,6 +190,34 @@ class EdgeTransformerLayer(nn.Module):
             mask_E = mask_E.unsqueeze(-1).unsqueeze(-1)
             h_E = mask_E * h_E
         return h_E
+
+class TERMEdgeTransformerLayer(nn.Module):
+    def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
+        super(TERMEdgeTransformerLayer, self).__init__()
+        self.num_heads = num_heads
+        self.num_hidden = num_hidden
+        self.num_in = num_in
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.ModuleList([Normalize(num_hidden) for _ in range(2)])
+
+        self.attention = TERMEdgeEndpointAttention(num_hidden, num_in, num_heads)
+        self.dense = PositionWiseFeedForward(num_hidden, num_hidden * 4)
+
+    def forward(self, h_E, h_EV, E_idx, mask_E=None, mask_attend=None):
+        """ Parallel computation of full transformer layer """
+        # Self-attention
+        dh = self.attention(h_E, h_EV, E_idx, mask_attend)
+        h_E = self.norm[0](h_E + self.dropout(dh))
+
+        # Position-wise feedforward
+        dh = self.dense(h_E)
+        h_E = self.norm[1](h_E + self.dropout(dh))
+
+        if mask_E is not None:
+            mask_E = mask_E.unsqueeze(-1).unsqueeze(-1)
+            h_E = mask_E * h_E
+        return h_E
+
 
 
 class MPNNLayer(nn.Module):
@@ -335,8 +406,6 @@ class EdgeEndpointAttention(nn.Module):
             h_E_update      Edge update
         """
 
-        # this aint dun yet
-
         # Queries, Keys, Values
         n_batch, n_nodes, k = h_E.shape[:-1]
         n_heads = self.num_heads
@@ -373,6 +442,7 @@ class EdgeEndpointAttention(nn.Module):
         h_E_update = merge_duplicate_edges(h_E_update, E_idx)
         return h_E_update
 
+
 def merge_duplicate_edges(h_E_update, E_idx):
     dev = h_E_update.device
     n_batch, n_nodes, k, hidden_dim = h_E_update.shape
@@ -387,3 +457,88 @@ def merge_duplicate_edges(h_E_update, E_idx):
     # average h_E_update and reverse_E_update at non-zero positions
     merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update)/2, h_E_update)
     return merged_E_updates
+
+
+class TERMEdgeEndpointAttention(nn.Module):
+    def __init__(self, num_hidden, num_in, num_heads=4):
+        super(TERMEdgeEndpointAttention, self).__init__()
+        self.num_heads = num_heads
+        self.num_hidden = num_hidden
+
+        # Self-attention layers: {queries, keys, values, output}
+        self.W_Q = nn.Linear(num_hidden, num_hidden, bias=False)
+        self.W_K = nn.Linear(num_in, num_hidden, bias=False)
+        self.W_V = nn.Linear(num_in, num_hidden, bias=False)
+        self.W_O = nn.Linear(num_hidden, num_hidden, bias=False)
+
+    def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
+        """ Numerically stable masked softmax """
+        negative_inf = np.finfo(np.float32).min
+        mask_attn_dev = mask_attend.device
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
+        attend = F.softmax(attend_logits, dim)
+        attend = mask_attend.float() * attend
+        return attend
+
+    def forward(self, h_E, h_EV, E_idx, mask_attend=None):
+        """ Self-attention, graph-structured O(Nk)
+        Args:
+            h_E:            Edge features               [N_batch, N_nodes, K, N_hidden]
+            h_EV:           Edge + endpoint features    [N_batch, N_nodes, K, N_hidden * 3]
+            mask_attend:    Mask for attention          [N_batch, N_nodes, K]
+        Returns:
+            h_E_update      Edge update
+        """
+
+        # Queries, Keys, Values
+        n_batch, n_terms, n_aa, n_neighbors = h_E.shape[:-1]
+        n_heads = self.num_heads
+
+        assert self.num_hidden % n_heads == 0
+
+        d = self.num_hidden // n_heads
+        Q = self.W_Q(h_E).view([n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3,4)
+        K = self.W_K(h_EV).view([n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3,4)
+        V = self.W_V(h_EV).view([n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3,4)
+
+        # Attention with scaled inner product
+        attend_logits = torch.matmul(Q, K.transpose(-2,-1)) / np.sqrt(d)
+
+        if mask_attend is not None:
+            # we need to reshape the src key mask for edge-edge attention
+            # expand to num_heads
+            mask = mask_attend.unsqueeze(3).expand(-1, -1, -1, n_heads, -1).unsqueeze(-1).double()
+            mask_t = mask.transpose(-2, -1)
+            # perform outer product
+            mask = mask @ mask_t
+            mask = mask.byte()
+            # Masked softmax
+            attend = self._masked_softmax(attend_logits, mask)
+        else:
+            attend = F.softmax(attend_logits, -1)
+
+        # Attentive reduction
+        h_E_update = torch.matmul(attend, V).transpose(3,4).contiguous()
+        h_E_update = h_E_update.view([n_batch, n_terms, n_aa, n_neighbors, self.num_hidden])
+        h_E_update = self.W_O(h_E_update)
+        # nondirected edges are actually represented as two directed edges in opposite directions
+        # to allow information flow, merge these duplicate edges
+        h_E_update = merge_duplicate_term_edges(h_E_update, E_idx)
+        return h_E_update
+
+def merge_duplicate_term_edges(h_E_update, E_idx):
+    dev = h_E_update.device
+    n_batch, n_terms, n_aa, n_neighbors, hidden_dim = h_E_update.shape
+    # collect edges into NxN tensor shape
+    collection = torch.zeros((n_batch, n_terms, n_aa, n_aa, hidden_dim)).to(dev)
+    neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, -1, hidden_dim).to(dev)
+    collection.scatter_(3, neighbor_idx, h_E_update)
+    # transpose to get same edge in reverse direction
+    collection = collection.transpose(2,3)
+    # gather reverse edges
+    reverse_E_update = gather_term_edges(collection, E_idx)
+    # average h_E_update and reverse_E_update at non-zero positions
+    merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update)/2, h_E_update)
+    return merged_E_updates
+
+
