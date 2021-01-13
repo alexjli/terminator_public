@@ -8,7 +8,7 @@ from shutil import copyfile
 int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 3}
 
 INPUT_DATA = '/scratch/users/alexjli/TERMinator'
-OUTPUT_FILES = '/scratch/users/vsundar/TERMinator/outputs/'
+OUTPUT_FILES = '/scratch/users/alexjli/ablate_s2s_runs/'
 
 # should work for multi-chain proteins now
 def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --partition=sched_mem1TB_centos7
+#SBATCH --partition=defq
 #SBATCH --time=06:00:00
 #SBATCH -n 16
 #SBATCH --mem=0
@@ -11,4 +11,6 @@
 module add gcc
 module add slurm
 module add c3ddb/miniconda
+source ~/.bashrc
+conda activate analysis
 python to_etab.py --output_dir=OUTPUTDIR
