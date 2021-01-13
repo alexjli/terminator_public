@@ -4,6 +4,9 @@ import os
 from utils.common import AA_to_int
 import argparse
 from shutil import copyfile
+import multiprocessing as mp
+import time
+from tqdm import tqdm
 
 int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 3}
 
@@ -90,9 +93,11 @@ def get_idx_dict(pdb):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Generate etabs')
     parser.add_argument('--output_dir', help = 'output directory', default = 'test_run')
+    parser.add_argument('--num_cores', help = 'number of processes for parallelization', default=1)
     args = parser.parse_args()
 
     output_dir = os.path.join(OUTPUT_FILES, args.output_dir)
+    num_cores = int(args.num_cores)
 
     p1 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1/')
     p2 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p2/')
@@ -107,9 +112,21 @@ if __name__ == '__main__':
     with open(os.path.join(output_dir, 'net.out'), 'rb') as fp:
         dump = pickle.load(fp)
 
+    pool = mp.Pool(num_cores)
+    start = time.time()
+    pbar = tqdm(total = len(dump))
+
     for data in dump:
         pdb = data['ids'][0]
-        print(pdb)
+        #print(pdb)
+        out_path = os.path.join(output_dir, 'etabs/' + pdb + '.etab')
+
+        
+        if os.path.exists(out_path):
+            print(f"{pdb} etab already computed, skipping")
+            continue
+        
+
         idx_dict = None
         if os.path.isdir(p1 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p1, pdb, pdb))
@@ -135,11 +152,18 @@ if __name__ == '__main__':
         E_idx = data['idx'][0]
         etab = data['out'][0]
 
-        out_path = os.path.join(output_dir, 'etabs/' + pdb + '.etab')
-        if os.path.exists(out_path):
-            continue
-        worked = to_etab_file(etab, E_idx, idx_dict, out_path)
-        if not worked:
-            os.remove(out_path)
+        def check_worked(worked):
+            pbar.update()
+            if not worked:
+                os.remove(out_path)
+        def raise_error(error):
+            raise error
+        res = pool.apply_async(to_etab_file, args = (etab, E_idx, idx_dict, out_path), callback = check_worked, error_callback = raise_error)
 
+    #print("all jobs loaded into mp pool")
+    pool.close()
+    pool.join()
+    pbar.close()
+    end = time.time()
+    print(f"done, took {end - start} seconds")
 
