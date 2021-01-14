@@ -3,8 +3,8 @@ import argparse
 import glob
 import pandas as pd
 
-INPUT_DATA = '/scratch/users/alexjli/TERMinator'
-OUTPUT_DIR = '/scratch/users/vsundar/TERMinator/outputs/'
+INPUT_DATA = '/scratch/users/alexjli/TERMinator/'
+OUTPUT_DIR = '/scratch/users/alexjli/ablate_s2s_runs/'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse all results.')
@@ -12,7 +12,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, args.output_dir, 'etabs')
-    p0 = '/scratch/users/vsundar/TERMinator/fixed_dTERMen/'
+    p0 = '/scratch/users/alexjli/TERMinator/fixed_dTERMen/'
     p1 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1/')
     p2 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p2/')
     p3 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p3/')
@@ -38,10 +38,26 @@ if __name__ == '__main__':
             real_sequences += [f.readline().split('|')[0]]
             recovery += [float(f.readline().split('|')[0][:-2])]
 
+        last_testfolder = None
         for testfolder in p:
             already_found = False
             already_found_recov = False
             if os.path.isdir(os.path.join(testfolder, pdb_id)):
+                last_testfolder = testfolder
+                if os.path.isfile(os.path.join(testfolder, pdb_id, 'design.oFIXED')):
+                    fixed_file = os.path.join(testfolder, pdb_id, 'design.oFIXED')
+                    with open(fixed_file, 'r') as f:
+                        for line in f:
+                            linesplit = line.split('|')
+                            if len(linesplit) >= 3:
+                                if linesplit[2] == ' lowest-energy sequence\n' and not already_found:
+                                    dtermen_pred_sequences += [linesplit[0]]
+                                    already_found = True
+                                elif len(linesplit) >= 4 and linesplit[3] == ' recovery\n' and not already_found_recov:
+                                    dtermen_recovery += [float(linesplit[0][:-2])]
+                                    already_found_recov = True
+                                    break
+ 
                 for dtermen_filename in glob.glob(os.path.join(testfolder, pdb_id, 'design.o*')):
                     with open(dtermen_filename, 'r') as f:
                         for line in f:
@@ -62,7 +78,7 @@ if __name__ == '__main__':
         if len(dtermen_recovery) < len(pred_sequences):
             dtermen_recovery += [-1]
             with open('to_run.out', 'a') as f:
-                f.write(f'{testfolder}{pdb_id}\n')
+                f.write(f'{last_testfolder}{pdb_id}\n')
 
     results_dict = {'ids': ids, 'pred_sequences': pred_sequences, 'real_sequences': real_sequences, 'dtermen_pred_sequences': dtermen_pred_sequences, 'recovery': recovery, 'dtermen_recovery': dtermen_recovery}
     results_df = pd.DataFrame(results_dict)

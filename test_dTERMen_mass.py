@@ -2,7 +2,7 @@ import os
 import argparse
 import glob
 
-OUTPUT_DIR = '/scratch/users/vsundar/TERMinator/outputs/'
+OUTPUT_DIR = '/scratch/users/alexjli/ablate_s2s_runs'
 PDB_PATH = '/scratch/users/swans/ironfs_swans/monomer_DB/out/PDB/'
 
 if __name__ == '__main__':
@@ -16,5 +16,5 @@ if __name__ == '__main__':
         pdb_id = filename[-9:-5]
         print(pdb_id)
         os.system(f"cp {PDB_PATH}{pdb_id.lower()[1:3]}/{pdb_id}.pdb {output_path}/{pdb_id}.pdb")
-        os.system(f"sed -e \"s/ID/{pdb_id}/g\" -e 's/OUTPUTDIR/{args.output_dir}/g' </home/vsundar/TERMinator_code/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
+        os.system(f"sed -e \"s/ID/{pdb_id}/g\" -e 's/OUTPUTDIR/{args.output_dir}/g' </home/alexjli/TERMinator/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
         os.system(f"cd {output_path} && sbatch run_{pdb_id}.sh")
