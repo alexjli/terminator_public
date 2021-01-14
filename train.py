@@ -77,7 +77,7 @@ def main(args):
             kwargs['multiprocessing_context'] = 'forkserver'
             kwargs['num_workers'] = 1
     else:
-        kwargs['num_workers'] = 2
+        kwargs['num_workers'] = 16
 
     hparams = json.load(open(args.hparams, 'r'))
     for key in DEFAULT_HPARAMS:
