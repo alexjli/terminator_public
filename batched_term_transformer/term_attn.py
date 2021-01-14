@@ -367,7 +367,6 @@ class TERMMatchTransformerEncoder(nn.Module):
         # lets try [CLS]-style pooling
         pool_token_init = torch.zeros(1, hidden_dim)
         torch.nn.init.xavier_uniform_(pool_token_init)
-
         self.pool_token = nn.Parameter(pool_token_init, requires_grad=True)
 
     def forward(self, V, mask):
@@ -375,12 +374,12 @@ class TERMMatchTransformerEncoder(nn.Module):
         n_batches, sum_term_len, n_align = V.shape[:3]
         pool = self.pool_token.view([1, 1, 1, self.hidden_dim]).expand(n_batches, sum_term_len, 1, -1)
 
-        V = torch.cat([V, pool], dim = -2)
-
+        V = torch.cat([pool, V], dim = -2)
+        
         h_V = self.W_v(V)
 
         # Encoder is unmasked self-attention
-        for layer in self.encoder_layers:
+        for idx, layer in enumerate(self.encoder_layers):
             h_V = layer(h_V, mask.unsqueeze(-1).float(), checkpoint = self.hparams['gradient_checkpointing'])
 
         h_V = self.W_out(h_V)
