@@ -204,7 +204,6 @@ class CondenseMSA(nn.Module):
                     break
         local_dev = X.device
 
-
         # zero out all positions used as padding so they don't contribute to aggregation
         negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['hidden_dim'])
         # embed MSAs and concat other features on
@@ -223,7 +222,7 @@ class CondenseMSA(nn.Module):
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
-        condensed_matches *= negate_padding_mask.float()
+        condensed_matches *= negate_padding_mask
 
         if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
 
@@ -241,10 +240,12 @@ class CondenseMSA(nn.Module):
         if self.hparams['transformer_linear']:
             node_embeddings = batchify_terms
         else:
-            node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask.float(), mask_attend = batchify_src_key_mask)
+            node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask, mask_attend = batchify_src_key_mask)
 
         if self.track_nan: process_nan(node_embeddings, condensed_matches, 'transform')
 
+        # zero out padding for aggregation
+        node_embeddings *= batchify_src_key_mask.unsqueeze(-1)
 
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
@@ -267,6 +268,8 @@ class CondenseMSA(nn.Module):
 
 
         return aggregate
+
+
 
 class Wrapper(nn.Module):
     def __init__(self, hidden_dim = 64, num_features = NUM_FEATURES, filter_len = 3, num_blocks = 4, nheads = 8, device = 'cuda:0'):

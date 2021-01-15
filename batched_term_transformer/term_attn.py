@@ -103,7 +103,7 @@ class TERMAttention(nn.Module):
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
-            mask = mask.byte()
+            mask = mask.bool()
             # Masked softmax
             attend = self._masked_softmax(attend_logits, mask)
         else:

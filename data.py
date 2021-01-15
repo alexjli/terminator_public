@@ -107,7 +107,7 @@ class TERMDataLoader():
             #selfEs = pad_sequence(selfEs, batch_first=True)
             focuses = pad_sequence(focuses, batch_first=True)
 
-            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
+            src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
             seqs = pad_sequence(seqs, batch_first = True)
 
             # we do some padding so that tensor reshaping during batchifyTERM works
@@ -304,7 +304,7 @@ class TERMLazyDataLoader(Sampler):
         #selfEs = pad_sequence(selfEs, batch_first=True)
         focuses = pad_sequence(focuses, batch_first=True)
 
-        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).byte()
+        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
         seqs = pad_sequence(seqs, batch_first = True)
 
         # we do some padding so that tensor reshaping during batchifyTERM works
