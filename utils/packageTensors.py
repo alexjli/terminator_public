@@ -18,6 +18,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
     term_features = []
     term_focuses = []
     term_lens = []
+    # compute TERM features
     for term_data in data['terms']:
         focus = term_data['focus']
         # only take data for residues that are in the selection
@@ -67,15 +68,14 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
         term_features.append(features)
 
     msa_tensor = np.concatenate(term_msas, axis = -1)
-
     features_tensor = np.concatenate(term_features, axis = 1)
-
     len_tensor = np.array(term_lens)
     term_focuses = np.array(term_focuses)
 
     # check that sum of term lens is as long as the feature tensor
     assert sum(len_tensor) == features_tensor.shape[1]
 
+    # manipulate coords to right shape
     pdb = in_path.split('/')[-1]
 
     coords_tensor = None
@@ -88,9 +88,16 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True):
 
     assert coords_tensor.shape[0] == len(data['sequence']), "num aa coords != seq length"
 
+    # embed target ppoe
+    ppoe = data['ppoe']
+    ppo = ppoe[:, :3]
+    env = ppoe[:, 3:]
+    embedded_ppoe = np.concatenate([np.sin(ppo), np.cos(ppo), env], axis = 1)
+
     output = {
         'pdb': pdb,
         'coords': coords_tensor,
+        'ppoe': embedded_ppoe,
         'features': features_tensor,
         'msas': msa_tensor,
         'focuses': term_focuses,
