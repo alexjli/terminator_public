@@ -13,4 +13,4 @@ module add slurm
 module add c3ddb/miniconda
 source ~/.bashrc
 conda activate analysis
-python to_etab.py --output_dir=OUTPUTDIR --num_cores=16
+python to_etab.py --output_dir=OUTPUTDIR
