@@ -187,8 +187,9 @@ class TERMinator(nn.Module):
                 X,
                 x_mask,
                 sequence,
-                max_seq_len):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
+                max_seq_len,
+                ppoe):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
         rms = torch.sqrt(torch.mean(etab**2))
         nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
         return nlpl, rms, avg_prob
@@ -203,9 +204,10 @@ class TERMinator(nn.Module):
               src_key_mask,
               X,
               x_mask,
-              max_seq_len):
+              max_seq_len,
+              ppoe):
         if self.hparams['use_terms']:
-            condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len)
+            condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, ppoe)
             etab, E_idx = self.top(X, x_mask, V_embed = condense)
         else:
             etab, E_idx = self.top(X, x_mask)
@@ -222,8 +224,9 @@ class TERMinator(nn.Module):
                      X,
                      x_mask,
                      sequences,
-                     max_seq_len):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
+                     max_seq_len,
+                     ppoe):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
         int_seqs = self._seq(etab, E_idx, x_mask, sequences)
         int_seqs = int_seqs.cpu().numpy()
         char_seqs = self._int_to_aa(int_seqs)
@@ -239,8 +242,8 @@ class TERMinator(nn.Module):
                       src_key_mask,
                       X,
                       x_mask,
-                      max_seq_len):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
+                      max_seq_len, ppoe):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -259,8 +262,8 @@ class TERMinator(nn.Module):
                          X,
                          x_mask,
                          sequences,
-                         max_seq_len):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len)
+                         max_seq_len, ppoe):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)

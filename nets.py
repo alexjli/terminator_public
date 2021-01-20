@@ -15,6 +15,7 @@ NUM_AA = 21
 # and https://arxiv.org/pdf/1603.05027.pdf
 
 NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
+NUM_TARGET_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env'])
 
 ERROR_FILE = '/nobackup/users/alexjli/TERMinator/run.error'
 
@@ -171,6 +172,9 @@ class CondenseMSA(nn.Module):
         self.transformer = TERMTransformerLayer(hparams = self.hparams)
         self.encoder = TERMTransformer(hparams = self.hparams, transformer = self.transformer)
         self.batchify = BatchifyTERM()
+
+        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['hidden_dim'])
+
         self.track_nan = track_nans
 
         if torch.cuda.is_available():
@@ -193,7 +197,7 @@ class CondenseMSA(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, ppoe):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -216,9 +220,15 @@ class CondenseMSA(nn.Module):
         # use Convolutional ResNet or Transformer 
         # for further embedding and to reduce dimensionality
         if self.hparams['matches'] == 'transformer':
+            # project ppoe
+            ppoe = self.W_ppoe(ppoe)
+            # gather to generate target ppoe per term residue
+            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['hidden_dim'])
+            target = torch.gather(ppoe, 1, focuses_gather)
+
             # output dimensionality is a little different for transformer
             embeddings = embeddings.transpose(1,3).transpose(1,2)
-            condensed_matches = self.matches(embeddings, ~src_key_mask)
+            condensed_matches = self.matches(embeddings, target, mask = ~src_key_mask)
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
