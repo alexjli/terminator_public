@@ -51,7 +51,7 @@ DEFAULT_HPARAMS = {
             'transformer_linear': False,
             'struct2seq_linear': False,
             'use_terms': True,
-            'train_batch_size': 32,
+            'train_batch_size': 16,
             'regularization': 0,
             'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
         }
