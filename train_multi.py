@@ -202,6 +202,7 @@ def main(args):
         writer = SummaryWriter(log_dir = os.path.join(run_output_dir, 'tensorboard'))
 
     try:
+        #torch.autograd.set_detect_anomaly(True)
         for epoch in range(start_epoch, 50):
             print('epoch', epoch)
 
@@ -226,9 +227,10 @@ def main(args):
                 term_lens = data['term_lens'].to(dev)
                 max_seq_len = max(seq_lens.tolist())
                 chain_lens = data['chain_lens']
+                ppoe = data['ppoe'].to(dev).float()
 
 
-                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, chain_lens)
+                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
 
                 if torch.cuda.device_count() > 1 and not args.horovod:
                     loss = loss.mean()
@@ -277,9 +279,10 @@ def main(args):
                     term_lens = data['term_lens'].to(dev)
                     max_seq_len = max(seq_lens.tolist())
                     chain_lens = data['chain_lens']
+                    ppoe = data['ppoe'].to(dev).float()
 
 
-                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, chain_lens)
+                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
                     if torch.cuda.device_count() > 1 and not args.horovod:
                         loss = loss.mean()
                         prob = prob.mean()
@@ -287,7 +290,7 @@ def main(args):
                     running_prob += prob.item()
                     count = i
 
-                    p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, chain_lens)
+                    p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
                     recovery.append(p_recov)
                     
                     val_progress.update(1)
@@ -347,20 +350,21 @@ def main(args):
             term_lens = data['term_lens'].to(dev)
             max_seq_len = max(seq_lens.tolist())
             chain_lens = data['chain_lens']
+            ppoe = data['ppoe'].to(dev).float()
 
-            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, chain_lens)
+            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
             if torch.cuda.device_count() > 1 and not args.horovod:
                 loss = loss.mean()
                 prob = prob.mean()
             
             print(loss.item(), prob.item())
 
-            output, E_idx = terminator_module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
+            output, E_idx = terminator_module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
             
-            pred_seqs = terminator_module.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
-            opt_seqs = terminator_module.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, chain_lens)
+            pred_seqs = terminator_module.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
+            opt_seqs = terminator_module.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
             print(ids)
-            p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, chain_lens)
+            p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
             print('pred', pred_seqs)
             print('opt', opt_seqs)
             print('p recov', p_recov)
