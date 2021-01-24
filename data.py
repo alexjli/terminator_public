@@ -338,8 +338,8 @@ class TERMLazyDataLoader(Sampler):
         #print(ids)
 
         return {'msas':msas, 
-                'features':features,
-                'ppoe': ppoe,
+                'features':features.float(),
+                'ppoe': ppoe.float(),
                 'seq_lens':seq_lens, 
                 'focuses':focuses,
                 'src_key_mask':src_key_mask, 
