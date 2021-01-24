@@ -276,7 +276,6 @@ class S2STERMTransformerEncoder(nn.Module):
         return self.W_out(h_V)
 
 
-
 class TERMGraphTransformerEncoder(nn.Module):
     def __init__(self, hparams):
         """ Graph labeling network """
