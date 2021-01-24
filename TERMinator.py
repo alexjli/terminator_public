@@ -1,5 +1,5 @@
 from nets import CondenseMSA
-from condense import MultiChainCondenseMSA, MultiChainCondenseMSA_g
+from condense import *
 from energies import *
 from struct2seq.self_attention import *
 import torch
@@ -152,7 +152,6 @@ class TERMinator(nn.Module):
         # convert energies to probabilities
         composite_nrgs_reshape = composite_nrgs.view(n_batch, L, k-1, 21 * 21, 1)
         composite_prob_dist = torch.softmax(-composite_nrgs_reshape, dim = -2).view(n_batch, L, k-1, 21, 21)
-
         # get the probability of the sequence
         im_probs = torch.gather(composite_prob_dist, 4, E_aa).squeeze(-1)
         ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1,1]).expand(-1, -1, k-1, 1)
@@ -242,7 +241,8 @@ class TERMinator(nn.Module):
                       src_key_mask,
                       X,
                       x_mask,
-                      max_seq_len, ppoe):
+                      max_seq_len, 
+                      ppoe):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
@@ -262,7 +262,8 @@ class TERMinator(nn.Module):
                          X,
                          x_mask,
                          sequences,
-                         max_seq_len, ppoe):
+                         max_seq_len, 
+                         ppoe):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
@@ -360,8 +361,9 @@ class MultiChainTERMinator(TERMinator):
                 x_mask,
                 sequence,
                 max_seq_len,
+                ppoe,
                 chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
         rms = torch.sqrt(torch.mean(etab**2))
         nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
         return nlpl, rms, avg_prob
@@ -377,6 +379,7 @@ class MultiChainTERMinator(TERMinator):
               X,
               x_mask,
               max_seq_len,
+              ppoe,
               chain_lens):
 
         # generate chain_idx from chain_lens
@@ -389,7 +392,7 @@ class MultiChainTERMinator(TERMinator):
             chain_idx.append(torch.cat(arrs, dim = -1))
         chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
 
-        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X)
+        condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X, ppoe)
         etab, E_idx = self.top(condense, X, x_mask, chain_idx)
         return etab, E_idx
 
@@ -405,8 +408,9 @@ class MultiChainTERMinator(TERMinator):
                      x_mask,
                      sequences,
                      max_seq_len,
+                     ppoe,
                      chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
         int_seqs = self._seq(etab, E_idx, x_mask, sequences)
         int_seqs = int_seqs.cpu().numpy()
         char_seqs = self._int_to_aa(int_seqs)
@@ -423,8 +427,9 @@ class MultiChainTERMinator(TERMinator):
                       X,
                       x_mask,
                       max_seq_len,
+                      ppoe,
                       chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -444,8 +449,9 @@ class MultiChainTERMinator(TERMinator):
                          x_mask,
                          sequences,
                          max_seq_len,
+                         ppoe,
                          chain_lens):
-        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, chain_lens)
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
         self_nrgs = self._get_self_etab(etab)
         init_seqs = self._init_seqs(self_nrgs)
         pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
@@ -476,6 +482,7 @@ class MultiChainTERMinator_g(MultiChainTERMinator):
               X,
               x_mask,
               max_seq_len,
+              ppoe,
               chain_lens):
 
         # generate chain_idx from chain_lens
@@ -488,10 +495,22 @@ class MultiChainTERMinator_g(MultiChainTERMinator):
             chain_idx.append(torch.cat(arrs, dim = -1))
         chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
 
-        node_embeddings, edge_embeddings = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X)
+        node_embeddings, edge_embeddings = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X, ppoe)
         etab, E_idx = self.top(node_embeddings, edge_embeddings, X, x_mask, chain_idx)
         return etab, E_idx
 
+class GVPTERMinator(MultiChainTERMinator_g):
+    def __init__(self, hparams, device = 'cuda:0'):
+        super(MultiChainTERMinator, self).__init__(hparams, device)
+        self.dev = device
+        self.hparams = hparams
+        self.bot = GVPCondenseMSA(hparams, device = self.dev)
+        self.top = GVPPairEnergies(hparams).to(self.dev)
+
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
 
 
