@@ -227,7 +227,8 @@ class TERMLazyDataLoader(Sampler):
         self.sort_data = sort_data
         self.batch_shuffle = batch_shuffle
         self.batch_size = batch_size
-        self.drop_last = self.drop_last
+        self.drop_last = drop_last
+        self.max_term_res = max_term_res
 
         # initialize clusters
         self._cluster()
@@ -237,10 +238,10 @@ class TERMLazyDataLoader(Sampler):
 
         # if we sort data, use sorted indexes instead
         if self.sort_data:
-            shuffle_idx = np.argsort(self.lengths)
+            idx_list = np.argsort(self.lengths)
         else:
             idx_list = list(range(len(self.dataset)))
-            shuffle_idx = np.random.shuffle(idx_list)
+            np.random.shuffle(idx_list)
 
         # Cluster into batches of similar sizes
         clusters, batch = [], []
@@ -250,7 +251,7 @@ class TERMLazyDataLoader(Sampler):
         if self.max_term_res > 0 and self.batch_size is None:
             current_batch_lens = []
             total_data_len = 0
-            for count, idx in enumerate(shuffle_idx):
+            for count, idx in enumerate(idx_list):
                 current_batch_lens.append(self.lengths[idx])
                 total_data_len = max(current_batch_lens) * len(current_batch_lens)
                 if count != 0 and total_data_len > max_total_data_len:
@@ -261,14 +262,14 @@ class TERMLazyDataLoader(Sampler):
                     batch.append(idx)
 
         else: # used fixed batch size
-            for count, idx in enumerate(shuffle_idx):
+            for count, idx in enumerate(idx_list):
                 if count != 0 and count % self.batch_size == 0:
                     clusters.append(batch)
                     batch = [idx]
                 else:
                     batch.append(idx)
 
-        if len(batch) > 0 and not drop_last:
+        if len(batch) > 0 and not self.drop_last:
             clusters.append(batch)
         self.clusters = clusters
  
