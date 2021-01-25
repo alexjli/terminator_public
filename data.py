@@ -219,24 +219,38 @@ class LazyDataset(Dataset):
             return self.dataset[data_idx]
 
 class TERMLazyDataLoader(Sampler):
-    def __init__(self, dataset, batch_size=4, shuffle=True, batch_shuffle = True, drop_last = False, max_total_data_len = 55000):
+    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, batch_shuffle = True, drop_last = False, max_term_res = 55000):
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.lengths = zip(*dataset)
         self.shuffle = shuffle
+        self.sort_data = sort_data
         self.batch_shuffle = batch_shuffle
         self.batch_size = batch_size
-        sorted_idx = np.argsort(self.lengths)
+        self.drop_last = self.drop_last
+
+        # initialize clusters
+        self._cluster()
+
+    def _cluster(self):
+        """ Shuffle data and make new clusters """
+
+        # if we sort data, use sorted indexes instead
+        if self.sort_data:
+            shuffle_idx = np.argsort(self.lengths)
+        else:
+            idx_list = list(range(len(self.dataset)))
+            shuffle_idx = np.random.shuffle(idx_list)
 
         # Cluster into batches of similar sizes
         clusters, batch = [], []
 
         # if batch_size is None, fit as many proteins we can into a batch
         # without overloading the GPU
-        if max_total_data_len > 0 and batch_size is None:
+        if self.max_term_res > 0 and self.batch_size is None:
             current_batch_lens = []
             total_data_len = 0
-            for count, idx in enumerate(sorted_idx):
+            for count, idx in enumerate(shuffle_idx):
                 current_batch_lens.append(self.lengths[idx])
                 total_data_len = max(current_batch_lens) * len(current_batch_lens)
                 if count != 0 and total_data_len > max_total_data_len:
@@ -245,10 +259,9 @@ class TERMLazyDataLoader(Sampler):
                     current_batch_lens = [self.lengths[idx]]
                 else:
                     batch.append(idx)
-                    #current_batch_lens.append(self.lengths[idx])
 
         else: # used fixed batch size
-            for count, idx in enumerate(sorted_idx):
+            for count, idx in enumerate(shuffle_idx):
                 if count != 0 and count % self.batch_size == 0:
                     clusters.append(batch)
                     batch = [idx]
@@ -258,7 +271,7 @@ class TERMLazyDataLoader(Sampler):
         if len(batch) > 0 and not drop_last:
             clusters.append(batch)
         self.clusters = clusters
-        # print(self.clusters)
+ 
 
     def _package(self, b_idx):
         # wrap up all the tensors with proper padding and masks
@@ -323,28 +336,11 @@ class TERMLazyDataLoader(Sampler):
             term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
         term_lens = torch.tensor(term_lens)
 
-        """
-        # pack all the etabs into one big sparse tensor
-        idxs = []
-        vals = []
-        for batch, e in enumerate(etabs):
-            for ix, nrgs in e.items():
-                idxs.append(torch.tensor([batch] + list(ix)))
-                vals.append(convert(nrgs))
-
-        idx_t = torch.stack(idxs).transpose(0,1).long()
-        val_t = torch.stack(vals)
-        etab = torch.sparse.FloatTensor(idx_t, val_t)
-        """
-
-        #print(ids)
-
         return {'msas':msas, 
                 'features':features, 
                 'seq_lens':seq_lens, 
                 'focuses':focuses,
                 'src_key_mask':src_key_mask, 
-                #'selfEs':selfEs, 
                 'term_lens':term_lens, 
                 'X':X, 
                 'x_mask':x_mask, 
@@ -357,6 +353,7 @@ class TERMLazyDataLoader(Sampler):
 
     def __iter__(self):
         if self.shuffle:
+            self._cluster()
             np.random.shuffle(self.clusters)
         for batch in self.clusters:
             yield batch
