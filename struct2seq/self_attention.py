@@ -214,7 +214,7 @@ class TERMEdgeTransformerLayer(nn.Module):
         h_E = self.norm[1](h_E + self.dropout(dh))
 
         if mask_E is not None:
-            mask_E = mask_E.unsqueeze(-1).unsqueeze(-1)
+            mask_E = mask_E.unsqueeze(-1)
             h_E = mask_E * h_E
         return h_E
 
