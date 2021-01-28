@@ -156,12 +156,15 @@ class TERMinator(nn.Module):
         im_probs = torch.gather(log_composite_prob_dist, 4, E_aa).squeeze(-1)
         ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1,1]).expand(-1, -1, k-1, 1)
         log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
-        
-        # get average composite psuedolikelihood per residue per batch
-        avg_prob = torch.mean(torch.mean(torch.mean(torch.exp(log_edge_probs), dim=-1), dim=-1))
 
+        # reshape masks
         x_mask = x_mask.unsqueeze(-1)
         isnt_x_aa = isnt_x_aa.unsqueeze(-1)
+
+        # get average composite psuedolikelihood per residue per batch
+        edge_probs = torch.exp(log_edge_probs) * x_mask * isnt_x_aa
+        avg_prob = torch.mean(torch.mean(torch.mean(edge_probs, dim=-1), dim=-1))
+
         # convert to nlcpl
         log_edge_probs *= x_mask # zero out positions that don't have residues
         log_edge_probs *= isnt_x_aa # zero out positions where the native sequence is X
