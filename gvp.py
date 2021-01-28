@@ -63,7 +63,7 @@ class GVPDropout(nn.Module):
         self.sdropout = nn.Dropout(rate)
 
     def forward(self, x):
-        if self.training: return x
+        if not self.training: return x
         v, s = split(x, self.nv)
         v, s = self.vdropout(v), self.sdropout(s)
         return merge(v, s)
@@ -71,8 +71,10 @@ class GVPDropout(nn.Module):
     # a form of dropout that either drops
     # the whole vector or none of it
     def vdropout(self, x):
+        dev = x.device
+
         p = self.rate
-        p_mask = torch.tensor(1-p) # probability of a 1
+        p_mask = torch.tensor(1-p).to(dev) # probability of a 1
         p_mask = p_mask.view([1 for _ in range(len(x.shape))]) # view so we can expand
         p_mask = p_mask.expand(list(x.shape[:-2]) + [1, self.nv]) # e x p a n d
         mask = torch.bernoulli(p_mask) # now we have dropout probs
