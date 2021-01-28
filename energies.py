@@ -100,7 +100,7 @@ class PairEnergies(nn.Module):
         # Embedding layers
         self.W_v = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
         self.W_e = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=True)
-        layer = EdgeTransformerLayer
+        layer = EdgeTransformerLayer if not hparams['energies_use_mpnn'] else EdgeMPNNLayer
 
         # Encoder layers
         self.encoder_layers = nn.ModuleList([
