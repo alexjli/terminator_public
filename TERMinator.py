@@ -63,16 +63,16 @@ class TERMinator(nn.Module):
 
 
         # convert energies to probabilities
-        all_aa_probs = torch.softmax(-aa_nrgs, dim = 2)
+        log_all_aa_probs = torch.log_softmax(-aa_nrgs, dim = 2)
         # get the probability of the sequence
-        seqs_probs = torch.gather(all_aa_probs, 2, ref_seqs.unsqueeze(-1)).squeeze(-1)
+        log_seqs_probs = torch.gather(log_all_aa_probs, 2, ref_seqs.unsqueeze(-1)).squeeze(-1)
         
         # get average psuedolikelihood per residue
-        avg_prob = torch.mean(torch.mean(seqs_probs, dim=-1))
+        avg_prob = torch.mean(torch.mean(torch.exp(log_seqs_probs), dim=-1))
 
         # convert to nlpl
-        log_probs = torch.log(seqs_probs) * x_mask # zero out positions that don't have residues
-        log_probs = log_probs * isnt_x_aa # zero out positions where the native sequence is X
+        log_probs *= x_mask # zero out positions that don't have residues
+        log_probs *= isnt_x_aa # zero out positions where the native sequence is X
         n_res = torch.sum(x_mask * isnt_x_aa, dim=-1)
         nlpl = torch.sum(log_probs, dim=-1)#/n_res
         nlpl = -torch.mean(nlpl)
