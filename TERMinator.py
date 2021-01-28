@@ -151,20 +151,20 @@ class TERMinator(nn.Module):
 
         # convert energies to probabilities
         composite_nrgs_reshape = composite_nrgs.view(n_batch, L, k-1, 21 * 21, 1)
-        composite_prob_dist = torch.softmax(-composite_nrgs_reshape, dim = -2).view(n_batch, L, k-1, 21, 21)
+        log_composite_prob_dist = torch.log_softmax(-composite_nrgs_reshape, dim = -2).view(n_batch, L, k-1, 21, 21)
         # get the probability of the sequence
-        im_probs = torch.gather(composite_prob_dist, 4, E_aa).squeeze(-1)
+        im_probs = torch.gather(log_composite_prob_dist, 4, E_aa).squeeze(-1)
         ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1,1]).expand(-1, -1, k-1, 1)
-        edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
+        log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
         
         # get average composite psuedolikelihood per residue per batch
-        avg_prob = torch.mean(torch.mean(torch.mean(edge_probs, dim=-1), dim=-1))
+        avg_prob = torch.mean(torch.mean(torch.mean(torch.exp(log_edge_probs), dim=-1), dim=-1))
 
         x_mask = x_mask.unsqueeze(-1)
         isnt_x_aa = isnt_x_aa.unsqueeze(-1)
         # convert to nlcpl
-        log_edge_probs = torch.log(edge_probs) * x_mask # zero out positions that don't have residues
-        log_edge_probs = log_edge_probs * isnt_x_aa # zero out positions where the native sequence is X
+        log_edge_probs *= x_mask # zero out positions that don't have residues
+        log_edge_probs *= isnt_x_aa # zero out positions where the native sequence is X
         n_res = torch.sum((x_mask * isnt_x_aa).squeeze(-1), dim=-1)
         log_seq_probs = torch.sum(log_edge_probs, dim=-1)
         nlcpl = torch.sum(log_seq_probs, dim=-1)/(2 * n_res) # we divide by 2 because each probability is duplicated
@@ -501,7 +501,7 @@ class MultiChainTERMinator_g(MultiChainTERMinator):
 
 class GVPTERMinator(MultiChainTERMinator_g):
     def __init__(self, hparams, device = 'cuda:0'):
-        super(MultiChainTERMinator, self).__init__(hparams, device)
+        super(MultiChainTERMinator_g, self).__init__(hparams, device)
         self.dev = device
         self.hparams = hparams
         self.bot = GVPCondenseMSA(hparams, device = self.dev)
