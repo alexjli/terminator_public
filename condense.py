@@ -297,6 +297,7 @@ class GVPCondenseMSA(nn.Module):
         self.term_features = GVPTProteinFeatures(edge_features = hparams['hidden_dim']//2, node_features =  hparams['hidden_dim']//2)
 
         self.track_nan = track_nans
+        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['hidden_dim'])
 
         if torch.cuda.is_available():
             self.dev = device
@@ -318,7 +319,7 @@ class GVPCondenseMSA(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords, ppoe):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -342,9 +343,15 @@ class GVPCondenseMSA(nn.Module):
         # use Convolutional ResNet or Transformer 
         # for further embedding and to reduce dimensionality
         if self.hparams['matches'] == 'transformer':
+            # project ppoe
+            ppoe = self.W_ppoe(ppoe)
+            # gather to generate target ppoe per term residue
+            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['hidden_dim'])
+            target = torch.gather(ppoe, 1, focuses_gather)
+
             # output dimensionality is a little different for transformer
             embeddings = embeddings.transpose(1,3).transpose(1,2)
-            condensed_matches = self.matches(embeddings, ~src_key_mask)
+            condensed_matches = self.matches(embeddings, target, ~src_key_mask)
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
