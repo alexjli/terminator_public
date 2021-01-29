@@ -2,8 +2,7 @@ import os
 import argparse
 import glob
 
-OUTPUT_DIR = '/scratch/users/alexjli/ablate_s2s_runs'
-PDB_PATH = '/scratch/users/swans/ironfs_swans/monomer_DB/out/PDB/'
+from filepaths import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Run dTERMen for testing.')

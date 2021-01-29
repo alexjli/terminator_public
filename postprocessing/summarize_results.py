@@ -3,8 +3,7 @@ import argparse
 import glob
 import pandas as pd
 
-INPUT_DATA = '/scratch/users/alexjli/TERMinator/'
-OUTPUT_DIR = '/scratch/users/alexjli/ablate_s2s_runs/'
+from filepaths import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse all results.')

@@ -4,3 +4,5 @@
 *.etab
 *.dat
 notes.md
+postprocessing/shell_scripts
+postprocessing/logfiles
