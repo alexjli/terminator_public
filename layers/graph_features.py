@@ -928,7 +928,7 @@ class GVPTProteinFeatures(nn.Module):
         D_features = torch.cat((torch.cos(D), torch.sin(D)), 3)
         return D_features
 
-    def forward(self, X, mask, chain_idx, batched_focuses=None):
+    def forward(self, X, mask, chain_idx, batched_focuses):
         """ Featurize coordinates as an attributed graph """
 
         # Build edges in order of distance
@@ -939,17 +939,12 @@ class GVPTProteinFeatures(nn.Module):
         E_directions = self._directions(X_ca, relative_E_idx)
         RBF = self._rbf(D_neighbors)
 
-        if batched_focuses is not None:
-            # E_idx initially only contains relative indices
-            # convert to absolute indices using batched_focuses for pairwise embeddings
-            N_nodes = relative_E_idx.size(2)
-            absolute_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, N_nodes, -1), -1, relative_E_idx)
-            # Pairwise embeddings
-            E_positional = self.embeddings(absolute_E_idx, chain_idx)
-        else:
-            # we assume we're running this on the entire protein 
-            E_positional = self.embeddings(relative_E_idx, chain_idx)
-
+        # E_idx initially only contains relative indices
+        # convert to absolute indices using batched_focuses for pairwise embeddings
+        N_nodes = relative_E_idx.size(2)
+        absolute_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, N_nodes, -1), -1, relative_E_idx)
+        # Pairwise embeddings
+        E_positional = self.embeddings(absolute_E_idx, chain_idx)
 
         # Full backbone angles
         V_dihedrals = self._dihedrals(X)
@@ -976,4 +971,195 @@ class GVPTProteinFeatures(nn.Module):
             return V, E, relative_E_idx, absolute_E_idx
         else:
             return V, E, relative_E_idx
+
+# super jenk prototyping model
+class GVPProteinFeatures(nn.Module):
+    def __init__(self, edge_features, node_features, num_positional_embeddings=16,
+        num_rbf=16, top_k=30, features_type='full', augment_eps=0., dropout=0.1):
+        """ variant of struct2seq protein features, but with batches of TERMs as sequences """
+        super(GVPProteinFeatures, self).__init__()
+        self.edge_features = edge_features
+        self.node_features = node_features
+        self.top_k = top_k
+        self.num_rbf = num_rbf
+        self.num_positional_embeddings = num_positional_embeddings
+
+        # positional encoding
+        self.embeddings = IndexDiffEncoding(num_positional_embeddings)
+
+        # Normalization and embedding
+        vo, so = node_features, node_features
+        ve, se = edge_features, edge_features
+        self.node_embedding = GVP(vi=3, vo=vo, si=6, so=so,
+                                   nlv=None, nls=None)
+        self.edge_embedding = GVP(vi=1, vo=ve, si=32, so=se,
+                                   nlv=None, nls=None)
+        self.norm_nodes = nn.LayerNorm(so)
+        self.norm_edges = nn.LayerNorm(se)
+ 
+      
+    def _dist(self, X, mask, eps=1E-6):
+        """ Pairwise euclidean distances """
+        N_batch, N_terms, N_nodes, _ = X.shape
+
+        # Convolutional network on NCHW
+        mask_2D = torch.unsqueeze(mask,2) * torch.unsqueeze(mask,3)
+        dX = torch.unsqueeze(X,2) - torch.unsqueeze(X,3)
+        D = mask_2D * torch.sqrt(torch.sum(dX**2, 4) + eps)
+
+        # Identify k nearest neighbors (including self)
+        D_max, _ = torch.max(D, -1, keepdim=True)
+        D_adjust = D + (1. - mask_2D) * D_max
+        D_neighbors, E_idx = torch.topk(D_adjust, N_nodes, dim=-1, largest=False)
+
+        # Debug plot KNN
+        # print(E_idx[:10,:10])
+        # D_simple = mask_2D * torch.zeros(D.size()).scatter(-1, E_idx, torch.ones_like(knn_D))
+        # print(D_simple)
+        # fig = plt.figure(figsize=(4,4))
+        # ax = fig.add_subplot(111)
+        # D_simple = D.data.numpy()[0,:,:]
+        # plt.imshow(D_simple, aspect='equal')
+        # plt.axis('off')
+        # plt.tight_layout()
+        # plt.savefig('D_knn.pdf')
+        # exit(0)
+        return D_neighbors, E_idx
+
+    def _directions(self, X, E_idx):
+        dX = X[:,:,1:,:] - X[:,:,:-1,:]
+        X_neighbors = gather_term_nodes(X, E_idx)
+        dX = X_neighbors - X.unsqueeze(-2)
+        dX = F.normalize(dX, dim=-1)      
+        return dX
+
+    def _rbf(self, D):
+        dev = D.device
+        # Distance radial basis function
+        D_min, D_max, D_count = 0., 20., self.num_rbf
+        D_mu = torch.linspace(D_min, D_max, D_count).to(dev)
+        D_mu = D_mu.view([1,1,1,1,-1])
+        D_sigma = (D_max - D_min) / D_count
+        D_expand = torch.unsqueeze(D, -1)
+        RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
+
+        # for i in range(D_count):
+        #     fig = plt.figure(figsize=(4,4))
+        #     ax = fig.add_subplot(111)
+        #     rbf_i = RBF.data.numpy()[0,i,:,:]
+        #     # rbf_i = D.data.numpy()[0,0,:,:]
+        #     plt.imshow(rbf_i, aspect='equal')
+        #     plt.axis('off')
+        #     plt.tight_layout()
+        #     plt.savefig('rbf{}.pdf'.format(i))
+        #     print(np.min(rbf_i), np.max(rbf_i), np.mean(rbf_i))
+        # exit(0)
+        return RBF
+
+    def _orientations(self, X):
+        # X: B, T, N, 3
+        forward = F.normalize(X[:,:,1:] - X[:,:,:-1], dim=-1)
+        backward = F.normalize(X[:,:,:-1] - X[:,:,1:], dim=-1)
+        forward = F.pad(forward, [0,0, 0,1, 0,0])
+        backward = F.pad(backward, [0,0, 1,0, 0,0])
+        return torch.cat([forward.unsqueeze(-1), backward.unsqueeze(-1)], dim=-1) # B, T, N, 3, 2
+
+    def _sidechains(self, X):
+        # ['N', 'CA', 'C', 'O']
+        # X: B, T, N, 4, 3
+        n, origin, c = X[:,:,:,0,:], X[:,:,:,1,:], X[:,:,:,2,:]
+        c, n = F.normalize(c-origin, dim=-1), F.normalize(n-origin, dim=-1)
+        bisector = F.normalize(c + n, dim=-1)
+        perp = F.normalize(torch.cross(c, n, dim=-1), dim=-1)
+        vec = -bisector * np.sqrt(1/3) - perp * np.sqrt(2/3)
+        return vec # B, T, N, 3
+
+    def _dihedrals(self, X, eps=1e-7):
+        # First 3 coordinates are N, CA, C
+        X = X[:,:,:,:3,:].reshape(X.shape[0], X.shape[1], 3*X.shape[2], 3)
+
+        # Shifted slices of unit vectors
+        dX = X[:,:,1:,:] - X[:,:,:-1,:]
+        U = F.normalize(dX, dim=-1)
+        u_2 = U[:,:,:-2,:]
+        u_1 = U[:,:,1:-1,:]
+        u_0 = U[:,:,2:,:]
+        # Backbone normals
+        n_2 = F.normalize(torch.cross(u_2, u_1), dim=-1)
+        n_1 = F.normalize(torch.cross(u_1, u_0), dim=-1)
+
+        # Angle between normals
+        cosD = (n_2 * n_1).sum(-1)
+        cosD = torch.clamp(cosD, -1+eps, 1-eps)
+        D = torch.sign((u_2 * n_1).sum(-1)) * torch.acos(cosD)
+
+        # This scheme will remove phi[0], psi[-1], omega[-1]
+        D = F.pad(D, (1,2), 'constant', 0)
+        D = D.view((D.size(0), D.size(1), int(D.size(2)/3), 3))
+        phi, psi, omega = torch.unbind(D,-1)
+
+        # print(cosD.cpu().data.numpy().flatten())
+        # print(omega.sum().cpu().data.numpy().flatten())
+
+        # Bond angle calculation
+        # A = torch.acos(-(u_1 * u_0).sum(-1))
+
+        # DEBUG: Ramachandran plot
+        # x = phi.cpu().data.numpy().flatten()
+        # y = psi.cpu().data.numpy().flatten()
+        # plt.scatter(x * 180 / np.pi, y * 180 / np.pi, s=1, marker='.')
+        # plt.xlabel('phi')
+        # plt.ylabel('psi')
+        # plt.axis('square')
+        # plt.grid()
+        # plt.axis([-180,180,-180,180])
+        # plt.show()
+
+        # Lift angle representations to the circle
+        D_features = torch.cat((torch.cos(D), torch.sin(D)), 3)
+        return D_features
+
+    def forward(self, X, mask, chain_idx):
+        """ Featurize coordinates as an attributed graph """
+
+        # the functions in this are the same as the TERM featurization
+        # for prototyping i'm just going to unsqueeze this
+        # and feed it forward
+        X = X.unsqueeze(0)
+        mask = mask.unsqueeze(0)
+        chain_idx = chain_idx.unsqueeze(0)
+
+        # Build edges in order of distance
+        X_ca = X[:,:,:,1,:]
+        D_neighbors, relative_E_idx = self._dist(X_ca, mask)
+
+        # Pairwise features
+        E_directions = self._directions(X_ca, relative_E_idx)
+        RBF = self._rbf(D_neighbors)
+        E_positional = self.embeddings(relative_E_idx, chain_idx)
+
+        # Full backbone angles
+        V_dihedrals = self._dihedrals(X)
+        V_orientations = self._orientations(X_ca)
+        V_sidechains = self._sidechains(X)
+
+        V_vec = torch.cat([V_sidechains.unsqueeze(-1), V_orientations], dim=-1)
+        V = merge(V_vec, V_dihedrals)
+        E = torch.cat((E_directions, RBF, E_positional), -1)
+
+        # Embed the nodes
+        Vv, Vs = self.node_embedding(V, return_split = True)
+        V = merge(Vv, self.norm_nodes(Vs))
+
+        Ev, Es = self.edge_embedding(E, return_split = True)
+        E = merge(Ev, self.norm_edges(Es))
+        
+        # DEBUG
+        # U = (np.nan * torch.zeros(X.size(0),X.size(1),X.size(1),3)).scatter(2, E_idx.unsqueeze(-1).expand(-1,-1,-1,3), E[:,:,:,:3])
+        # plt.imshow(U.data.numpy()[0,:,:,0])
+        # plt.show()
+        # exit(0)
+        
+        return V.squeeze(0), E.squeeze(0), relative_E_idx.squeeze(0)
+
 

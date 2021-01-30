@@ -19,7 +19,7 @@ class GVPPairEnergies(nn.Module):
         self.hparams = hparams
 
         # Featurization layers
-        self.features = GVPTProteinFeatures(node_features = hparams['hidden_dim']//2, 
+        self.features = GVPProteinFeatures(node_features = hparams['hidden_dim']//2, 
                                             edge_features = hparams['hidden_dim']//2, 
                                             top_k = hparams['k_neighbors'])
 
@@ -66,10 +66,8 @@ class GVPPairEnergies(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(self, V_term, E_term, X, x_mask, chain_idx):
-        # hacky workaround
-        # same math by treating whole tensor as one 'batch'
-        V, E, E_idx = self.features(X.unsqueeze(0), x_mask.unsqueeze(0), chain_idx.unsqueeze(0))
-        V, E, E_idx = V.squeeze(0), E.squeeze(0), E_idx.squeeze(0)
+        # get graph features
+        V, E, E_idx = self.features(X, x_mask, chain_idx)
 
         h_V = self.W_v(vs_concat(V, V_term, self.nv, self.nv))
         h_E = self.W_e(vs_concat(E, E_term, self.ev, self.ev))
