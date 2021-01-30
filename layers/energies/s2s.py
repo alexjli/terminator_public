@@ -8,11 +8,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from batched_term_transformer.term_features import *
-from struct2seq.self_attention import *
-from struct2seq.protein_features import ProteinFeatures
-from struct2seq.struct2seq import Struct2Seq
-from gvp import *
+from layers.graph_features import *
+from layers.utils import *
+from layers.gvp import *
+from layers.s2s_modules import *
+from layers.struct2seq import Struct2Seq
 
 class SelfEnergies(Struct2Seq):
     def __init__(self, num_letters, node_features, edge_features, input_dim,
@@ -90,7 +90,7 @@ class PairEnergies(nn.Module):
         self.hparams = hparams
 
         # Featurization layers
-        self.features = ProteinFeatures(node_features = hparams['hidden_dim'], 
+        self.features = S2SProteinFeatures(node_features = hparams['hidden_dim'], 
                                         edge_features = hparams['hidden_dim'], 
                                         top_k = hparams['k_neighbors'], 
                                         features_type = hparams['energies_protein_features'], 
@@ -177,78 +177,6 @@ class AblatedPairEnergies(PairEnergies):
         h_EV = self.W(h_E)
 
         return h_EV, E_idx
-
-class MultiChainProteinFeatures(ProteinFeatures):
-    def __init__(self, edge_features, node_features, num_positional_embeddings=16,
-        num_rbf=16, top_k=30, features_type='full', augment_eps=0., dropout=0.1):
-        """ Extract protein features """
-        super(MultiChainProteinFeatures, self).__init__(edge_features, node_features, 
-            num_positional_embeddings=16, num_rbf=16, top_k=30, features_type='full', 
-            augment_eps=0., dropout=0.1)
-
-        # so uh this is designed to work on the batched TERMS
-        # but if we just treat the whole sequence as one big TERM
-        # the math is the same so i'm not gonna code a new module lol
-        self.embeddings = IndexDiffEncoding(num_positional_embeddings)
-
-    def forward(self, X, chain_idx, mask):
-        """ Featurize coordinates as an attributed graph """
-
-        # Data augmentation
-        if self.training and self.augment_eps > 0:
-            X = X + self.augment_eps * torch.randn_like(X)
-
-        # Build k-Nearest Neighbors graph
-        X_ca = X[:,:,1,:]
-        D_neighbors, E_idx, mask_neighbors = self._dist(X_ca, mask)
-
-        # Pairwise features
-        AD_features, O_features = self._orientations_coarse(X_ca, E_idx)
-        RBF = self._rbf(D_neighbors)
-
-        # Pairwise embeddings
-        # we unsqueeze to generate "1 TERM" per sequence, 
-        # then squeeze it back to get rid of it
-        E_positional = self.embeddings(E_idx.unsqueeze(1), chain_idx).squeeze(1)
-
-        if self.features_type == 'coarse':
-            # Coarse backbone features
-            V = AD_features
-            E = torch.cat((E_positional, RBF, O_features), -1)
-        elif self.features_type == 'hbonds':
-            # Hydrogen bonds and contacts
-            neighbor_HB = self._hbonds(X, E_idx, mask_neighbors)
-            neighbor_C = self._contacts(D_neighbors, E_idx, mask_neighbors)
-            # Dropout
-            neighbor_C = self.dropout(neighbor_C)
-            neighbor_HB = self.dropout(neighbor_HB)
-            # Pack
-            V = mask.unsqueeze(-1) * torch.ones_like(AD_features)
-            neighbor_C = neighbor_C.expand(-1,-1,-1, int(self.num_positional_embeddings / 2))
-            neighbor_HB = neighbor_HB.expand(-1,-1,-1, int(self.num_positional_embeddings / 2))
-            E = torch.cat((E_positional, neighbor_C, neighbor_HB), -1)
-        elif self.features_type == 'full':
-            # Full backbone angles
-            V = self._dihedrals(X)
-            E = torch.cat((E_positional, RBF, O_features), -1)
-        elif self.features_type == 'dist':
-            # Full backbone angles
-            V = self._dihedrals(X)
-            E = torch.cat((E_positional, RBF), -1)
-
-        # Embed the nodes
-        V = self.node_embedding(V)
-        V = self.norm_nodes(V)
-        E = self.edge_embedding(E)
-        E = self.norm_edges(E)
-
-        # DEBUG
-        # U = (np.nan * torch.zeros(X.size(0),X.size(1),X.size(1),3)).scatter(2, E_idx.unsqueeze(-1).expand(-1,-1,-1,3), E[:,:,:,:3])
-        # plt.imshow(U.data.numpy()[0,:,:,0])
-        # plt.show()
-        # exit(0)
-        return V, E, E_idx
-
 
 class MultiChainPairEnergies(PairEnergies):
     def __init__(self, hparams):
