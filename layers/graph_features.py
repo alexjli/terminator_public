@@ -393,15 +393,14 @@ class S2SProteinFeatures(nn.Module):
         return V, E, E_idx
 
 """
-   modified for multi-chain and term features
+   modified positional encoding for multi-chain and term features
 """
 
 class IndexDiffEncoding(nn.Module):
-    def __init__(self, num_embeddings, period_range=[2,1000], inf = 10000):
+    def __init__(self, num_embeddings, period_range=[2,1000]):
         super(IndexDiffEncoding, self).__init__()
         self.num_embeddings = num_embeddings
         self.period_range = period_range
-        self.inf = inf
 
     def forward(self, E_idx, chain_idx):
         dev = E_idx.device
@@ -411,12 +410,7 @@ class IndexDiffEncoding(nn.Module):
         N_nodes = E_idx.size(2)
         N_neighbors = E_idx.size(3)
         ii = torch.arange(N_nodes, dtype=torch.float32).view((1, -1, 1)).to(dev)
-        d_raw = (E_idx.float() - ii)
-
-        chain_idx_expand = chain_idx.view(1, 1, -1, 1).expand((N_batch, N_terms, -1, N_neighbors))
-        E_chain_idx = torch.gather(chain_idx_expand.to(dev), 2, E_idx)
-        same_chain = (E_chain_idx == E_chain_idx[:, :, :, 0:1]).to(dev)
-        d = torch.where(same_chain, d_raw, torch.tensor(self.inf).float().to(dev)).unsqueeze(-1)
+        d = (E_idx.float() - ii).unsqueeze(-1)
 
         # Original Transformer frequencies
         frequency = torch.exp(
@@ -433,6 +427,16 @@ class IndexDiffEncoding(nn.Module):
         # )
         angles = d * frequency.view((1,1,1,-1))
         E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
+
+        # we zero out positional frequencies from inter-chain edges
+        # the idea is, the concept of "sequence distance"
+        # between two residues in different chains doesn't
+        # make sense :P
+        chain_idx_expand = chain_idx.view(1, 1, -1, 1).expand((N_batch, N_terms, -1, N_neighbors))
+        E_chain_idx = torch.gather(chain_idx_expand.to(dev), 2, E_idx)
+        same_chain = (E_chain_idx == E_chain_idx[:, :, :, 0:1]).to(dev)
+
+        E *= same_chain.unsqueeze(-1)
         return E
 
 class TERMProteinFeatures(S2SProteinFeatures):
@@ -586,8 +590,8 @@ class TERMProteinFeatures(S2SProteinFeatures):
         # print(dX.size(), O.size(), dU.size())
         # exit(0)
 
-        O_neighbors = gather_nodes(O, E_idx)
-        X_neighbors = gather_nodes(X, E_idx)
+        O_neighbors = gather_term_nodes(O, E_idx)
+        X_neighbors = gather_term_nodes(X, E_idx)
 
         # Re-view as rotation matrices
         O = O.view(list(O.shape[:3]) + [3,3])
