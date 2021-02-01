@@ -7,7 +7,7 @@ import numpy as np
 
 #TODO: imports
 from layers.s2s_modules import PositionWiseFeedForward, Normalize
-from layers.utils import gather_nodes, cat_neighbors_nodes
+from layers.utils import *
 
 class TERMNeighborAttention(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4):
@@ -195,6 +195,16 @@ class TERMEdgeEndpointAttention(nn.Module):
         else:
             attend = F.softmax(attend_logits, -1)
 
+        # Attentive reduction
+        h_E_update = torch.matmul(attend, V).transpose(3,4).contiguous()
+        h_E_update = h_E_update.view([n_batch, n_terms, n_aa, n_neighbors, self.num_hidden])
+        h_E_update = self.W_O(h_E_update)
+        # nondirected edges are actually represented as two directed edges in opposite directions
+        # to allow information flow, merge these duplicate edges
+        h_E_update = merge_duplicate_term_edges(h_E_update, E_idx)
+        return h_E_update
+
+
 
 class TERMEdgeTransformerLayer(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
@@ -272,7 +282,7 @@ class TERMGraphTransformerEncoder(nn.Module):
         h_E = self.W_e(E)
 
         # Encoder is unmasked self-attention
-        mask_attend = gather_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
+        mask_attend = gather_term_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
         mask_attend = mask.unsqueeze(-1) * mask_attend
 
         for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):

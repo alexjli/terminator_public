@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+
+from layers.utils import merge_duplicate_edges
 
 class PositionWiseFeedForward(nn.Module):
     def __init__(self, num_hidden, num_ff):
