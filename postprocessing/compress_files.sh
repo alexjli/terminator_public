@@ -7,5 +7,5 @@
 #SBATCH -o logfiles/compress-files-output-OUTPUTDIR.out
 #SBATCH -e logfiles/compress-files-error-OUTPUTDIR.out
 
-tar -cvzf /scratch/users/vsundar/TERMinator/outputs/OUTPUTDIR/etabs.tar.gz /scratch/users/vsundar/TERMinator/outputs/OUTPUTDIR/etabs/
-rm -rf /scratch/users/TERMinator/outputs/OUTPUTDIR/etabs/
+tar -cvzf /scratch/users/alexjli/TERMinator_runs/OUTPUTDIR/etabs.tar.gz /scratch/users/alexjli/TERMinator_runs/OUTPUTDIR/etabs/
+rm -rf /scratch/users/alexjli/TERMinator_runs/OUTPUTDIR/etabs/

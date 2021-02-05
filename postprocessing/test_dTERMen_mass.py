@@ -15,5 +15,5 @@ if __name__ == '__main__':
         pdb_id = filename[-9:-5]
         print(pdb_id)
         os.system(f"cp {PDB_PATH}{pdb_id.lower()[1:3]}/{pdb_id}.pdb {output_path}/{pdb_id}.pdb")
-        os.system(f"sed -e \"s/ID/{pdb_id}/g\" -e 's/OUTPUTDIR/{args.output_dir}/g' </home/alexjli/TERMinator/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
+        os.system(f"sed -e \"s/ID/{pdb_id}/g\" -e 's/OUTPUTDIR/{args.output_dir}/g' </home/alexjli/TERMinator/postprocessing/run_dTERMen.sh >{output_path}/run_{pdb_id}.sh")
         os.system(f"cd {output_path} && sbatch run_{pdb_id}.sh")

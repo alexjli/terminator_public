@@ -18,7 +18,8 @@ if __name__ == '__main__':
     p4 = os.path.join(INPUT_DATA, 'monomer_DB_1/')
     p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
-    p = [p0, p1, p2, p3, p4, p5, p6]
+    p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500')
+    p = [p0, p1, p2, p3, p4, p5, p6, p7]
     # p = [p1, p2, p3, p4, p5, p6]
     ids = []
     pred_sequences = []
