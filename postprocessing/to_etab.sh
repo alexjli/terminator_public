@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH --partition=defq
 #SBATCH --time=06:00:00
-#SBATCH -n 16
+#SBATCH -n 64
 #SBATCH --mem=0
 #SBATCH -o logfiles/etab-output-OUTPUTDIR.out
 #SBATCH -e logfiles/etab-error-OUTPUTDIR.out
@@ -13,4 +13,4 @@ module add slurm
 module add c3ddb/miniconda
 source ~/.bashrc
 conda activate analysis
-python to_etab.py --output_dir=OUTPUTDIR
+python to_etab.py --output_dir=OUTPUTDIR --num_cores=64

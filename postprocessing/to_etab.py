@@ -3,6 +3,11 @@ import pickle
 import os
 import argparse
 from shutil import copyfile
+import multiprocessing as mp
+import sys
+import time
+import traceback
+from tqdm import tqdm
 
 from filepaths import *
 
@@ -31,8 +36,21 @@ AA_to_int = {
 'X' : 21
 }
 
-
+AA_to_int = {key: val-1 for key, val in AA_to_int.items()}
 int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 3}
+
+# print to stderr
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
+    try:
+        return to_etab_file(etab_matrix, E_idx, idx_dict, out_path)
+    except Exception as e:
+        eprint(out_path)
+        traceback.print_exc()
+        return False, out_path
+
 # should work for multi-chain proteins now
 def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
     out_file = open(out_path, 'w')
@@ -48,7 +66,10 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
         try:
             chain, resid = idx_dict[aa_idx]
         except Exception as e:
-            return False
+            eprint(out_path)
+            eprint(idx_dict)
+            traceback.print_exc()
+            return False, out_path
         for aa_int_id, nrg in enumerate(aa_nrgs):
             aa_3lt_id = int_to_AA[aa_int_id]
             out_file.write('{},{} {} {}\n'.format(chain, resid, aa_3lt_id, nrg))
@@ -87,9 +108,9 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
                                                        nrg))
 
     out_file.close()
-    return True
+    return True, out_path
 
-def get_idx_dict(pdb): 
+def get_idx_dict(pdb, chain_filter=None): 
     idx_dict = {}
     with open(pdb, 'r') as fp:
         current_idx = 0
@@ -99,10 +120,21 @@ def get_idx_dict(pdb):
                 continue 
             try:
                 chain = data[21]
+                """
                 residx = int(data[22:26].strip())
+                icode = data[26]
+                if icode != ' ':
+                    residx = str(residx) + icode
+                """
+                residx = data[22:27].strip() #rip i didn't know about icodes
+
             except Exception as e:
                 print(data)
                 raise e
+
+            if chain_filter:
+                if chain != chain_filter:
+                    continue
 
             if (chain, residx) not in idx_dict.values():
                 idx_dict[current_idx] = (chain, residx)
@@ -113,9 +145,11 @@ def get_idx_dict(pdb):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Generate etabs')
     parser.add_argument('--output_dir', help = 'output directory', default = 'test_run')
+    parser.add_argument('--num_cores', help = 'number of processes for parallelization', default=1)
+    parser.add_argument('-u', dest = 'update', help = 'flag for force updating etabs', default=False, action = 'store_true')
     args = parser.parse_args()
 
-    output_dir = os.path.join(OUTPUT_FILES, args.output_dir)
+    output_dir = os.path.join(OUTPUT_DIR, args.output_dir)
 
     p1 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1/')
     p2 = os.path.join(INPUT_DATA, 'dTERMen_speedtest200_clique1_p2/')
@@ -123,12 +157,19 @@ if __name__ == '__main__':
     p4 = os.path.join(INPUT_DATA, 'monomer_DB_1/')
     p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
+    p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500/')
+    p8 = os.path.join(INPUT_DATA, 'ingraham_db/PDB/')
 
     if not os.path.isdir(os.path.join(output_dir, 'etabs')):
         os.mkdir(os.path.join(output_dir, 'etabs'))
 
     with open(os.path.join(output_dir, 'net.out'), 'rb') as fp:
         dump = pickle.load(fp)
+
+    pool = mp.Pool(int(args.num_cores))
+    start = time.time()
+    pbar = tqdm(total = len(dump))
+    not_worked = []
 
     for data in dump:
         pdb = data['ids'][0]
@@ -152,17 +193,42 @@ if __name__ == '__main__':
         elif os.path.isdir(p6 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p6, pdb, pdb))
             # copyfile(f'{p6}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
+        elif os.path.isdir(p7 + pdb):
+            idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p7, pdb, pdb))
+        elif os.path.exists(p8 + pdb[:-2] + '.pdb'):
+            pdb, chain = pdb[:-2], pdb[-1]
+            mid = pdb[1:3]
+            idx_dict = get_idx_dict('{}{}/{}_{}.pdb'.format(p8, mid, pdb, chain), chain)
         else:
             raise Exception('umwhat')
 
-        E_idx = data['idx'][0]
-        etab = data['out'][0]
+
+        E_idx = data['idx'][0].copy()
+        etab = data['out'][0].copy()
 
         out_path = os.path.join(output_dir, 'etabs/' + pdb + '.etab')
-        if os.path.exists(out_path):
-            continue
-        worked = to_etab_file(etab, E_idx, idx_dict, out_path)
-        if not worked:
-            os.remove(out_path)
 
+        if os.path.exists(out_path) and not args.update:
+            print(f"{pdb} already exists, skipping")
+            pbar.update()
+            continue
+
+        def check_worked(res):
+            worked, out_path = res
+            pbar.update()
+            if not worked:
+                not_worked.append(out_path)
+
+        def raise_error(error):
+            raise error
+        res = pool.apply_async(to_etab_file_wrapper, args = (etab, E_idx, idx_dict, out_path), callback = check_worked, error_callback = raise_error) 
+
+    pool.close()
+    pool.join()
+    pbar.close()
+    print(f"errors in {not_worked}")
+    for path in not_worked:
+        os.remove(path)
+    end = time.time()
+    print(f"done, took {end - start} seconds")
 
