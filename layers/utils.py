@@ -29,18 +29,22 @@ def pad_sequence_12(sequences, padding_value=0):
 
     return out_tensor
 
+def batchify(batched_flat_terms, term_lens):
+    n_batches = batched_flat_terms.shape[0]
+    flat_terms = torch.unbind(batched_flat_terms)
+    list_terms = [torch.split(flat_terms[i], term_lens[i]) for i in range(n_batches)]
+    padded_terms = [pad_sequence(terms) for terms in list_terms]
+    padded_terms = [term.transpose(0,1) for term in padded_terms]
+    batchify = pad_sequence_12(padded_terms)
+    return batchify
+
+
 class BatchifyTERM(nn.Module):
     def __init__(self):
         super(BatchifyTERM, self).__init__()
 
     def forward(self, batched_flat_terms, term_lens):
-        n_batches = batched_flat_terms.shape[0]
-        flat_terms = torch.unbind(batched_flat_terms)
-        list_terms = [torch.split(flat_terms[i], term_lens[i]) for i in range(n_batches)]
-        padded_terms = [pad_sequence(terms) for terms in list_terms]
-        padded_terms = [term.transpose(0,1) for term in padded_terms]
-        batchify = pad_sequence_12(padded_terms)
-        return batchify
+        return batchify(batched_flat_terms, term_lens)
 
 """
     gather and cat functions
