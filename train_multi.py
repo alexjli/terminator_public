@@ -149,7 +149,7 @@ def main(args):
         val_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
         test_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
 
-        train_dataloader = TERMDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=True)
+        train_dataloader = TERMDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle = True)
         val_dataloader = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -249,7 +249,7 @@ def main(args):
                 avg_prob = running_prob / (count + 1)
                 train_progress.update(1)
                 train_progress.refresh()
-                train_progress.set_description_str('loss {} | prob {} '.format(avg_loss, avg_prob))
+                train_progress.set_description_str('avg loss {} | avg prob {} '.format(avg_loss, avg_prob))
 
             train_progress.close()
             epoch_loss = running_loss / (count+1)
@@ -294,6 +294,8 @@ def main(args):
                     recovery.append(p_recov)
                     
                     val_progress.update(1)
+                    val_progress.refresh()
+                    val_progress.set_description_str('point loss {} | point prob {}'.format(loss.item(), prob.item()))
 
                 val_progress.close()
                 val_loss = running_loss / (count+1)

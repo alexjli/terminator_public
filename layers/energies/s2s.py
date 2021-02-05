@@ -265,6 +265,7 @@ class MultiChainPairEnergies_g(PairEnergies):
 
     def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse = False):
         # Prepare node and edge embeddings
+
         V, E, E_idx = self.features(X, chain_idx, x_mask)
         V = torch.cat([V, V_embed], dim = -1)
         E_embed_neighbors = gather_edges(E_embed, E_idx)
