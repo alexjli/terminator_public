@@ -1,6 +1,6 @@
-from nets import CondenseMSA
-from condense import *
-from energies import *
+from layers.condense import *
+from layers.energies.s2s import *
+from layers.energies.gvp import *
 from struct2seq.self_attention import *
 import torch
 import torch.nn as nn

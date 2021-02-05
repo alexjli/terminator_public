@@ -198,17 +198,4 @@ class GVPEdgeLayer(nn.Module):
             h_E = mask_E * h_E
         return h_E
 
-def merge_duplicate_term_edges(h_E_update, E_idx):
-    dev = h_E_update.device
-    n_batch, n_terms, n_aa, n_neighbors, hidden_dim = h_E_update.shape
-    # collect edges into NxN tensor shape
-    collection = torch.zeros((n_batch, n_terms, n_aa, n_aa, hidden_dim)).to(dev)
-    neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, -1, hidden_dim).to(dev)
-    collection.scatter_(3, neighbor_idx, h_E_update)
-    # transpose to get same edge in reverse direction
-    collection = collection.transpose(2,3)
-    # gather reverse edges
-    reverse_E_update = gather_term_edges(collection, E_idx)
-    # average h_E_update and reverse_E_update at non-zero positions
-    merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update)/2, h_E_update)
-    return merged_E_updates
+
