@@ -90,6 +90,7 @@ class TERMinator(nn.Module):
                     ]
                 ]
         '''
+    # TODO: do we zero out the energy between a non-X residue and an X residue?
     def _nlcpl(self, etab, E_idx, ref_seqs, x_mask):
         etab_device = etab.device
         n_batch, L, k, _ = etab.shape
@@ -97,12 +98,12 @@ class TERMinator(nn.Module):
         
         # X is encoded as 20 so lets just add an extra row/col of zeros
         pad = (0, 1, 0, 1)
-        etab = F.pad(etab, pad, "constant", 0)
+        etab = F.pad(etab, pad, "constant", 0) # TODO: should i be padding w something else?
 
         isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
 
         # separate selfE and pairE since we have to treat selfE differently
-        self_etab = etab[:, :, 0:1] 
+        self_etab = etab[:, :, 0:1]
         pair_etab = etab[:, :, 1:]
 
         # gather 22 self energies by taking the diagonal of the etab
@@ -158,17 +159,18 @@ class TERMinator(nn.Module):
         log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
 
         # reshape masks
+        n_res = torch.sum((x_mask * isnt_x_aa), dim=-1)
         x_mask = x_mask.unsqueeze(-1)
         isnt_x_aa = isnt_x_aa.unsqueeze(-1)
 
         # get average composite psuedolikelihood per residue per batch
         edge_probs = torch.exp(log_edge_probs) * x_mask * isnt_x_aa
-        avg_prob = torch.mean(torch.mean(torch.mean(edge_probs, dim=-1), dim=-1))
+        avg_prob = torch.mean(torch.sum(torch.mean(edge_probs, dim=-1), dim=-1)/(2 * n_res))
 
         # convert to nlcpl
         log_edge_probs *= x_mask # zero out positions that don't have residues
         log_edge_probs *= isnt_x_aa # zero out positions where the native sequence is X
-        n_res = torch.sum((x_mask * isnt_x_aa).squeeze(-1), dim=-1)
+        #n_res = torch.sum((x_mask * isnt_x_aa).squeeze(-1), dim=-1)
         log_seq_probs = torch.sum(log_edge_probs, dim=-1)
         nlcpl = torch.sum(log_seq_probs, dim=-1)/(2 * n_res) # we divide by 2 because each probability is duplicated
         nlcpl = -torch.mean(nlcpl)
