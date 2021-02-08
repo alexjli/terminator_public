@@ -219,7 +219,7 @@ class LazyDataset(Dataset):
             return self.dataset[data_idx]
 
 class TERMLazyDataLoader(Sampler):
-    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, batch_shuffle = True, drop_last = False, max_term_res = 55000):
+    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, semi_shuffle = False, semi_shuffle_cluster_size = 100, batch_shuffle = True, drop_last = False, max_term_res = 55000):
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.lengths = zip(*dataset)
@@ -229,6 +229,13 @@ class TERMLazyDataLoader(Sampler):
         self.batch_size = batch_size
         self.drop_last = drop_last
         self.max_term_res = max_term_res
+        self.semi_shuffle = semi_shuffle
+        self.semi_shuffle_cluster_size = semi_shuffle_cluster_size
+
+        assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
+        assert not (batch_size is None and max_term_res <= 0), "max_term_res>0 required when using variable size batches"
+        # an assert for myself but i'm not sure if this is provably true
+        #assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
         # initialize clusters
         self._cluster()
@@ -239,6 +246,28 @@ class TERMLazyDataLoader(Sampler):
         # if we sort data, use sorted indexes instead
         if self.sort_data:
             idx_list = np.argsort(self.lengths)
+        elif self.semi_shuffle:
+            # trying to speed up training
+            # by shuffling points with similar term res together
+            idx_list = np.argsort(self.lengths)
+            shuffle_borders = []
+            
+            # break up datapoints into large clusters
+            border = 0
+            while border < len(self.lengths):
+                shuffle_borders.append(border)
+                border += self.semi_shuffle_cluster_size
+
+            # shuffle datapoints within clusters
+            last_cluster_idx = len(shuffle_borders)-1
+            for cluster_idx in range(last_cluster_idx + 1):
+                start = shuffle_borders[cluster_idx]
+                if cluster_idx < last_cluster_idx:
+                    end = shuffle_borders[cluster_idx + 1]
+                    np.random.shuffle(idx_list[start:end])
+                else:
+                    np.random.shuffle(idx_list[start:])
+
         else:
             idx_list = list(range(len(self.dataset)))
             np.random.shuffle(idx_list)
@@ -286,6 +315,8 @@ class TERMLazyDataLoader(Sampler):
             filepath = data[0]
             with open(filepath, 'rb') as fp:
                 batch.append(pickle.load(fp))
+                if 'ppoe' not in batch[-1].keys():
+                    print(filepath)
 
         focus_lens = [data[1] for data in b_idx]
         features, msas, focuses, seq_lens, coords = [], [], [], [], []
@@ -352,7 +383,7 @@ class TERMLazyDataLoader(Sampler):
         return len(self.clusters)
 
     def __iter__(self):
-        if self.shuffle:
+        if self.shuffle or self.semi_shuffle:
             self._cluster()
             np.random.shuffle(self.clusters)
         for batch in self.clusters:
