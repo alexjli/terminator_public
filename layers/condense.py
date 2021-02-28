@@ -8,7 +8,7 @@ import math
 from scipy.linalg import block_diag
 
 from layers.utils import *
-from layers.term.matches.cnn import Conv1DResNet
+from layers.term.matches.cnn import Conv1DResNet, Conv2DResNet
 from layers.term.matches.attn import TERMMatchTransformerEncoder
 from layers.term.struct.self_attn import TERMTransformerLayer, TERMTransformer
 from layers.term.struct.s2s import S2STERMTransformerEncoder, TERMGraphTransformerEncoder
@@ -106,16 +106,54 @@ def covariation_features(matches, term_lens, rmsds, mask, eps=1e-8):
 
 
 class EdgeFeatures(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, hparams, in_dim, hidden_dim, feature_mode = "shared_learned", compress = "project"):
         super(EdgeFeatures, self).__init__()
+        
+        self.feature_mode = feature_mode
+        self.hparams = hparams
 
-        self.W = nn.Linear(hidden_dim**2, hidden_dim, bias = False)
+        if feature_mode == "shared_learned":
+            pass
+        elif feature_mode == "all_raw": #TODO: finish this
+            self.one_hot = torch.eye(NUM_AA)
+            self.embedding = lambda x: self.one_hot[x]
+            in_dim = NUM_AA + NUM_FEATURES 
+        elif feature_mode == "aa_learned":
+            self.embedding = nn.Embedding(NUM_AA, in_dim)
+        elif feature_mode == "aa_counts":
+            self.one_hot = torch.eye(NUM_AA)
+            self.embedding = lambda x: self.one_hot[x]
+            in_dim = NUM_AA
+        elif feature_mode == "cnn": # this will explode your gpu but keeping it here anyway
+            self.cnn = Conv2DResNet(hparams)
 
-    def forward(self, matches, term_lens, rmsds, mask):
+        if compress == "project":
+            self.W = nn.Linear(in_dim**2, hidden_dim, bias = False)
+        elif compress == "ffn":
+            self.W = nn.Sequential(
+                    nn.Linear(in_dim**2, hidden_dim*4),
+                    nn.ReLU(),
+                    nn.Linear(hidden_dim*4, hidden_dim*2),
+                    nn.ReLU(),
+                    nn.Linear(hidden_dim*2, hidden_dim))
+
+    def forward(self, matches, term_lens, rmsds, mask, features=None):
+        feature_mode = self.feature_mode
+        if feature_mode == 'aa_counts' or feature_mode == 'aa_learned' or feature_mode == "all_raw":
+            local_dev = matches.device
+            matches = self.embedding(matches).to(local_dev)
+            if feature_mode == "all_raw":
+                assert features is not None, "features should not be None!"
+                matches = torch.cat([matches, features], -1)
+
         cov_mat = covariation_features(matches, term_lens, rmsds, mask)
+        if feature_mode == 'cnn':
+            cov_mat = self.cnn(cov_mat)
         n_batch, n_term, n_aa = cov_mat.shape[:3]
         cov_features = cov_mat.view([n_batch, n_term, n_aa, n_aa, -1])
         return self.W(cov_features)
+
+
 
 
 # TODO: differential positional encodings
@@ -371,7 +409,7 @@ class MultiChainCondenseMSA_g(nn.Module):
         self.hparams = hparams
         self.embedding = ResidueFeatures(hparams = self.hparams)
         if hparams['cov_features']:
-            self.edge_features = EdgeFeatures(hidden_dim = hparams['hidden_dim'])
+            self.edge_features = EdgeFeatures(hparams, in_dim = hparams['hidden_dim'], hidden_dim = hparams['hidden_dim'], feature_mode=hparams['cov_features'], compress = hparams['cov_compress'])
         self.fe = FocusEncoding(hparams = self.hparams)
         if hparams['matches'] == 'resnet':
             self.matches = Conv1DResNet(hparams = self.hparams)
@@ -453,12 +491,16 @@ class MultiChainCondenseMSA_g(nn.Module):
  
         if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
         
-       
+        
         if self.hparams['cov_features']:
-            # generate covariation features
-            embeddings = embeddings.transpose(1,3).transpose(1,2)
-            rmsds = features[..., 7].transpose(-2, -1)
-            edge_features = self.edge_features(embeddings, term_lens, rmsds, batchify_src_key_mask)
+            if self.hparams['cov_features'] == 'shared_learned' or self.hparams['cov_features'] == 'cnn':
+                # generate covariation features
+                embeddings = embeddings.transpose(1,3).transpose(1,2)
+            elif self.hparams['cov_features'] == 'aa_learned' or self.hparams['cov_features'] == 'aa_counts' or self.hparams['cov_features'] == "all_raw":
+                embeddings = X.transpose(-2, -1)
+                
+            rmsds = features[..., 7].transpose(-2, -1) 
+            edge_features = self.edge_features(embeddings, term_lens, rmsds, batchify_src_key_mask, features = features.transpose(1,2))
 
             # edge features are don't have the self edge as the first element in the row
             # so we need to rearrange the edges so they are
