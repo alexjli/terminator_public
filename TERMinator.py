@@ -16,8 +16,9 @@ class TERMinator(nn.Module):
         self.dev = device
         self.hparams = hparams
         self.bot = CondenseMSA(hparams = self.hparams, device = self.dev)
-        if self.hparams['use_terms']:
-            self.hparams['energies_input_dim'] = self.hparams['hidden_dim']
+
+        if self.hparams["use_terms"]:
+            self.hparams['energies_input_dim']= self.hparams['hidden_dim']
         else:
             self.hparams['energies_input_dim'] = 0
 
@@ -25,6 +26,9 @@ class TERMinator(nn.Module):
             self.top = AblatedPairEnergies(hparams = self.hparams).to(self.dev)
         else:
             self.top = PairEnergies(hparams = self.hparams).to(self.dev)
+            
+        print(self.bot.hparams['hidden_dim'], self.top.hparams['hidden_dim'])
+
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
@@ -469,7 +473,12 @@ class MultiChainTERMinator_g(MultiChainTERMinator):
         self.dev = device
         self.hparams = hparams
         self.bot = MultiChainCondenseMSA_g(hparams, device = self.dev)
-        self.top = MultiChainPairEnergies_g(hparams).to(self.dev)
+        if hparams['energies_gvp']:
+            self.top = GVPPairEnergies(hparams).to(self.dev)
+        elif hparams['energies_full_graph']:
+            self.top = PairEnergiesFullGraph(hparams).to(self.dev)
+        else:
+            self.top = MultiChainPairEnergies_g(hparams).to(self.dev)
 
         # Initialization
         for p in self.parameters():
@@ -509,7 +518,7 @@ class GVPTERMinator(MultiChainTERMinator_g):
         super(MultiChainTERMinator_g, self).__init__(hparams, device)
         self.dev = device
         self.hparams = hparams
-        self.bot = GVPCondenseMSA(hparams, device = self.dev)
+        self.bot = MultiChainCondenseMSA_g(hparams, device = self.dev)
         self.top = GVPPairEnergies(hparams).to(self.dev)
 
         # Initialization
