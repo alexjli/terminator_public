@@ -100,6 +100,8 @@ if __name__ == '__main__':
         hparams["matches"] = "resnet"
     if "struct2seq_linear" not in hparams.keys():
         hparams['struct2seq_linear'] = False
+    if "energies_gvp" not in hparams.keys():
+        hparams['energies_gvp'] = False
     
     #terminator = TERMinator(hparams = hparams, device = dev)
     terminator = MultiChainTERMinator_g(hparams = hparams, device = dev)
