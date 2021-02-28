@@ -87,6 +87,37 @@ class FocusEncoding(nn.Module):
 
         return self.dropout(X + fe)
 
+
+def covariation_features(matches, term_lens, rmsds, mask, eps=1e-8):
+    batchify_terms = batchify(matches, term_lens)
+    term_rmsds = batchify(rmsds, term_lens)
+    weights = F.softmax(1/(term_rmsds + eps), dim=-1) # add eps because of padding rows
+    weighted_mean = (weights.unsqueeze(-1) * batchify_terms).sum(dim=-2)
+    centered = batchify_terms - weighted_mean.unsqueeze(-2)
+    weighted_centered = weights.unsqueeze(-1) * centered
+    X = weighted_centered.unsqueeze(-3).transpose(-2,-1)
+    X_t = weighted_centered.unsqueeze(-4)
+    cov_mat = X @ X_t
+    mask = mask.unsqueeze(-1).float()
+    mask_edges = mask @ mask.transpose(-2, -1)
+    mask_edges = mask_edges.unsqueeze(-1).unsqueeze(-1)
+    cov_mat *= mask_edges
+    return cov_mat
+
+
+class EdgeFeatures(nn.Module):
+    def __init__(self, hidden_dim):
+        super(EdgeFeatures, self).__init__()
+
+        self.W = nn.Linear(hidden_dim**2, hidden_dim, bias = False)
+
+    def forward(self, matches, term_lens, rmsds, mask):
+        cov_mat = covariation_features(matches, term_lens, rmsds, mask)
+        n_batch, n_term, n_aa = cov_mat.shape[:3]
+        cov_features = cov_mat.view([n_batch, n_term, n_aa, n_aa, -1])
+        return self.W(cov_features)
+
+
 # TODO: differential positional encodings
 
 class CondenseMSA(nn.Module):
@@ -339,6 +370,8 @@ class MultiChainCondenseMSA_g(nn.Module):
         super(MultiChainCondenseMSA_g, self).__init__()
         self.hparams = hparams
         self.embedding = ResidueFeatures(hparams = self.hparams)
+        if hparams['cov_features']:
+            self.edge_features = EdgeFeatures(hidden_dim = hparams['hidden_dim'])
         self.fe = FocusEncoding(hparams = self.hparams)
         if hparams['matches'] == 'resnet':
             self.matches = Conv1DResNet(hparams = self.hparams)
@@ -404,15 +437,12 @@ class MultiChainCondenseMSA_g(nn.Module):
             focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
-            # output dimensionality is a little different for transformer
-            embeddings = embeddings.transpose(1,3).transpose(1,2)
-            condensed_matches = self.matches(embeddings, target, ~src_key_mask)
+            # output dimensionality of embeddings is different for transformer
+            condensed_matches = self.matches(embeddings.transpose(1,3).transpose(1,2), target, ~src_key_mask)
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
         condensed_matches *= negate_padding_mask.float()
-
-        if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
 
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(condensed_matches, term_lens)
@@ -420,16 +450,40 @@ class MultiChainCondenseMSA_g(nn.Module):
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
+ 
+        if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
         
-        # and reshape the coordinates
-        term_coords = torch.gather(coords, 1, focuses.view(list(focuses.shape) + [1,1]).expand(-1, -1, 4, 3).to(local_dev))
-        batchify_coords = self.batchify(term_coords, term_lens)
+       
+        if self.hparams['cov_features']:
+            # generate covariation features
+            embeddings = embeddings.transpose(1,3).transpose(1,2)
+            rmsds = features[..., 7].transpose(-2, -1)
+            edge_features = self.edge_features(embeddings, term_lens, rmsds, batchify_src_key_mask)
 
-        # generate node, edge features from batchified coords
-        batch_V, batch_E, batch_rel_E_idx, batch_abs_E_idx = self.term_features(batchify_coords, batched_focuses, chain_idx, batchify_src_key_mask.float())
+            # edge features are don't have the self edge as the first element in the row
+            # so we need to rearrange the edges so they are
+            # we'll use a shifted E_idx to do this (shift the row left until the self edge is the first)
+            max_term_len = edge_features.shape[2]
+            E_idx_slice = torch.arange(max_term_len).unsqueeze(0).expand([max_term_len, max_term_len])
+            shift_E_idx_slice = (E_idx_slice + torch.arange(max_term_len).unsqueeze(1)) % max_term_len
+            batch_rel_E_idx = E_idx_slice.view([1,1, max_term_len, max_term_len]).expand(edge_features.shape[:4]).contiguous().to(local_dev)
+            # use gather to rearrange the edge features
+            edge_features = torch.gather(edge_features, -1, batch_rel_E_idx.unsqueeze(-1).expand(list(batch_rel_E_idx.shape) + [self.hparams['hidden_dim']]))
+
+            # we need an absolute version of the rel_E_idx so we can aggregate edges
+            batch_abs_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, max_term_len, -1), -1, batch_rel_E_idx)
+
+        else:
+            # reshape the coordinates
+            term_coords = torch.gather(coords, 1, focuses.view(list(focuses.shape) + [1,1]).expand(-1, -1, 4, 3).to(local_dev))
+            batchify_coords = self.batchify(term_coords, term_lens)
+            # generate node, edge features from batchified coords
+            _, edge_features, batch_rel_E_idx, batch_abs_E_idx = self.term_features(batchify_coords, batched_focuses, chain_idx, batchify_src_key_mask.float())
+           
+
 
         # big transform
-        node_embeddings, edge_embeddings = self.encoder(batchify_terms, batch_E, batch_rel_E_idx, mask = batchify_src_key_mask.float())
+        node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float())
 
         # create a space to aggregate term data
         aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
