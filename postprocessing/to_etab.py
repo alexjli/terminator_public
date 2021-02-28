@@ -8,6 +8,7 @@ import sys
 import time
 import traceback
 from tqdm import tqdm
+import json
 
 from filepaths import *
 
@@ -43,16 +44,17 @@ int_to_AA = {y:x for x,y in AA_to_int.items() if len(x) == 3}
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
+def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path, ingraham_dict=None):
     try:
-        return to_etab_file(etab_matrix, E_idx, idx_dict, out_path)
+        return to_etab_file(etab_matrix, E_idx, idx_dict, out_path, ingraham_dict)
     except Exception as e:
         eprint(out_path)
+        eprint(idx_dict)
         traceback.print_exc()
         return False, out_path
 
 # should work for multi-chain proteins now
-def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
+def to_etab_file(etab_matrix, E_idx, idx_dict, out_path, ingraham_dict=None):
     out_file = open(out_path, 'w')
 
     # etab matrix: l x k x 20 x 20
@@ -66,6 +68,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
         try:
             chain, resid = idx_dict[aa_idx]
         except Exception as e:
+            eprint("num residues: ", len(self_nrgs))
             eprint(out_path)
             eprint(idx_dict)
             traceback.print_exc()
@@ -74,6 +77,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
             aa_3lt_id = int_to_AA[aa_int_id]
             out_file.write('{},{} {} {}\n'.format(chain, resid, aa_3lt_id, nrg))
 
+    num_aa = self_nrgs.shape[0]
     pair_nrgs = {}
 
     # l x k-1 x 20 x 20
@@ -81,7 +85,12 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
         for k, k_slice in enumerate(nrg_slice):
             j_idx = E_idx[i_idx][k]
             chain_i, i_resid = idx_dict[i_idx]
+            # this is just for ingraham proteins
+            # if this triggers otherwise, there's a bug
+            if ingraham_dict:
+                j_idx = ingraham_dict[int(j_idx)]
             chain_j, j_resid = idx_dict[j_idx]
+
             for i, i_slice in enumerate(k_slice):
                 i_3lt_id = int_to_AA[i]
                 for j, nrg in enumerate(i_slice):
@@ -142,6 +151,74 @@ def get_idx_dict(pdb, chain_filter=None):
 
     return idx_dict
 
+def load_jsonl(jsonl_file):
+    alphabet='ACDEFGHIKLMNPQRSTVWY'
+    alphabet_set = set([a for a in alphabet])
+    with open(jsonl_file) as f:
+        data = {}
+
+        lines = f.readlines()
+        start = time.time()
+        for i, line in enumerate(lines):
+            entry = json.loads(line)
+            seq = entry['seq']
+            name = entry['name']
+
+            # Convert raw coords to np arrays
+            for key, val in entry['coords'].items():
+                entry['coords'][key] = np.asarray(val)
+
+            # Check if in alphabet
+            bad_chars = set([s for s in seq]).difference(alphabet_set)
+            if len(bad_chars) == 0:
+                data[name] = entry
+
+            if (i + 1) % 1000 == 0:
+                elapsed = time.time() - start
+                print('{} entries ({} loaded) in {:.1f} s'.format(len(data), i+1, elapsed))
+
+    return data
+
+def gen_mask(batch):
+    """ Pack and pad batch into torch tensors """
+    alphabet = 'ACDEFGHIKLMNPQRSTVWY'
+    B = len(batch)
+    lengths = np.array([len(b['seq']) for b in batch], dtype=np.int32)
+    L_max = max([len(b['seq']) for b in batch])
+    X = np.zeros([B, L_max, 4, 3])
+    S = np.zeros([B, L_max], dtype=np.int32)
+
+    # Build the batch
+    for i, b in enumerate(batch):
+        x = np.stack([b['coords'][c] for c in ['N', 'CA', 'C', 'O']], 1)
+
+        l = len(b['seq'])
+        x_pad = np.pad(x, [[0,L_max-l], [0,0], [0,0]], 'constant', constant_values=(np.nan, ))
+        X[i,:,:,:] = x_pad
+
+        # Convert to labels
+        indices = np.asarray([alphabet.index(a) for a in b['seq']], dtype=np.int32)
+        S[i, :l] = indices
+
+    # Mask
+    isnan = np.isnan(X)
+    mask = np.isfinite(np.sum(X,(2,3)))
+    return mask[0]
+
+def filter_etab(etab, E_idx, chain_set, pdb):
+    data = [chain_set[pdb]]
+    mask = gen_mask(data)
+
+    count = 0
+    ingraham_dict = {}
+    for idx, item in enumerate(mask):
+        if item:
+            ingraham_dict[idx] = count
+            count += 1
+            
+    return etab[mask], E_idx[mask], ingraham_dict
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Generate etabs')
     parser.add_argument('--output_dir', help = 'output directory', default = 'test_run')
@@ -171,8 +248,14 @@ if __name__ == '__main__':
     pbar = tqdm(total = len(dump))
     not_worked = []
 
+    chain_set = load_jsonl(os.path.join(INPUT_DATA, "chain_set.jsonl"))
+
     for data in dump:
         pdb = data['ids'][0]
+        E_idx = data['idx'][0].copy()
+        etab = data['out'][0].copy()
+        ingraham_dict = None
+
         print(pdb)
         idx_dict = None
         if os.path.isdir(p1 + pdb):
@@ -195,17 +278,14 @@ if __name__ == '__main__':
             # copyfile(f'{p6}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p7 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p7, pdb, pdb))
-        elif os.path.exists(p8 + pdb[:-2] + '.pdb'):
-            pdb, chain = pdb[:-2], pdb[-1]
-            mid = pdb[1:3]
+        elif os.path.exists(f"{p8}{pdb[1:3]}/{pdb[:-2].upper()}_{pdb[-1]}.pdb"): # yes i know its bad
+            etab, E_idx, ingraham_dict = filter_etab(etab, E_idx, chain_set, pdb)
+            pdb, chain = pdb[:-2].upper(), pdb[-1]
+            mid = pdb[1:3].lower()
             idx_dict = get_idx_dict('{}{}/{}_{}.pdb'.format(p8, mid, pdb, chain), chain)
+            pdb = f"{pdb}_{chain}"
         else:
             raise Exception('umwhat')
-
-
-        E_idx = data['idx'][0].copy()
-        etab = data['out'][0].copy()
-
         out_path = os.path.join(output_dir, 'etabs/' + pdb + '.etab')
 
         if os.path.exists(out_path) and not args.update:
@@ -221,7 +301,7 @@ if __name__ == '__main__':
 
         def raise_error(error):
             raise error
-        res = pool.apply_async(to_etab_file_wrapper, args = (etab, E_idx, idx_dict, out_path), callback = check_worked, error_callback = raise_error) 
+        res = pool.apply_async(to_etab_file_wrapper, args = (etab, E_idx, idx_dict, out_path, ingraham_dict), callback = check_worked, error_callback = raise_error) 
 
     pool.close()
     pool.join()

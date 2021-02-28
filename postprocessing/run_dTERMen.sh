@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --mem=8000
+#SBATCH --mem=1000
 #SBATCH --partition=defq
-#SBATCH --time=1-00:00:00
+#SBATCH --time=0:15:00
 #SBATCH -o /scratch/users/alexjli/TERMinator_runs/OUTPUTDIR/etabs/ID-output.out
 #SBATCH -e /scratch/users/alexjli/TERMinator_runs/OUTPUTDIR/etabs/ID-error.err
 
