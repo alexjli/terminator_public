@@ -106,9 +106,9 @@ class EdgeTransformerLayer(nn.Module):
             h_E = mask_E * h_E
         return h_E
 
-class MPNNLayer(nn.Module):
+class NodeMPNNLayer(nn.Module):
     def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
-        super(MPNNLayer, self).__init__()
+        super(NodeMPNNLayer, self).__init__()
         self.num_hidden = num_hidden
         self.num_in = num_in
         self.scale = scale
@@ -163,6 +163,7 @@ class EdgeMPNNLayer(nn.Module):
         """ Parallel computation of full transformer layer """
 
         dh = self.W3(F.relu(self.W2(F.relu(self.W1(h_EV)))))
+        dh = merge_duplicate_edges(dh, E_idx) # does this help?
         if mask_attend is not None:
             dh = mask_attend.unsqueeze(-1) * dh
 

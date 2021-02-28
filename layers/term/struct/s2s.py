@@ -290,6 +290,7 @@ class TERMEdgeMPNNLayer(nn.Module):
         """ Parallel computation of full transformer layer """
 
         dh = self.W3(F.relu(self.W2(F.relu(self.W1(h_EV)))))
+        dh = merge_duplicate_term_edges(dh, E_idx)
         if mask_attend is not None:
             dh = mask_attend.unsqueeze(-1) * dh
 
