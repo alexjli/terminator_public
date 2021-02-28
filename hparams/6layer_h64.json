@@ -1,0 +1,1 @@
+{"matches": "resnet", "energies_encoder_layers": 6, "cov_features": "shared_learned", "term_use_mpnn": true, "energies_hidden_dim": 64}
