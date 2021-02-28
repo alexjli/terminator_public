@@ -2,6 +2,7 @@ import os
 import argparse
 import glob
 import pandas as pd
+import traceback
 
 from filepaths import *
 
@@ -21,6 +22,9 @@ if __name__ == '__main__':
     p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500')
     p = [p0, p1, p2, p3, p4, p5, p6, p7]
     # p = [p1, p2, p3, p4, p5, p6]
+
+    errors = []
+
     ids = []
     pred_sequences = []
     real_sequences = []
@@ -29,14 +33,20 @@ if __name__ == '__main__':
     dtermen_recovery = []
     for filename in glob.glob(os.path.join(output_path, '*-output.out')):
         pdb_id = filename[-len('-output.out')-4:-len('-output.out')]
+        #pdb_id = filename[-len('-output.out')-6:-len('-output.out')]
         ids += [pdb_id]
         print(pdb_id)
-        with open(filename, 'r') as f:
-            f.readline()
-            f.readline()
-            pred_sequences += [f.readline().split('|')[0]]
-            real_sequences += [f.readline().split('|')[0]]
-            recovery += [float(f.readline().split('|')[0][:-2])]
+        try:
+            with open(filename, 'r') as f:
+                f.readline()
+                f.readline()
+                pred_sequences += [f.readline().split('|')[0]]
+                real_sequences += [f.readline().split('|')[0]]
+                recovery += [float(f.readline().split('|')[0][:-2])]
+        except Exception as e:
+            traceback.print_exc()
+            errors.append(pdb_id)
+            continue
 
         last_testfolder = None
         for testfolder in p:
@@ -79,6 +89,8 @@ if __name__ == '__main__':
             dtermen_recovery += [-1]
             with open('to_run.out', 'a') as f:
                 f.write(f'{last_testfolder}{pdb_id}\n')
+
+    print("Errors:", errors)
 
     results_dict = {'ids': ids, 'pred_sequences': pred_sequences, 'real_sequences': real_sequences, 'dtermen_pred_sequences': dtermen_pred_sequences, 'recovery': recovery, 'dtermen_recovery': dtermen_recovery}
     results_df = pd.DataFrame(results_dict)
