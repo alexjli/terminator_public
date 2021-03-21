@@ -102,6 +102,10 @@ if __name__ == '__main__':
         hparams['struct2seq_linear'] = False
     if "energies_gvp" not in hparams.keys():
         hparams['energies_gvp'] = False
+    if "num_sing_stats" not in hparams.keys():
+        hparams['num_sing_stats'] = 0
+    if "num_pair_stats" not in hparams.keys():
+        hparams['num_pair_stats'] = 0
     
     #terminator = TERMinator(hparams = hparams, device = dev)
     terminator = MultiChainTERMinator_g(hparams = hparams, device = dev)
@@ -109,6 +113,7 @@ if __name__ == '__main__':
 
     best_checkpoint_state = torch.load(os.path.join(run_output_dir, 'net_best_checkpoint.pt'))
     best_checkpoint = best_checkpoint_state['state_dict']
+    del best_checkpoint['bot.fe.pe']
     terminator.load_state_dict(best_checkpoint)
     terminator.to(dev)
 
@@ -131,8 +136,10 @@ if __name__ == '__main__':
             max_seq_len = max(seq_lens.tolist())
             chain_lens = data['chain_lens']
             ppoe = data['ppoe'].to(dev).float()
+            sing_stats = data['sing_stats'].to(dev).float()
+            pair_stats = data['pair_stats'].to(dev).float()
 
-            etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
+            etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)#, sing_stats, pair_stats)
             #etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
             
             loss, n_res = nlpl(etab, E_idx, seqs, x_mask)
