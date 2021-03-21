@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --partition=defq
+#SBATCH --partition=sched_mem1TB
 #SBATCH --time=06:00:00
 #SBATCH -n 16
 #SBATCH --mem=0
@@ -14,3 +14,4 @@ module add c3ddb/miniconda
 source ~/.bashrc
 conda activate analysis
 python to_etab.py --output_dir=OUTPUTDIR --num_cores=16
+python batch_arr_dTERMen.py --output_dir=OUTPUTDIR
