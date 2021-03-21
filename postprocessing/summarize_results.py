@@ -19,7 +19,7 @@ if __name__ == '__main__':
     p4 = os.path.join(INPUT_DATA, 'monomer_DB_1/')
     p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
-    p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500')
+    p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500/')
     p = [p0, p1, p2, p3, p4, p5, p6, p7]
     # p = [p1, p2, p3, p4, p5, p6]
 
@@ -91,6 +91,10 @@ if __name__ == '__main__':
                 f.write(f'{last_testfolder}{pdb_id}\n')
 
     print("Errors:", errors)
+    os.chdir(output_path)
+    for e in errors:
+        sbatch_file = os.path.join(output_path, f"run_{e}.sh")
+        os.system(f"sbatch {sbatch_file}")
 
     results_dict = {'ids': ids, 'pred_sequences': pred_sequences, 'real_sequences': real_sequences, 'dtermen_pred_sequences': dtermen_pred_sequences, 'recovery': recovery, 'dtermen_recovery': dtermen_recovery}
     results_df = pd.DataFrame(results_dict)
