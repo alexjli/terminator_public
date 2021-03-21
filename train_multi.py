@@ -21,13 +21,19 @@ try:
 except ImportError:
     pass
 
-INPUT_DATA = '/nobackup/users/alexjli/TERMinator/'
-OUTPUT_DIR = '/nobackup/users/alexjli/TERMinator/'
+INPUT_DATA = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator/'
+OUTPUT_DIR = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator_runs/'
 
 DEFAULT_HPARAMS = {
+            'model': 'multichain',
             'hidden_dim': 32,
+            'term_hidden_dim': 32,
+            'energies_hidden_dim': 32,
             'gradient_checkpointing': True,
             'cov_features': True,
+            'cov_compress': 'project',
+            'num_sing_stats': 0,
+            'num_pair_stats': 0,
             'resnet_blocks': 4,
             'term_layers': 4,
             'conv_filter': 3,
@@ -38,6 +44,7 @@ DEFAULT_HPARAMS = {
             'fe_dropout': 0.1,
             'fe_max_len': 1000,
             'transformer_dropout': 0.1,
+            'term_use_mpnn': False,
             'energies_num_letters': 20,
             'energies_encoder_layers': 3,
             'energies_decoder_layers': 3,
@@ -48,6 +55,8 @@ DEFAULT_HPARAMS = {
             'energies_forward_attention_decoder': True,
             'energies_use_mpnn': False,
             'energies_output_dim': 20*20,
+            'energies_gvp': False,
+            'energies_full_graph': False,
             'resnet_linear': False,
             'transformer_linear': False,
             'struct2seq_linear': False,
@@ -172,7 +181,8 @@ def main(args):
     else:
         lr_multiplier = 1
 
-    optimizer = get_std_opt(terminator.parameters(), d_model = hparams['hidden_dim'], lr_multiplier=lr_multiplier, regularization = hparams['regularization'])
+    optimizer = get_std_opt(terminator.parameters(), d_model = hparams['energies_hidden_dim'], lr_multiplier=lr_multiplier, regularization = hparams['regularization'])
+    #optimizer = torch.optim.Adam(terminator.parameters())
 
     if args.horovod:
         hvd.broadcast_parameters(terminator.state_dict(), root_rank=0)
@@ -239,7 +249,7 @@ def main(args):
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
+                #torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.step()
 
                 running_loss += loss.item()

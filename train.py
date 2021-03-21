@@ -21,10 +21,11 @@ try:
 except ImportError:
     pass
 
-INPUT_DATA = '/nobackup/users/alexjli/TERMinator/'
-OUTPUT_DIR = '/nobackup/users/alexjli/TERMinator/'
+INPUT_DATA = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator/'
+OUTPUT_DIR = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator_runs/'
 
 DEFAULT_HPARAMS = {
+            'model': 'singlechain',
             'hidden_dim': 32,
             'gradient_checkpointing': True,
             'resnet_blocks': 4,
@@ -114,7 +115,7 @@ def main(args):
             val_batch_sampler = TERMLazyDistributedSampler(val_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
             test_batch_sampler = TERMLazyDistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
         else:
-            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=True)
+            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=True, sort_data=True)
             val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
             test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
