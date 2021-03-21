@@ -89,26 +89,29 @@ class PairEnergies(nn.Module):
         super(PairEnergies, self).__init__()
         self.hparams = hparams
 
+        hdim = hparams['energies_hidden_dim']
+
+
         # Featurization layers
-        self.features = S2SProteinFeatures(node_features = hparams['hidden_dim'], 
-                                        edge_features = hparams['hidden_dim'], 
+        self.features = S2SProteinFeatures(node_features = hdim, 
+                                        edge_features = hdim, 
                                         top_k = hparams['k_neighbors'], 
                                         features_type = hparams['energies_protein_features'], 
                                         augment_eps = hparams['energies_augment_eps'], 
                                         dropout = hparams['energies_dropout'])
 
         # Embedding layers
-        self.W_v = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
-        self.W_e = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=True)
+        self.W_v = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
+        self.W_e = nn.Linear(hdim, hdim, bias=True)
         layer = EdgeTransformerLayer if not hparams['energies_use_mpnn'] else EdgeMPNNLayer
 
         # Encoder layers
         self.encoder_layers = nn.ModuleList([
-            layer(hparams['hidden_dim'], hparams['hidden_dim']*3, dropout=hparams['energies_dropout'])
+            layer(hdim, hdim*3, dropout=hparams['energies_dropout'])
             for _ in range(hparams['energies_encoder_layers'])
         ])
 
-        self.W_out = nn.Linear(hparams['hidden_dim'], hparams['energies_output_dim'], bias=True)
+        self.W_out = nn.Linear(hdim, hparams['energies_output_dim'], bias=True)
 
         # Initialization
         for p in self.parameters():
@@ -184,11 +187,13 @@ class MultiChainPairEnergies(PairEnergies):
         super(MultiChainPairEnergies, self).__init__(hparams)
         self.hparams = hparams
 
+        hdim = hparams['energies_hidden_dim']
+
     
         # Featurization layers
         self.features = MultiChainProteinFeatures(
-            node_features = hparams['hidden_dim'], 
-            edge_features = hparams['hidden_dim'], 
+            node_features = hdim, 
+            edge_features = hdim, 
             top_k = hparams['k_neighbors'], 
             features_type = hparams['energies_protein_features'], 
             augment_eps = hparams['energies_augment_eps'], 
@@ -243,18 +248,19 @@ class MultiChainPairEnergies_g(PairEnergies):
         super(MultiChainPairEnergies_g, self).__init__(hparams)
         self.hparams = hparams
 
+        hdim = hparams['energies_hidden_dim']
     
         # Featurization layers
         self.features = MultiChainProteinFeatures(
-            node_features = hparams['hidden_dim'], 
-            edge_features = hparams['hidden_dim'], 
+            node_features = hdim, 
+            edge_features = hdim, 
             top_k = hparams['k_neighbors'], 
             features_type = hparams['energies_protein_features'], 
             augment_eps = hparams['energies_augment_eps'], 
             dropout = hparams['energies_dropout']
         )
         
-        self.W_e = nn.Linear(hparams['hidden_dim'] * 2, hparams['hidden_dim'], bias=True)
+        self.W_e = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
 
         # Initialization
         for p in self.parameters():
@@ -305,33 +311,35 @@ class MultiChainPairEnergies_g(PairEnergies):
 
 
 class PairEnergiesFullGraph(nn.Module):
-    def __init__(self, num_letters, node_features, edge_features, input_dim,
-        hidden_dim, num_encoder_layers=3, num_decoder_layers=3,
-        vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
-        dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
-        output_dim = 20 * 20):
+    def __init__(self, hparams):
         """ Graph labeling network """
         super(PairEnergiesFullGraph, self).__init__()
+        self.hparams = hparams
 
         # Hyperparameters
-        self.node_features = node_features
-        self.edge_features = edge_features
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
+        self.node_features = hparams['hidden_dim']
+        self.edge_features = hparams['hidden_dim']
+        self.input_dim = hparams['hidden_dim']
+        hidden_dim = hparams['hidden_dim']
+        output_dim = hparams['energies_output_dim']
+        dropout = hparams['transformer_dropout']
+        num_encoder_layers = hparams['energies_encoder_layers']
 
         # Featurization layers
-        self.features = ProteinFeatures(
-            node_features, edge_features, top_k=k_neighbors,
-            features_type=protein_features, augment_eps=augment_eps,
-            dropout=dropout
+        self.features = MultiChainProteinFeatures(
+            node_features = hparams['hidden_dim'], 
+            edge_features = hparams['hidden_dim'], 
+            top_k = hparams['k_neighbors'], 
+            features_type = hparams['energies_protein_features'], 
+            augment_eps = hparams['energies_augment_eps'], 
+            dropout = hparams['energies_dropout']
         )
-
-        # Embedding layers
-        self.W_v = nn.Linear(node_features + input_dim, hidden_dim, bias=True)
-        self.W_e = nn.Linear(edge_features, hidden_dim, bias=True)
-        edge_layer = EdgeTransformerLayer
-        node_layer = TransformerLayer
+        
+         # Embedding layers
+        self.W_v = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
+        self.W_e = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
+        edge_layer = EdgeTransformerLayer if not hparams['energies_use_mpnn'] else EdgeMPNNLayer
+        node_layer = TransformerLayer if not hparams['energies_use_mpnn'] else NodeMPNNLayer
 
         # Encoder layers
         self.edge_encoder = nn.ModuleList([
@@ -350,26 +358,28 @@ class PairEnergiesFullGraph(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, V_embed, X, x_mask, sparse = False):
+    def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse = False):
         # Prepare node and edge embeddings
-        V, E, E_idx = self.features(X, x_mask)
-        V = torch.cat([V, V_embed], dim = -1)
-        h_V = self.W_v(V)
-        h_E = self.W_e(E)
+        V, E, E_idx = self.features(X, chain_idx, x_mask)
+        h_V = self.W_v(torch.cat([V, V_embed], dim = -1))
+        E_embed_neighbors = gather_edges(E_embed, E_idx)
+        h_E = self.W_e(torch.cat([E, E_embed_neighbors], dim = -1))
 
         # Encoder is unmasked self-attention
         mask_attend = gather_nodes(x_mask.unsqueeze(-1),  E_idx).squeeze(-1)
         mask_attend = x_mask.unsqueeze(-1) * mask_attend
         for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
             h_EV_edges = cat_edge_endpoints(h_E, h_V, E_idx)
-            h_E_new = edge_layer(h_E, h_EV_edges, E_idx, mask_E=x_mask, mask_attend=mask_attend)
+            h_E = edge_layer(h_E, h_EV_edges, E_idx, mask_E=x_mask, mask_attend=mask_attend)
 
             h_EV_nodes = cat_neighbors_nodes(h_V, h_E, E_idx)
             h_V = node_layer(h_V, h_EV_nodes, mask_V = x_mask, mask_attend = mask_attend)
-            h_E = h_E_new
 
         h_E = self.W_out(h_E)
-        h_E = merge_duplicate_edges(h_E, E_idx)
+        n_batch, n_res, k, out_dim = h_E.shape
+        h_E = h_E.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
+        h_E = merge_duplicate_pairE(h_E, E_idx)
+        h_E = h_E.view(n_batch, n_res, k, out_dim)
 
         if not sparse:
             return h_E, E_idx

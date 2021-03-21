@@ -97,6 +97,13 @@ def cat_edge_endpoints(h_edges, h_nodes, E_idx):
     h_nn = torch.cat([h_i, h_j, e_ij], -1)
     return h_nn
 
+def gather_pairEs(pairEs, neighbor_idx):
+    # Features [B,N,N,C] at Neighbor indices [B,N,K] => Neighbor features [B,N,K,C]
+    n_aa = pairEs.size(-1)
+    neighbors = neighbor_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_aa, n_aa)
+    pairE_features = torch.gather(pairEs, 2, neighbors)
+    return pairE_features
+
 """ term level """
 def gather_term_nodes(nodes, neighbor_idx):
     # Features [B,T,N,C] at Neighbor indices [B,T,N,K] => [B,T,N,K,C]
@@ -143,6 +150,26 @@ def cat_gvp_neighbors_nodes(h_nodes, h_neighbors, E_idx, nv_nodes, nv_neighbors)
     h_nodes = gather_nodes(h_nodes, E_idx)
     return vs_concat(h_neighbors, h_nodes, nv_neighbors, nv_nodes)
 
+def cat_gvp_edge_endpoints(h_edges, h_nodes, E_idx, n_node, n_edge):
+    # Neighbor indices E_idx [B,N,K]
+    # Edge features h_edges [B,N,N,C]
+    # Node features h_nodes [B,N,C]
+    n_batches, n_nodes, k = E_idx.shape
+
+    h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).contiguous()
+    h_j_idx = E_idx
+
+    h_i = gather_nodes(h_nodes, h_i_idx)
+    h_j = gather_nodes(h_nodes, h_j_idx)
+
+    #e_ij = gather_edges(h_edges, E_idx)
+    e_ij = h_edges
+
+    # output features [B, N, K, 3C]
+    h_nn = vs_concat(vs_concat(h_i, h_j, n_node, n_node), e_ij, n_node * 2, n_edge)
+    return h_nn
+
+
 def cat_gvp_term_edge_endpoints(h_edges, h_nodes, E_idx, n_node, n_edge):
     # Neighbor indices E_idx [B,T,N,K]
     # Edge features h_edges [B,T,N,N,C]
@@ -154,25 +181,6 @@ def cat_gvp_term_edge_endpoints(h_edges, h_nodes, E_idx, n_node, n_edge):
 
     h_i = gather_term_nodes(h_nodes, h_i_idx)
     h_j = gather_term_nodes(h_nodes, h_j_idx)
-
-    #e_ij = gather_edges(h_edges, E_idx)
-    e_ij = h_edges
-
-    # output features [B, T, N, K, 3C]
-    h_nn = vs_concat(vs_concat(h_i, h_j, n_node, n_node), e_ij, n_node * 2, n_edge)
-    return h_nn
-
-def cat_gvp_edge_endpoints(h_edges, h_nodes, E_idx, n_node, n_edge):
-    # Neighbor indices E_idx [B,N,K]
-    # Edge features h_edges [B,N,N,C]
-    # Node features h_nodes [B,N,C]
-    n_batches, n_nodes, k = E_idx.shape
-
-    h_i_idx = E_idx[ :, :, 0].unsqueeze(-1).expand(-1, -1, k).contiguous()
-    h_j_idx = E_idx
-
-    h_i = gather_nodes(h_nodes, h_i_idx)
-    h_j = gather_nodes(h_nodes, h_j_idx)
 
     #e_ij = gather_edges(h_edges, E_idx)
     e_ij = h_edges
@@ -215,6 +223,23 @@ def merge_duplicate_term_edges(h_E_update, E_idx):
     # average h_E_update and reverse_E_update at non-zero positions
     merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update)/2, h_E_update)
     return merged_E_updates
+
+def merge_duplicate_pairE(h_E, E_idx):
+    dev = h_E.device
+    n_batch, n_nodes, k, n_aa, _ = h_E.shape
+    # collect edges into NxN tensor shape
+    collection = torch.zeros((n_batch, n_nodes, n_nodes, n_aa, n_aa)).to(dev)
+    neighbor_idx = E_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_aa, n_aa).to(dev)
+    collection.scatter_(2, neighbor_idx, h_E)
+    # transpose to get same edge in reverse direction
+    collection = collection.transpose(1,2)
+    # transpose each pair energy table as well
+    collection = collection.transpose(-2, -1)
+    # gather reverse edges
+    reverse_E = gather_pairEs(collection, E_idx)
+    # average h_E and reverse_E at non-zero positions
+    merged_E = torch.where(reverse_E != 0, (h_E + reverse_E)/2, h_E)
+    return merged_E
 
 """
     edge aggregation fns
