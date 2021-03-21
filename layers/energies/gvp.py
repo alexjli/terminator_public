@@ -17,17 +17,22 @@ class GVPPairEnergies(nn.Module):
         """ Graph labeling network """
         super(GVPPairEnergies, self).__init__()
         self.hparams = hparams
+        #self.scalar_in = True #hparams['gvp_energies_scalar_in']
+
+        node_features = (4, 50) #(8,100)
+        edge_features = (1,32)
+        hidden_dim = (8,50) #(16,100)
 
         # Featurization layers
-        self.features = GVPProteinFeatures(node_features = hparams['hidden_dim']//2, 
-                                            edge_features = hparams['hidden_dim']//2, 
+        self.features = GVPProteinFeatures(node_features = node_features, 
+                                            edge_features = edge_features, 
                                             top_k = hparams['k_neighbors'])
 
         # Hyperparameters
-        self.nv, self.ns = hparams['hidden_dim']//2, hparams['hidden_dim']//2
-        self.hv, self.hs = hparams['hidden_dim']//2, hparams['hidden_dim']//2
-        self.ev, self.es = hparams['hidden_dim']//2, hparams['hidden_dim']//2
-        hidden_dim = hparams['hidden_dim']
+        self.nv, self.ns = node_features
+        self.hv, self.hs = hidden_dim
+        self.ev, self.es = edge_features
+        input_dim = hparams['energies_input_dim']
         dropout = hparams['transformer_dropout']
         output_dim = hparams['energies_output_dim']
         num_encoder_layers = hparams['energies_encoder_layers'] 
@@ -35,24 +40,30 @@ class GVPPairEnergies(nn.Module):
         edge_layer = GVPEdgeLayer
 
         # Embedding layers
-        self.W_v = GVP(vi=self.nv*2, vo=self.hv, si=self.hs*2, so=self.hs,
+        #self.W_v = GVP(vi=self.nv*2, vo=self.hv, si=self.hs*2, so=self.hs,
+        #                nls=None, nlv=None)
+        #self.W_e = GVP(vi=self.ev*2, vo=self.ev, si=self.hs*2, so=self.hs,
+        #                nls=None, nlv=None)
+        self.W_v = GVP(vi=self.nv, vo=self.hv, si=self.ns+input_dim, so=self.hs,
                         nls=None, nlv=None)
-        self.W_e = GVP(vi=self.ev*2, vo=self.ev, si=self.hs*2, so=self.hs,
+        self.W_e = GVP(vi=self.ev, vo=self.hv, si=self.es+input_dim, so=self.hs,
                         nls=None, nlv=None)
+
+
         # Encoder layers
         self.edge_encoder = nn.ModuleList([
-            edge_layer(nv = self.nv, 
-                       ns = self.ns, 
-                       ev = 2*self.nv + self.ev, 
-                       es = 2*self.ns + self.es,
+            edge_layer(nv = self.hv, 
+                       ns = self.hs, 
+                       ev = self.hv, 
+                       es = self.hs,
                        dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
         self.node_encoder = nn.ModuleList([
-            node_layer(nv = self.nv, 
-                       ns = self.ns, 
-                       ev = 2*self.nv + self.ev, 
-                       es = 2*self.ns + self.es,
+            node_layer(nv = self.hv, 
+                       ns = self.hs, 
+                       ev = self.hv, 
+                       es = self.hs,
                        dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
@@ -69,8 +80,12 @@ class GVPPairEnergies(nn.Module):
         # get graph features
         V, E, E_idx = self.features(X, x_mask, chain_idx)
 
-        h_V = self.W_v(vs_concat(V, V_term, self.nv, self.nv))
-        h_E = self.W_e(vs_concat(E, E_term, self.ev, self.ev))
+        E_term = gather_edges(E_term, E_idx)
+
+        h_V = self.W_v(torch.cat([V, V_term], -1))
+        h_E = self.W_e(torch.cat([E, E_term], -1))
+        #h_V = self.W_v(vs_concat(V, V_term, self.nv, self.nv))
+        #h_E = self.W_e(vs_concat(E, E_term, self.ev, self.ev))
 
         # Encoder is unmasked self-attention
         mask = x_mask # hacky alias
@@ -88,7 +103,10 @@ class GVPPairEnergies(nn.Module):
 
         h_E = self.W_out(h_E)
         # merge directional edges features
-        h_E = merge_duplicate_edges(h_E, E_idx)
+        n_batch, n_res, k, out_dim = h_E.shape
+        h_E = h_E.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
+        h_E = merge_duplicate_pairE(h_E, E_idx)
+        h_E = h_E.view(n_batch, n_res, k, out_dim)
 
         return h_E, E_idx
 

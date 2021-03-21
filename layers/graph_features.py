@@ -980,7 +980,6 @@ class GVPTProteinFeatures(nn.Module):
 class GVPProteinFeatures(nn.Module):
     def __init__(self, edge_features, node_features, num_positional_embeddings=16,
         num_rbf=16, top_k=30, features_type='full', augment_eps=0., dropout=0.1):
-        """ variant of struct2seq protein features, but with batches of TERMs as sequences """
         super(GVPProteinFeatures, self).__init__()
         self.edge_features = edge_features
         self.node_features = node_features
@@ -992,8 +991,8 @@ class GVPProteinFeatures(nn.Module):
         self.embeddings = IndexDiffEncoding(num_positional_embeddings)
 
         # Normalization and embedding
-        vo, so = node_features, node_features
-        ve, se = edge_features, edge_features
+        vo, so = node_features
+        ve, se = edge_features
         self.node_embedding = GVP(vi=3, vo=vo, si=6, so=so,
                                    nlv=None, nls=None)
         self.edge_embedding = GVP(vi=1, vo=ve, si=32, so=se,
@@ -1004,8 +1003,6 @@ class GVPProteinFeatures(nn.Module):
       
     def _dist(self, X, mask, eps=1E-6):
         """ Pairwise euclidean distances """
-        N_batch, N_terms, N_nodes, _ = X.shape
-
         # Convolutional network on NCHW
         mask_2D = torch.unsqueeze(mask,2) * torch.unsqueeze(mask,3)
         dX = torch.unsqueeze(X,2) - torch.unsqueeze(X,3)
@@ -1014,7 +1011,7 @@ class GVPProteinFeatures(nn.Module):
         # Identify k nearest neighbors (including self)
         D_max, _ = torch.max(D, -1, keepdim=True)
         D_adjust = D + (1. - mask_2D) * D_max
-        D_neighbors, E_idx = torch.topk(D_adjust, N_nodes, dim=-1, largest=False)
+        D_neighbors, E_idx = torch.topk(D_adjust, self.top_k, dim=-1, largest=False)
 
         # Debug plot KNN
         # print(E_idx[:10,:10])

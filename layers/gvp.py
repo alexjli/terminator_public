@@ -130,19 +130,22 @@ class GVPNodeLayer(nn.Module):
     def __init__(self, nv, ns, ev, es, dropout=0.1):
         super(GVPNodeLayer, self).__init__()
         self.nv, self.ns, self.ev, self.es = nv, ns, ev, es
+
+        self.vec_in = vec_in = nv + ev
+        self.vo, self.so = vo, so = nv, ns
         self.norm = nn.ModuleList([GVPLayerNorm(nv, ns) for _ in range(2)])
         self.dropout = GVPDropout(dropout, nv)
 
         # this receives the vec_in message AND the receiver node
         self.W_EV = nn.Sequential(
-                            GVP(vi=ev, vo=ev, si=es, so=es),
-                            GVP(vi=ev, vo=ev, si=es, so=es),
-                            GVP(vi=ev, vo=nv, si=es, so=ns, nls=None, nlv=None)
+                            GVP(vi=vec_in+vo, vo=vo, si=2*so+es, so=so),
+                            GVP(vi=vo, vo=vo, si=so, so=so),
+                            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None)
                         )
 
         self.W_dh = nn.Sequential(
-                            GVP(vi=nv, vo=2*nv, si=ns, so=4*ns),
-                            GVP(vi=2*nv, vo=nv, si=4*ns, so=ns, nls=None, nlv=None)
+                            GVP(vi=vo, vo=2*vo, si=so, so=4*so),
+                            GVP(vi=2*vo, vo=vo, si=4*so, so=so, nls=None, nlv=None)
                         )
 
     def forward(self, h_V, h_EV, mask_V=None, mask_attend=None):
@@ -167,19 +170,22 @@ class GVPEdgeLayer(nn.Module):
     def __init__(self, nv, ns, ev, es, dropout=0.1):
         super(GVPEdgeLayer, self).__init__()
         self.nv, self.ns, self.ev, self.es = nv, ns, ev, es
+
+        self.vec_in = vec_in = nv + ev
+        self.vo, self.so = vo, so = nv, ns
         self.norm = nn.ModuleList([GVPLayerNorm(nv, ns) for _ in range(2)])
         self.dropout = GVPDropout(dropout, nv)
 
         # this receives the vec_in message AND the receiver node
         self.W_EV = nn.Sequential(
-                            GVP(vi=ev, vo=ev, si=es, so=es),
-                            GVP(vi=ev, vo=ev, si=es, so=es),
-                            GVP(vi=ev, vo=nv, si=es, so=ns, nls=None, nlv=None)
+                            GVP(vi=vec_in+vo, vo=vo, si=2*so+es, so=so),
+                            GVP(vi=vo, vo=vo, si=so, so=so),
+                            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None)
                         )
 
         self.W_dh = nn.Sequential(
-                            GVP(vi=nv, vo=2*nv, si=ns, so=4*ns),
-                            GVP(vi=2*nv, vo=nv, si=4*ns, so=ns, nls=None, nlv=None)
+                            GVP(vi=vo, vo=2*vo, si=so, so=4*so),
+                            GVP(vi=2*vo, vo=vo, si=4*so, so=so, nls=None, nlv=None)
                         )
 
     def forward(self, h_E, h_EV, mask_E=None, mask_attend=None):
