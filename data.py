@@ -8,6 +8,7 @@ from scipy.linalg import block_diag
 import glob
 import random
 import os
+from tqdm import tqdm 
 
 def convert(tensor):
     return torch.from_numpy(tensor)
@@ -185,7 +186,8 @@ class LazyDataset(Dataset):
     def __init__(self, in_folder, pdb_ids = None, min_protein_len = 30):
         self.dataset = []
         if pdb_ids:
-            for id in pdb_ids:
+            print("Loading feature file paths")
+            for id in tqdm(pdb_ids):
                 filename = '{}/{}/{}.features'.format(in_folder, id, id)
                 with open('{}/{}/{}.length'.format(in_folder, id, id)) as fp:
                     total_term_length = int(fp.readline().strip())
@@ -194,7 +196,8 @@ class LazyDataset(Dataset):
                         continue
                 self.dataset.append((os.path.abspath(filename), total_term_length))
         else:
-            for filename in glob.glob('{}/*/*.features'.format(in_folder)):
+            print("Loading feature file paths")
+            for filename in tqdm(glob.glob('{}/*/*.features'.format(in_folder))):
                 prefix = os.path.splitext(filename)[0]
                 with open(prefix + '.length') as fp:
                     total_term_length = int(fp.readline().strip())
@@ -325,6 +328,9 @@ class TERMLazyDataLoader(Sampler):
         ids = []
         chain_lens = []
         ppoe = []
+        contact_idxs = []
+        sing_stats = []
+        pair_stats = []
 
         for idx, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -333,22 +339,34 @@ class TERMLazyDataLoader(Sampler):
 
             ppoe.append(convert(data['ppoe']))
             focuses.append(convert(data['focuses']))
+            contact_idxs.append(convert(data['contact_idxs']))
             seq_lens.append(data['seq_len'])
             term_lens.append(data['term_lens'].tolist())
             coords.append(data['coords'])
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
+            sing_stats.append(convert(data['sing_stats']))
+            pair_stats.append(convert(data['pair_stats']))
+
+        # detect if we have sing and pair stats
+        if sing_stats[0] == None:
+            sing_stats = None
+        if pair_stats[0] == None:
+            pair_stats == None
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1,2)
         msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
 
+        # we can pad these using standard pad_sequence
         ppoe = pad_sequence(ppoe, batch_first=True)
         focuses = pad_sequence(focuses, batch_first=True)
-
+        contact_idxs = pad_sequence(contact_idxs, batch_first=True)
         src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
         seqs = pad_sequence(seqs, batch_first = True)
+        if sing_stats:
+            sing_stats = pad_sequence(sing_stats, batch_first = True)
 
         # we do some padding so that tensor reshaping during batchifyTERM works
         max_aa = focuses.size(-1)
@@ -358,19 +376,46 @@ class TERMLazyDataLoader(Sampler):
             lens += [max_term_len] * (diff // max_term_len)
             lens.append(diff % max_term_len)
 
+        # featurize coordinates same way as ingraham et al
         X, x_mask, _ = self._featurize(coords, 'cpu')
 
+        # pad with -1 so we can store term_lens in a tensor
         seq_lens = torch.tensor(seq_lens)
         max_all_term_lens = max([len(term) for term in term_lens])
         for i in range(len(term_lens)):
             term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
         term_lens = torch.tensor(term_lens)
 
+        # process pair stats if present
+        if pair_stats:
+            # need to be a little fancier for pair_stats
+            max_term_len = max(term_lens[0]) # technically not the best way but will still work
+            num_features = pair_stats[0].shape[-1]
+            num_batch = len(pair_stats)
+            pair_stats_padded = torch.zeros([num_batch,
+                                             max_all_term_lens,
+                                             max_term_len,
+                                             max_term_len,
+                                             num_features,
+                                             num_features])
+            for idx, cov_mat in enumerate(pair_stats):
+                num_terms = cov_mat.shape[0]
+                pair_stats_padded[idx, 
+                                 :num_terms, 
+                                 :max_term_len, 
+                                 :max_term_len,
+                                 :num_features,
+                                 :num_features] = cov_mat
+            pair_stats = pair_stats_padded
+
         return {'msas':msas, 
                 'features':features.float(),
+                'sing_stats':sing_stats,
+                'pair_stats':pair_stats,
                 'ppoe': ppoe.float(),
                 'seq_lens':seq_lens, 
                 'focuses':focuses,
+                'contact_idxs':contact_idxs,
                 'src_key_mask':src_key_mask, 
                 'term_lens':term_lens, 
                 'X':X, 

@@ -513,6 +513,145 @@ class MultiChainTERMinator_g(MultiChainTERMinator):
         etab, E_idx = self.top(node_embeddings, edge_embeddings, X, x_mask, chain_idx)
         return etab, E_idx
 
+class MultiChainTERMinator_gstats(TERMinator):
+    def __init__(self, hparams, device = 'cuda:0'):
+        super(MultiChainTERMinator_gstats, self).__init__(hparams, device)
+        self.dev = device
+        self.hparams = hparams
+        self.bot = MultiChainCondenseMSA_g(hparams, device = self.dev)
+        if hparams['energies_gvp']:
+            self.top = GVPPairEnergies(hparams).to(self.dev)
+        elif hparams['energies_full_graph']:
+            self.top = PairEnergiesFullGraph(hparams).to(self.dev)
+        else:
+            self.top = MultiChainPairEnergies_g(hparams).to(self.dev)
+
+
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    def forward(self,
+                msas,
+                features,
+                seq_lens,
+                focuses,
+                term_lens,
+                src_key_mask,
+                X,
+                x_mask,
+                sequence,
+                max_seq_len,
+                ppoe,
+                chain_lens,
+                sing_stats,
+                pair_stats):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
+        rms = torch.sqrt(torch.mean(etab**2))
+        nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
+        return nlpl, rms, avg_prob
+
+    ''' compute the \'potts model parameters\' for the structure '''
+    def potts(self,
+              msas,
+              features,
+              seq_lens,
+              focuses,
+              term_lens,
+              src_key_mask,
+              X,
+              x_mask,
+              max_seq_len,
+              ppoe,
+              chain_lens,
+              sing_stats,
+              pair_stats):
+
+        # generate chain_idx from chain_lens
+        chain_idx = []
+        for c_lens in chain_lens:
+            arrs = []
+            for i in range(len(c_lens)):
+                l = c_lens[i]
+                arrs.append(torch.ones(l)*i)
+            chain_idx.append(torch.cat(arrs, dim = -1))
+        chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
+
+        node_embeddings, edge_embeddings = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X, ppoe, sing_stats = sing_stats, pair_stats = pair_stats)
+        etab, E_idx = self.top(node_embeddings, edge_embeddings, X, x_mask, chain_idx)
+
+        return etab, E_idx
+
+    ''' Optimize the sequence using max psuedo-likelihood '''
+    def opt_sequence(self,
+                     msas,
+                     features,
+                     seq_lens,
+                     focuses,
+                     term_lens,
+                     src_key_mask,
+                     X,
+                     x_mask,
+                     sequences,
+                     max_seq_len,
+                     ppoe,
+                     chain_lens,
+                     sing_stats,
+                     pair_stats):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
+        int_seqs = self._seq(etab, E_idx, x_mask, sequences)
+        int_seqs = int_seqs.cpu().numpy()
+        char_seqs = self._int_to_aa(int_seqs)
+        return char_seqs
+
+    ''' predict the optimal sequence based purely on structure '''
+    def pred_sequence(self,
+                      msas,
+                      features,
+                      seq_lens,
+                      focuses,
+                      term_lens,
+                      src_key_mask,
+                      X,
+                      x_mask,
+                      max_seq_len,
+                      ppoe,
+                      chain_lens,
+                      sing_stats,
+                      pair_stats):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
+        self_nrgs = self._get_self_etab(etab)
+        init_seqs = self._init_seqs(self_nrgs)
+        int_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
+        int_seqs = int_seqs.cpu().numpy()
+        char_seqs = self._int_to_aa(int_seqs)
+        return char_seqs
+
+    ''' compute percent sequence recovery '''
+    def percent_recovery(self,
+                         msas,
+                         features,
+                         seq_lens,
+                         focuses,
+                         term_lens,
+                         src_key_mask,
+                         X,
+                         x_mask,
+                         sequences,
+                         max_seq_len,
+                         ppoe,
+                         chain_lens,
+                         sing_stats,
+                         pair_stats):
+        etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
+        self_nrgs = self._get_self_etab(etab)
+        init_seqs = self._init_seqs(self_nrgs)
+        pred_seqs = self._seq(etab, E_idx, x_mask, init_seqs)
+        p_recov = self._percent(pred_seqs, sequences, x_mask)
+        return p_recov
+
+
 class GVPTERMinator(MultiChainTERMinator_g):
     def __init__(self, hparams, device = 'cuda:0'):
         super(MultiChainTERMinator_g, self).__init__(hparams, device)
