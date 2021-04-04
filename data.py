@@ -222,7 +222,7 @@ class LazyDataset(Dataset):
             return self.dataset[data_idx]
 
 class TERMLazyDataLoader(Sampler):
-    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, semi_shuffle = False, semi_shuffle_cluster_size = 100, batch_shuffle = True, drop_last = False, max_term_res = 55000):
+    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, semi_shuffle = False, semi_shuffle_cluster_size = 500, batch_shuffle = True, drop_last = False, max_term_res = 55000):
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.lengths = zip(*dataset)
@@ -286,7 +286,7 @@ class TERMLazyDataLoader(Sampler):
             for count, idx in enumerate(idx_list):
                 current_batch_lens.append(self.lengths[idx])
                 total_data_len = max(current_batch_lens) * len(current_batch_lens)
-                if count != 0 and total_data_len > max_total_data_len:
+                if count != 0 and total_data_len > self.max_term_res:
                     clusters.append(batch)
                     batch = [idx]
                     current_batch_lens = [self.lengths[idx]]
@@ -329,8 +329,8 @@ class TERMLazyDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
-        sing_stats = []
-        pair_stats = []
+        #sing_stats = [None]
+        #pair_stats = [None]
 
         for idx, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -346,14 +346,16 @@ class TERMLazyDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
-            sing_stats.append(convert(data['sing_stats']))
-            pair_stats.append(convert(data['pair_stats']))
+            #sing_stats.append(convert(data['sing_stats']))
+            #pair_stats.append(convert(data['pair_stats']))
 
+        """
         # detect if we have sing and pair stats
         if sing_stats[0] == None:
             sing_stats = None
         if pair_stats[0] == None:
             pair_stats == None
+        """
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1,2)
@@ -365,8 +367,11 @@ class TERMLazyDataLoader(Sampler):
         contact_idxs = pad_sequence(contact_idxs, batch_first=True)
         src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
         seqs = pad_sequence(seqs, batch_first = True)
+
+        """
         if sing_stats:
             sing_stats = pad_sequence(sing_stats, batch_first = True)
+        """
 
         # we do some padding so that tensor reshaping during batchifyTERM works
         max_aa = focuses.size(-1)
@@ -386,6 +391,7 @@ class TERMLazyDataLoader(Sampler):
             term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
         term_lens = torch.tensor(term_lens)
 
+        """
         # process pair stats if present
         if pair_stats:
             # need to be a little fancier for pair_stats
@@ -407,11 +413,12 @@ class TERMLazyDataLoader(Sampler):
                                  :num_features,
                                  :num_features] = cov_mat
             pair_stats = pair_stats_padded
+        """
 
         return {'msas':msas, 
                 'features':features.float(),
-                'sing_stats':sing_stats,
-                'pair_stats':pair_stats,
+                #'sing_stats':sing_stats,
+                #'pair_stats':pair_stats,
                 'ppoe': ppoe.float(),
                 'seq_lens':seq_lens, 
                 'focuses':focuses,

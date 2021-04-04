@@ -32,8 +32,8 @@ DEFAULT_HPARAMS = {
             'gradient_checkpointing': True,
             'cov_features': True,
             'cov_compress': 'project',
+            'num_pair_stats': 28,
             'num_sing_stats': 0,
-            'num_pair_stats': 0,
             'resnet_blocks': 4,
             'term_layers': 4,
             'conv_filter': 3,
@@ -62,6 +62,9 @@ DEFAULT_HPARAMS = {
             'struct2seq_linear': False,
             'use_terms': True,
             'train_batch_size': 16,
+            'shuffle': True,
+            'sort_data': True,
+            'semi_shuffle': False,
             'regularization': 0,
             'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
         }
@@ -124,7 +127,7 @@ def main(args):
             val_batch_sampler = TERMLazyDistributedSampler(val_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
             test_batch_sampler = TERMLazyDistributedSampler(test_dataset, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False, batch_size=1)
         else:
-            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=True, sort_data=True)
+            train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=hparams['shuffle'], semi_shuffle = hparams['semi_shuffle'],  sort_data=hparams['sort_data'])
             val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
             test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -164,7 +167,7 @@ def main(args):
         test_dataloader = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
 
-    terminator = MultiChainTERMinator_g(hparams = hparams, device = dev)
+    terminator = MultiChainTERMinator_gcnkt(hparams = hparams, device = dev)
     if torch.cuda.device_count() > 1:
         if args.horovod:
             torch.cuda.set_device(hvd.local_rank())
@@ -214,7 +217,7 @@ def main(args):
 
     try:
         #torch.autograd.set_detect_anomaly(True)
-        for epoch in range(start_epoch, 50):
+        for epoch in range(start_epoch, 100):
             print('epoch', epoch)
 
             # train
@@ -239,9 +242,10 @@ def main(args):
                 max_seq_len = max(seq_lens.tolist())
                 chain_lens = data['chain_lens']
                 ppoe = data['ppoe'].to(dev).float()
+                contact_idxs = data['contact_idxs'].to(dev)
 
 
-                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
+                loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
 
                 if torch.cuda.device_count() > 1 and not args.horovod:
                     loss = loss.mean()
@@ -258,9 +262,12 @@ def main(args):
 
                 avg_loss = running_loss / (count + 1)
                 avg_prob = running_prob / (count + 1)
+                term_mask_eff = int((~src_key_mask).sum().item() / src_key_mask.numel() * 100)
+                res_mask_eff = int(x_mask.sum().item() / x_mask.numel() * 100)
+
                 train_progress.update(1)
                 train_progress.refresh()
-                train_progress.set_description_str('avg loss {} | avg prob {} '.format(avg_loss, avg_prob))
+                train_progress.set_description_str('avg loss {} | avg prob {} | eff 0.{},0.{}'.format(avg_loss, avg_prob, term_mask_eff, res_mask_eff))
 
             train_progress.close()
             epoch_loss = running_loss / (count+1)
@@ -291,9 +298,9 @@ def main(args):
                     max_seq_len = max(seq_lens.tolist())
                     chain_lens = data['chain_lens']
                     ppoe = data['ppoe'].to(dev).float()
+                    contact_idxs = data['contact_idxs'].to(dev)
 
-
-                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
+                    loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
                     if torch.cuda.device_count() > 1 and not args.horovod:
                         loss = loss.mean()
                         prob = prob.mean()
@@ -301,7 +308,7 @@ def main(args):
                     running_prob += prob.item()
                     count = i
 
-                    p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
+                    p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
                     recovery.append(p_recov)
                     
                     val_progress.update(1)
@@ -364,20 +371,21 @@ def main(args):
             max_seq_len = max(seq_lens.tolist())
             chain_lens = data['chain_lens']
             ppoe = data['ppoe'].to(dev).float()
+            contact_idxs = data['contact_idxs'].to(dev)
 
-            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
+            loss, rms, prob = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
             if torch.cuda.device_count() > 1 and not args.horovod:
                 loss = loss.mean()
                 prob = prob.mean()
             
             print(loss.item(), prob.item())
 
-            output, E_idx = terminator_module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
+            output, E_idx = terminator_module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idxs)
             
-            pred_seqs = terminator_module.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
-            opt_seqs = terminator_module.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
+            pred_seqs = terminator_module.pred_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idxs)
+            opt_seqs = terminator_module.opt_sequence(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
             print(ids)
-            p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens)
+            p_recov = terminator_module.percent_recovery(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
             print('pred', pred_seqs)
             print('opt', opt_seqs)
             print('p recov', p_recov)
