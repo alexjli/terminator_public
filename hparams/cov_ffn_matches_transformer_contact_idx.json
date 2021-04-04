@@ -1,0 +1,1 @@
+{"cov_features": "all_raw", "cov_compress": "ffn", "term_use_mpnn": true, "matches": "transformer", "energies_use_mpnn": true, "energies_full_graph": true, "contact_idx": true}
