@@ -106,14 +106,16 @@ if __name__ == '__main__':
         hparams['num_sing_stats'] = 0
     if "num_pair_stats" not in hparams.keys():
         hparams['num_pair_stats'] = 0
+    if "contact_idx" not in hparams.keys():
+        hparams['contact_idx'] = False
     
     #terminator = TERMinator(hparams = hparams, device = dev)
-    terminator = MultiChainTERMinator_g(hparams = hparams, device = dev)
+    terminator = MultiChainTERMinator_gcnkt(hparams = hparams, device = dev)
     
 
     best_checkpoint_state = torch.load(os.path.join(run_output_dir, 'net_best_checkpoint.pt'))
     best_checkpoint = best_checkpoint_state['state_dict']
-    del best_checkpoint['bot.fe.pe']
+    #del best_checkpoint['bot.fe.pe']
     terminator.load_state_dict(best_checkpoint)
     terminator.to(dev)
 
@@ -136,11 +138,14 @@ if __name__ == '__main__':
             max_seq_len = max(seq_lens.tolist())
             chain_lens = data['chain_lens']
             ppoe = data['ppoe'].to(dev).float()
-            sing_stats = data['sing_stats'].to(dev).float()
-            pair_stats = data['pair_stats'].to(dev).float()
+            contact_idxs = data['contact_idxs'].to(dev)
+            #sing_stats = data['sing_stats'].to(dev).float()
+            #pair_stats = data['pair_stats'].to(dev).float()
 
-            etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)#, sing_stats, pair_stats)
-            #etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
+            #etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
+            etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idx = contact_idxs)
+            #etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
+
             
             loss, n_res = nlpl(etab, E_idx, seqs, x_mask)
             

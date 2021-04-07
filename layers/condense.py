@@ -11,7 +11,7 @@ from layers.utils import *
 from layers.term.matches.cnn import Conv1DResNet, Conv2DResNet
 from layers.term.matches.attn import TERMMatchTransformerEncoder
 from layers.term.struct.self_attn import TERMTransformerLayer, TERMTransformer
-from layers.term.struct.s2s import S2STERMTransformerEncoder, TERMGraphTransformerEncoder
+from layers.term.struct.s2s import *
 from layers.term.struct.gvp import TERMGraphGVPEncoder
 from layers.graph_features import *
 from layers.gvp import *
@@ -80,12 +80,14 @@ class FocusEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
 
-    def forward(self, X, focuses, mask = None):
+    #def forward(self, X, focuses, mask = None):
+    def forward(self, focuses, mask = None):
         fe = self.pe[focuses, :]
         if mask is not None:
             fe = fe * mask.unsqueeze(-1).float()
 
-        return self.dropout(X + fe)
+        return self.dropout(fe)
+        #return self.dropout(X + fe)
 
 
 def covariation_features(matches, term_lens, rmsds, mask, eps=1e-8):
@@ -149,9 +151,7 @@ class EdgeFeatures(nn.Module):
             self.W = nn.Sequential(
                     nn.Linear(in_dim**2, hidden_dim*4),
                     nn.ReLU(),
-                    nn.Linear(hidden_dim*4, hidden_dim*2),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim*2, hidden_dim))
+                    nn.Linear(hidden_dim*4, hidden_dim))
 
     def forward(self, matches, term_lens, rmsds, mask, features=None):
         feature_mode = self.feature_mode
@@ -452,11 +452,14 @@ class MultiChainCondenseMSA_g(nn.Module):
         else:
             raise InvalidArgumentError("arg for matches condenser doesn't look right")
 
-        self.encoder = TERMGraphTransformerEncoder(hparams = self.hparams)
+        if hparams['contact_idx']:
+            self.encoder = TERMGraphTransformerEncoder_cnkt(hparams = self.hparams)
+        else:
+            self.encoder = TERMGraphTransformerEncoder(hparams = self.hparams)
         self.batchify = BatchifyTERM()
         self.term_features = TERMProteinFeatures(edge_features = h_dim, node_features =  h_dim)
-        # this shouldn't be used but is here for compatibility for now
-        #self.fe = FocusEncoding(hparams = self.hparams)
+        if hparams['contact_idx']:
+            self.fe = FocusEncoding(hparams = self.hparams)
 
         # project target ppoe to hidden dim
         self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, h_dim)
@@ -466,6 +469,11 @@ class MultiChainCondenseMSA_g(nn.Module):
         # use TERM residue stats of all matches to enrich output of matches transformer
         if self.num_sing_stats:
             self.W_sing = nn.Linear(self.num_sing_stats + h_dim, h_dim)
+
+        # to linearize TERM transformer
+        if hparams['transformer_linear']:
+            self.W_v = nn.Linear(2 * hdim, h_dim)
+            self.W_e = nn.Linear(3 * hdim, h_dim)
 
         if torch.cuda.is_available():
             self.dev = device
@@ -487,7 +495,7 @@ class MultiChainCondenseMSA_g(nn.Module):
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords, ppoe, sing_stats = None, pair_stats = None):
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords, ppoe, sing_stats = None, pair_stats = None, contact_idx = None):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -510,7 +518,9 @@ class MultiChainCondenseMSA_g(nn.Module):
 
         # use Convolutional ResNet or Transformer 
         # for further embedding and to reduce dimensionality
-        if self.hparams['matches'] == 'transformer':
+        if self.hparams['resnet_linear']:
+            condensed_matches = embeddings
+        elif self.hparams['matches'] == 'transformer':
             # project target ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
@@ -519,8 +529,9 @@ class MultiChainCondenseMSA_g(nn.Module):
 
             # output dimensionality of embeddings is different for transformer
             condensed_matches = self.matches(embeddings.transpose(1,3).transpose(1,2), target, ~src_key_mask)
-        else:
+        elif self.hparams['matches'] == 'resnet':
             condensed_matches = self.matches(embeddings)
+
         
 
         if self.num_sing_stats:
@@ -573,11 +584,21 @@ class MultiChainCondenseMSA_g(nn.Module):
             batchify_coords = self.batchify(term_coords, term_lens)
             # generate node, edge features from batchified coords
             _, edge_features, batch_rel_E_idx, batch_abs_E_idx = self.term_features(batchify_coords, batched_focuses, chain_idx, batchify_src_key_mask.float())
-           
 
+        if self.hparams['contact_idx']:
+            contact_idx = self.fe(contact_idx, ~src_key_mask)
+            contact_idx = self.batchify(contact_idx, term_lens)
+            if not self.hparams['transformer_linear']:
+                # big transform
+                node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float(), contact_idx = contact_idx)
+            else:
+                node_embeddings = self.W_v(torch.cat([batchify_terms, contact_idx]))
+                node_embeddings *= batchify_src_key_mask.float()
+                edge_embeddings = self.W_e(cat_term_edge_endpoints(edge_features, contact_idx, batch_rel_E_idx))
 
-        # big transform
-        node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float())
+        else:
+            node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float())
+
 
         # create a space to aggregate term data
         aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
