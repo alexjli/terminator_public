@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import numpy as np
 from utils.common import int_to_aa
+from train_utils import nlpl as _nlpl
+from train_utils import nlcpl as _nlcpl
 
 
 class TERMinator(nn.Module):
@@ -32,162 +34,6 @@ class TERMinator(nn.Module):
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
-    ''' Negative log psuedo-likelihood '''
-    ''' Averaged nlpl per residue, across batches '''
-    def _nlpl(self, etab, E_idx, ref_seqs, x_mask):
-        etab_device = etab.device
-        n_batch, L, k, _ = etab.shape
-        etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
-        
-        # X is encoded as 20 so lets just add an extra row/col of zeros
-        pad = (0, 1, 0, 1)
-        etab = F.pad(etab, pad, "constant", 0)
-        isnt_x_aa = (ref_seqs != 20).float().to(etab_device)
-
-        # separate selfE and pairE since we have to treat selfE differently
-        self_etab = etab[:, :, 0:1] 
-        pair_etab = etab[:, :, 1:]
-        # idx matrix to gather the identity at all other residues given a residue of focus
-        E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k-1), 1, E_idx[:, :, 1:])
-        E_aa = E_aa.view(list(E_idx[:,:,1:].shape) + [1,1]).expand(-1, -1, -1, 21, -1)
-        # gather the 22 energies for each edge based on E_aa
-        pair_nrgs = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
-        # gather 22 self energies by taking the diagonal of the etab
-        self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-        # concat the two to get a full edge etab
-        edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
-        # get the avg nrg for 22 possible aa identities at each position
-        aa_nrgs = torch.sum(edge_nrgs, dim = 2)
-
-        #prior_loss = ((aa_nrgs - self.prior) ** 2).mean(dim = 1).sum()
-
-        #aa_nrgs -= self.prior
-        #self.update_prior(aa_nrgs)
-        #aa_nrgs = self.ln(aa_nrgs)
-
-
-        # convert energies to probabilities
-        log_all_aa_probs = torch.log_softmax(-aa_nrgs, dim = 2)
-        # get the probability of the sequence
-        log_seqs_probs = torch.gather(log_all_aa_probs, 2, ref_seqs.unsqueeze(-1)).squeeze(-1)
-        
-        # get average psuedolikelihood per residue
-        avg_prob = torch.mean(torch.mean(torch.exp(log_seqs_probs), dim=-1))
-
-        # convert to nlpl
-        log_probs *= x_mask # zero out positions that don't have residues
-        log_probs *= isnt_x_aa # zero out positions where the native sequence is X
-        n_res = torch.sum(x_mask * isnt_x_aa, dim=-1)
-        nlpl = torch.sum(log_probs, dim=-1)#/n_res
-        nlpl = -torch.mean(nlpl)
-        return nlpl, avg_prob
-
-    ''' Negative log composite psuedo-likelihood
-        Averaged nlcpl per residue, across batches
-        p(a_i,m ; a_j,n) = 
-            softmax [
-                E_s(a_i,m) + E_s(a_j,n) 
-                + E_p(a_i,m ; a_j,n)
-                + sum_(u != m,n) [
-                    E_p(a_i,m; A_u)
-                    + E_p(A_u, a_j,n)
-                    ]
-                ]
-        '''
-    # TODO: do we zero out the energy between a non-X residue and an X residue?
-    def _nlcpl(self, etab, E_idx, ref_seqs, x_mask):
-        etab_device = etab.device
-        n_batch, L, k, _ = etab.shape
-        etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
-        
-        # X is encoded as 20 so lets just add an extra row/col of zeros
-        pad = (0, 1, 0, 1)
-        etab = F.pad(etab, pad, "constant", 0) # TODO: should i be padding w something else?
-
-        isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
-
-        # separate selfE and pairE since we have to treat selfE differently
-        self_etab = etab[:, :, 0:1]
-        pair_etab = etab[:, :, 1:]
-
-        # gather 22 self energies by taking the diagonal of the etab
-        self_nrgs_im = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-        self_nrgs_im_expand = self_nrgs_im.expand(-1, -1, k-1, -1)
-
-        # E_idx for all but self
-        E_idx_jn = E_idx[:, :, 1:]
-
-        # self Es gathered from E_idx_others
-        E_idx_jn_expand = E_idx_jn.unsqueeze(-1).expand(-1, -1, -1, 21)
-        self_nrgs_jn = torch.gather(self_nrgs_im_expand, 1, E_idx_jn_expand)
-
-        # idx matrix to gather the identity at all other residues given a residue of focus
-        E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k-1), 1, E_idx_jn)
-        # expand the matrix so we can gather pair energies
-        E_aa = E_aa.view(list(E_idx_jn.shape) + [1,1]).expand(-1, -1, -1, 21, -1)
-        # gather the 22 energies for each edge based on E_aa
-        pair_nrgs_jn = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
-        # sum_(u != n,m) E_p(a_i,n; A_u)
-        sum_pair_nrgs_jn = torch.sum(pair_nrgs_jn, dim = 2)
-        pair_nrgs_im_u = sum_pair_nrgs_jn.unsqueeze(2).expand(-1, -1, k-1, -1) - pair_nrgs_jn
-
-        # get pair_nrgs_u_jn from pair_nrgs_im_u
-        E_idx_imu_to_ujn = E_idx_jn.unsqueeze(-1).expand(pair_nrgs_im_u.shape)
-        pair_nrgs_u_jn = torch.gather(pair_nrgs_im_u, 1, E_idx_imu_to_ujn)
-
-        """
-        # concat the two to get a full edge etab
-        edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
-        # get the avg nrg for 22 possible aa identities at each position
-        aa_nrgs = torch.sum(edge_nrgs, dim = 2)
-        """
-
-        # start building this wacky energy table
-        self_nrgs_im_expand = self_nrgs_im_expand.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
-        self_nrgs_jn_expand = self_nrgs_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1)
-        pair_nrgs_im_expand = pair_nrgs_im_u.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
-        pair_nrgs_jn_expand = pair_nrgs_u_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1)
-
-        composite_nrgs = (self_nrgs_im_expand + 
-                          self_nrgs_jn_expand + 
-                          pair_etab + 
-                          pair_nrgs_im_expand + 
-                          pair_nrgs_jn_expand)
-
-        # convert energies to probabilities
-        composite_nrgs_reshape = composite_nrgs.view(n_batch, L, k-1, 21 * 21, 1)
-        log_composite_prob_dist = torch.log_softmax(-composite_nrgs_reshape, dim = -2).view(n_batch, L, k-1, 21, 21)
-        # get the probability of the sequence
-        im_probs = torch.gather(log_composite_prob_dist, 4, E_aa).squeeze(-1)
-        ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1,1]).expand(-1, -1, k-1, 1)
-        log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
-
-        # reshape masks
-        n_res = torch.sum((x_mask * isnt_x_aa), dim=-1)
-        x_mask = x_mask.unsqueeze(-1)
-        isnt_x_aa = isnt_x_aa.unsqueeze(-1)
-
-        # get average composite psuedolikelihood per residue per batch
-        edge_probs = torch.exp(log_edge_probs) * x_mask * isnt_x_aa
-        """
-        avg_prob = torch.mean(torch.sum(torch.mean(edge_probs, dim=-1), dim=-1)/(2 * n_res))
-        """
-        # per residue prob for entire batch rather than averaged over proteins
-        avg_prob = torch.sum(edge_probs) / (2 * torch.sum(n_res) * edge_probs.size(-1))
-
-        # convert to nlcpl
-        log_edge_probs *= x_mask # zero out positions that don't have residues
-        log_edge_probs *= isnt_x_aa # zero out positions where the native sequence is X
-        """
-        #n_res = torch.sum((x_mask * isnt_x_aa).squeeze(-1), dim=-1)
-        log_seq_probs = torch.sum(log_edge_probs, dim=-1)
-        nlcpl = torch.sum(log_seq_probs, dim=-1)/(2 * n_res) # we divide by 2 because each probability is duplicated
-        nlcpl = -torch.mean(nlcpl)
-        """
-        # per residue nlcpl for entire batch rather than averaged over proteins
-        nlcpl = -torch.sum(log_edge_probs)/(2 * torch.sum(n_res))
-        return nlcpl, avg_prob
-
     def update_prior(self, aa_nrgs, alpha = 0.1):
         avg_nrgs = aa_nrgs.mean(dim = 1).mean(dim = 0).view(1, 1, 20)
         self.prior = self.prior * (1-alpha) + avg_nrgs * alpha
@@ -206,9 +52,8 @@ class TERMinator(nn.Module):
                 max_seq_len,
                 ppoe):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe)
-        rms = torch.sqrt(torch.mean(etab**2))
-        nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
-        return nlpl, rms, avg_prob
+        nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
+        return nlcpl, avg_prob, counter
 
     ''' compute the \'potts model parameters\' for the structure '''
     def potts(self,
@@ -381,9 +226,8 @@ class MultiChainTERMinator(TERMinator):
                 ppoe,
                 chain_lens):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
-        rms = torch.sqrt(torch.mean(etab**2))
-        nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
-        return nlpl, rms, avg_prob
+        nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
+        return nlcpl, avg_prob, counter
 
     ''' compute the \'potts model parameters\' for the structure '''
     def potts(self,
@@ -527,6 +371,12 @@ class MultiChainTERMinator_gcnkt(TERMinator):
         self.dev = device
         self.hparams = hparams
         self.bot = MultiChainCondenseMSA_g(hparams, device = self.dev)
+
+        if self.hparams["use_terms"]:
+            self.hparams['energies_input_dim']= self.hparams['hidden_dim']
+        else:
+            self.hparams['energies_input_dim'] = 0
+
         if hparams['energies_gvp']:
             self.top = GVPPairEnergies(hparams).to(self.dev)
         elif hparams['energies_full_graph']:
@@ -555,9 +405,8 @@ class MultiChainTERMinator_gcnkt(TERMinator):
                 chain_lens,
                 contact_idx):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idx = contact_idx)
-        rms = torch.sqrt(torch.mean(etab**2))
-        nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
-        return nlpl, rms, avg_prob
+        nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
+        return nlcpl, avg_prob, counter
 
     ''' compute the \'potts model parameters\' for the structure '''
     def potts(self,
@@ -584,7 +433,10 @@ class MultiChainTERMinator_gcnkt(TERMinator):
             chain_idx.append(torch.cat(arrs, dim = -1))
         chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
 
-        node_embeddings, edge_embeddings = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X, ppoe, contact_idx = contact_idx)
+        if self.hparams['use_terms']:
+            node_embeddings, edge_embeddings = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X, ppoe, contact_idx = contact_idx)
+        else:
+            node_embeddings, edge_embeddings = 0, 0
         etab, E_idx = self.top(node_embeddings, edge_embeddings, X, x_mask, chain_idx)
 
         return etab, E_idx
@@ -690,9 +542,8 @@ class MultiChainTERMinator_gstats(TERMinator):
                 sing_stats,
                 pair_stats):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
-        rms = torch.sqrt(torch.mean(etab**2))
-        nlpl, avg_prob = self._nlcpl(etab, E_idx, sequence, x_mask)
-        return nlpl, rms, avg_prob
+        nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
+        return nlcpl, avg_prob, counter
 
     ''' compute the \'potts model parameters\' for the structure '''
     def potts(self,
@@ -865,7 +716,7 @@ class TERMinator2(nn.Module):
         condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask)
         self_etab = self.selfE(condense, X, x_mask)
         etab, E_idx = self.pairE(condense, X, x_mask)
-        nlpl = self._nlpl(self_etab, etab, E_idx, sequence, x_mask)
+        nlpl = _nlpl(self_etab, etab, E_idx, sequence, x_mask)
         return nlpl
 
     def potts(self,
@@ -1074,7 +925,7 @@ class TERMinator3(nn.Module):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses,
                                  term_lens, src_key_mask, X, x_mask)
         rms = torch.sqrt(torch.mean(etab**2))
-        nlpl = self._nlpl(etab, E_idx, sequence, x_mask)
+        nlpl = _nlpl(etab, E_idx, sequence, x_mask)
         return nlpl, rms
 
     ''' compute the \'potts model parameters\' for the structure '''
