@@ -55,7 +55,7 @@ class ResidueFeatures(nn.Module):
         # embed features using ffn
         out = out.transpose(1,3)
         out = self.lin1(out)
-        if not self.hparams['resnet_linear']:
+        if not self.hparams['res_embed_linear']:
             out = self.relu(out)
             out = self.lin2(out)
             out = self.tanh(out)
@@ -471,9 +471,9 @@ class MultiChainCondenseMSA_g(nn.Module):
             self.W_sing = nn.Linear(self.num_sing_stats + h_dim, h_dim)
 
         # to linearize TERM transformer
-        if hparams['transformer_linear']:
-            self.W_v = nn.Linear(2 * hdim, h_dim)
-            self.W_e = nn.Linear(3 * hdim, h_dim)
+        if hparams['term_mpnn_linear']:
+            self.W_v = nn.Linear(2 * h_dim, h_dim)
+            self.W_e = nn.Linear(3 * h_dim, h_dim)
 
         if torch.cuda.is_available():
             self.dev = device
@@ -518,8 +518,8 @@ class MultiChainCondenseMSA_g(nn.Module):
 
         # use Convolutional ResNet or Transformer 
         # for further embedding and to reduce dimensionality
-        if self.hparams['resnet_linear']:
-            condensed_matches = embeddings
+        if self.hparams['matches_linear']:
+            condensed_matches = embeddings.mean(dim = -1).transpose(1,2)
         elif self.hparams['matches'] == 'transformer':
             # project target ppoe
             ppoe = self.W_ppoe(ppoe)
@@ -539,7 +539,7 @@ class MultiChainCondenseMSA_g(nn.Module):
 
 
         # zero out biases introduced into padding
-        condensed_matches *= negate_padding_mask.float()
+        condensed_matches *= negate_padding_mask
 
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(condensed_matches, term_lens)
@@ -588,13 +588,16 @@ class MultiChainCondenseMSA_g(nn.Module):
         if self.hparams['contact_idx']:
             contact_idx = self.fe(contact_idx, ~src_key_mask)
             contact_idx = self.batchify(contact_idx, term_lens)
-            if not self.hparams['transformer_linear']:
+            if not self.hparams['term_mpnn_linear']:
                 # big transform
                 node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float(), contact_idx = contact_idx)
             else:
-                node_embeddings = self.W_v(torch.cat([batchify_terms, contact_idx]))
-                node_embeddings *= batchify_src_key_mask.float()
+                node_embeddings = self.W_v(torch.cat([batchify_terms, contact_idx], dim=-1))
+                node_embeddings *= batchify_src_key_mask.unsqueeze(-1)
                 edge_embeddings = self.W_e(cat_term_edge_endpoints(edge_features, contact_idx, batch_rel_E_idx))
+                mask = batchify_src_key_mask.unsqueeze(-1).float()
+                edge_mask = mask @ mask.transpose(-1,-2)
+                edge_embeddings *= edge_mask.unsqueeze(-1)
 
         else:
             node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float())

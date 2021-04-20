@@ -360,10 +360,13 @@ class PairEnergiesFullGraph(nn.Module):
 
     def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse = False):
         # Prepare node and edge embeddings
-        V, E, E_idx = self.features(X, chain_idx, x_mask)
-        h_V = self.W_v(torch.cat([V, V_embed], dim = -1))
-        E_embed_neighbors = gather_edges(E_embed, E_idx)
-        h_E = self.W_e(torch.cat([E, E_embed_neighbors], dim = -1))
+        if self.hparams['energies_input_dim'] != 0:
+            V, E, E_idx = self.features(X, chain_idx, x_mask)
+            h_V = self.W_v(torch.cat([V, V_embed], dim = -1))
+            E_embed_neighbors = gather_edges(E_embed, E_idx)
+            h_E = self.W_e(torch.cat([E, E_embed_neighbors], dim = -1))
+        else:
+            h_V, h_E, E_idx = self.features(X, chain_idx, x_mask)
 
         # Encoder is unmasked self-attention
         mask_attend = gather_nodes(x_mask.unsqueeze(-1),  E_idx).squeeze(-1)
