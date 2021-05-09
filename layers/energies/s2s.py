@@ -362,11 +362,22 @@ class PairEnergiesFullGraph(nn.Module):
         # Prepare node and edge embeddings
         if self.hparams['energies_input_dim'] != 0:
             V, E, E_idx = self.features(X, chain_idx, x_mask)
+            if torch.isnan(V).any() or torch.isnan(E).any() or torch.isnan(E_idx).any():
+                raise RuntimeError("nan found during struct2seq feature generation")
             h_V = self.W_v(torch.cat([V, V_embed], dim = -1))
+            if torch.isnan(h_V).any():
+                raise RuntimeError("nan after lin comb of V V_embed")
             E_embed_neighbors = gather_edges(E_embed, E_idx)
             h_E = self.W_e(torch.cat([E, E_embed_neighbors], dim = -1))
+            if torch.isnan(h_E).any():
+                raise RuntimeError("nan after lin comb of E E_embed")
         else:
             h_V, h_E, E_idx = self.features(X, chain_idx, x_mask)
+            h_V = self.W_v(V)
+            h_E = self.W_e(E)
+
+        if torch.isnan(h_V).any() or torch.isnan(h_E).any() or torch.isnan(E_idx).any():
+            raise RuntimeError("nan found at net1/struct2seq intersection")
 
         # Encoder is unmasked self-attention
         mask_attend = gather_nodes(x_mask.unsqueeze(-1),  E_idx).squeeze(-1)
@@ -374,9 +385,14 @@ class PairEnergiesFullGraph(nn.Module):
         for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
             h_EV_edges = cat_edge_endpoints(h_E, h_V, E_idx)
             h_E = edge_layer(h_E, h_EV_edges, E_idx, mask_E=x_mask, mask_attend=mask_attend)
+            if torch.isnan(h_E).any():
+                raise RuntimeError("nan found after edge layer")
 
             h_EV_nodes = cat_neighbors_nodes(h_V, h_E, E_idx)
             h_V = node_layer(h_V, h_EV_nodes, mask_V = x_mask, mask_attend = mask_attend)
+            if torch.isnan(h_V).any():
+                raise RuntimeError("nan found after node layer")
+
 
         h_E = self.W_out(h_E)
         n_batch, n_res, k, out_dim = h_E.shape

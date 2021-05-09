@@ -39,7 +39,11 @@ def run_epoch(terminator, dataloader, optimizer = None, grad = False, test = Fal
         contact_idxs = data['contact_idxs'].to(dev)
         ids = data['ids']
 
-        loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
+        try:
+            loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
+        except Exception as e:
+            print(ids)
+            raise e
 
         if torch.cuda.device_count() > 1:
             loss = (loss * batch_count).sum() / batch_count.sum()
@@ -51,8 +55,10 @@ def run_epoch(terminator, dataloader, optimizer = None, grad = False, test = Fal
         global_count += batch_count.item()
 
         if grad:
+            #max_grad_norm = 1
             optimizer.zero_grad()
             loss.backward()
+            #torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
             optimizer.step()
 
         if test:

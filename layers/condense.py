@@ -585,6 +585,10 @@ class MultiChainCondenseMSA_g(nn.Module):
             # generate node, edge features from batchified coords
             _, edge_features, batch_rel_E_idx, batch_abs_E_idx = self.term_features(batchify_coords, batched_focuses, chain_idx, batchify_src_key_mask.float())
 
+        if self.track_nan:
+            if torch.isnan(edge_features).any():
+                raise RuntimeError("nan in term cov feature gen")
+
         if self.hparams['contact_idx']:
             contact_idx = self.fe(contact_idx, ~src_key_mask)
             contact_idx = self.batchify(contact_idx, term_lens)
@@ -602,6 +606,11 @@ class MultiChainCondenseMSA_g(nn.Module):
         else:
             node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float())
 
+        if self.track_nan:
+            if torch.isnan(node_embeddings).any():
+                raise RuntimeError("nan in node embeddings")
+            elif torch.isnan(edge_embeddings).any():
+                raise RuntimeError("nan in edge embeddings")
 
         # create a space to aggregate term data
         aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
@@ -616,13 +625,29 @@ class MultiChainCondenseMSA_g(nn.Module):
         count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
 
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
+        batch_zeros = []
+
         for batch, sel in enumerate(seq_lens):
             count[batch, sel:] = 1
+            if (count[batch] == 0).any():
+                batch_zeros.append(batch)
+        if len(batch_zeros) > 0:
+            raise RuntimeError(f"entries {batch_zeros} should have nonzero count but count[batches] is {count[batch_zeros]}")
+
+        if self.track_nan:
+            if torch.isnan(aggregate).any():
+                raise RuntimeError("nan pre div agg node")
 
         # average the aggregate
-        aggregate /= count.float()
+        aggregate = aggregate / count.float()
 
         agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx, max_seq_len)
+
+        if self.track_nan:
+            if torch.isnan(agg_edges).any():
+                raise RuntimeError("agg edges nan")
+            elif torch.isnan(aggregate).any():
+                raise RuntimeError("agg nodes nan")
 
         return aggregate, agg_edges
 

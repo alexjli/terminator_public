@@ -405,7 +405,11 @@ class MultiChainTERMinator_gcnkt(TERMinator):
                 chain_lens,
                 contact_idx):
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idx = contact_idx)
+        if torch.isnan(etab).any() or torch.isnan(E_idx).any():
+            raise RuntimeError("nan found in potts model")
         nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
+        if torch.isnan(nlcpl).any() or torch.isnan(avg_prob).any():
+            raise RuntimeError("nan when computing nlcpl")
         return nlcpl, avg_prob, counter
 
     ''' compute the \'potts model parameters\' for the structure '''
