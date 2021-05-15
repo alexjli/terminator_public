@@ -9,6 +9,7 @@ import glob
 import random
 import os
 from tqdm import tqdm 
+import multiprocessing as mp
 
 def convert(tensor):
     return torch.from_numpy(tensor)
@@ -182,29 +183,67 @@ class TERMDataLoader():
         mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
         return X, mask, lengths
 
+# needs to be outside of object for pickling reasons (?)
+def read_lens(in_folder, id, min_protein_len = 30):
+    path = f"{in_folder}/{id}/{id}.length"
+    with open(path) as fp:
+        total_term_length = int(fp.readline().strip())
+        seq_len = int(fp.readline().strip())
+        if seq_len < min_protein_len:
+            return None
+    return id, total_term_length, seq_len
+
 class LazyDataset(Dataset):
-    def __init__(self, in_folder, pdb_ids = None, min_protein_len = 30):
+    def __init__(self, in_folder, pdb_ids = None, min_protein_len = 30, num_processes = 32):
         self.dataset = []
+
+        pool = mp.Pool(num_processes)
+
         if pdb_ids:
             print("Loading feature file paths")
-            for id in tqdm(pdb_ids):
-                filename = '{}/{}/{}.features'.format(in_folder, id, id)
-                with open('{}/{}/{}.length'.format(in_folder, id, id)) as fp:
-                    total_term_length = int(fp.readline().strip())
-                    seq_len = int(fp.readline().strip())
-                    if seq_len < min_protein_len:
-                        continue
-                self.dataset.append((os.path.abspath(filename), total_term_length))
+            progress = tqdm(total = len(pdb_ids))
+            def update_progress(res):
+                progress.update(1)
+
+            res_list = [pool.apply_async(read_lens, 
+                                        (in_folder, id),
+                                        kwds = {"min_protein_len": min_protein_len},
+                                        callback=update_progress) 
+                        for id in pdb_ids]
+            pool.close()
+            pool.join()
+            progress.close()
+            for res in res_list:
+                data = res.get()
+                if data is not None:
+                    id, total_term_length, seq_len = data
+                    filename = f"{in_folder}/{id}/{id}.features"
+                    self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
         else:
             print("Loading feature file paths")
-            for filename in tqdm(glob.glob('{}/*/*.features'.format(in_folder))):
-                prefix = os.path.splitext(filename)[0]
-                with open(prefix + '.length') as fp:
-                    total_term_length = int(fp.readline().strip())
-                    seq_len = int(fp.readline().strip())
-                    if seq_len < min_protein_len:
-                        continue
-                self.dataset.append((os.path.abspath(filename), total_term_length))
+
+            filelist = list(glob.glob('{}/*/*.features'.format(in_folder)))
+            progress = tqdm(total = len(filelist))
+            def update_progress(res):
+                progress.update(1)
+            
+            # get pdb_ids
+            pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
+
+            res_list = [pool.apply_async(read_lens, 
+                                        (in_folder, id),
+                                        kwds = {"min_protein_len": min_protein_len},
+                                        callback=update_progress) 
+                        for id in pdb_ids]
+            pool.close()
+            pool.join()
+            progress.close()
+            for res in res_list:
+                data = res.get()
+                if data is not None:
+                    id, total_term_length, seq_len = data
+                    filename = f"{in_folder}/{id}/{id}.features"
+                    self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
 
         self.shuffle_idx = np.arange(len(self.dataset))
 
@@ -222,21 +261,28 @@ class LazyDataset(Dataset):
             return self.dataset[data_idx]
 
 class TERMLazyDataLoader(Sampler):
-    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, semi_shuffle = False, semi_shuffle_cluster_size = 500, batch_shuffle = True, drop_last = False, max_term_res = 55000):
+    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, semi_shuffle = False, semi_shuffle_cluster_size = 500, batch_shuffle = True, drop_last = False, max_term_res = 55000, max_seq_tokens = 0):
         self.dataset = dataset
         self.size = len(dataset)
-        self.filepaths, self.lengths = zip(*dataset)
+        self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
+        if max_term_res > 0 and max_seq_tokens == 0:
+            self.lengths = self.total_term_lengths
+        elif max_term_res == 0 and max_seq_tokens > 0:
+            self.lengths = self.seq_lengths
+        else:
+            raise Exception("One and only one of max_term_res and max_seq_tokens must be 0")
         self.shuffle = shuffle
         self.sort_data = sort_data
         self.batch_shuffle = batch_shuffle
         self.batch_size = batch_size
         self.drop_last = drop_last
         self.max_term_res = max_term_res
+        self.max_seq_tokens = max_seq_tokens
         self.semi_shuffle = semi_shuffle
         self.semi_shuffle_cluster_size = semi_shuffle_cluster_size
 
         assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        assert not (batch_size is None and max_term_res <= 0), "max_term_res>0 required when using variable size batches"
+        #assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
         # an assert for myself but i'm not sure if this is provably true
         #assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
@@ -280,13 +326,18 @@ class TERMLazyDataLoader(Sampler):
 
         # if batch_size is None, fit as many proteins we can into a batch
         # without overloading the GPU
-        if self.max_term_res > 0 and self.batch_size is None:
+        if self.batch_size is None:
+            if self.max_term_res > 0 and self.max_seq_tokens == 0:
+                cap_len = self.max_term_res
+            elif self.max_term_res == 0 and self.max_seq_tokens > 0:
+                cap_len = self.max_seq_tokens
+               
             current_batch_lens = []
             total_data_len = 0
             for count, idx in enumerate(idx_list):
                 current_batch_lens.append(self.lengths[idx])
                 total_data_len = max(current_batch_lens) * len(current_batch_lens)
-                if count != 0 and total_data_len > self.max_term_res:
+                if count != 0 and total_data_len > cap_len:
                     clusters.append(batch)
                     batch = [idx]
                     current_batch_lens = [self.lengths[idx]]
