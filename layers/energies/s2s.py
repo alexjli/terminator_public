@@ -362,6 +362,11 @@ class PairEnergiesFullGraph(nn.Module):
         # Prepare node and edge embeddings
         if self.hparams['energies_input_dim'] != 0:
             V, E, E_idx = self.features(X, chain_idx, x_mask)
+
+            if not self.hparams['use_coords']: # this is hacky/inefficient but i am lazy
+                V = torch.zeros_like(V)
+                E = torch.zeros_like(E)
+
             if torch.isnan(V).any() or torch.isnan(E).any() or torch.isnan(E_idx).any():
                 raise RuntimeError("nan found during struct2seq feature generation")
             h_V = self.W_v(torch.cat([V, V_embed], dim = -1))
@@ -371,8 +376,9 @@ class PairEnergiesFullGraph(nn.Module):
             h_E = self.W_e(torch.cat([E, E_embed_neighbors], dim = -1))
             if torch.isnan(h_E).any():
                 raise RuntimeError("nan after lin comb of E E_embed")
+
         else:
-            h_V, h_E, E_idx = self.features(X, chain_idx, x_mask)
+            V, E, E_idx = self.features(X, chain_idx, x_mask)
             h_V = self.W_v(V)
             h_E = self.W_e(E)
 
