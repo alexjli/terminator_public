@@ -29,7 +29,7 @@ class TERMinator(nn.Module):
         else:
             self.top = PairEnergies(hparams = self.hparams).to(self.dev)
             
-        print(self.bot.hparams['hidden_dim'], self.top.hparams['hidden_dim'])
+        print(self.bot.hparams['hidden_dim'], self.top.hparams['energies_hidden_dim'])
 
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
@@ -424,9 +424,10 @@ class MultiChainTERMinator_gcnkt(TERMinator):
               x_mask,
               max_seq_len,
               ppoe,
-              chain_lens,
+              chain_idx,
               contact_idx):
 
+        """
         # generate chain_idx from chain_lens
         chain_idx = []
         for c_lens in chain_lens:
@@ -436,6 +437,7 @@ class MultiChainTERMinator_gcnkt(TERMinator):
                 arrs.append(torch.ones(l)*i)
             chain_idx.append(torch.cat(arrs, dim = -1))
         chain_idx = pad_sequence(chain_idx, batch_first = True).to(self.dev)
+        """
 
         if self.hparams['use_terms']:
             node_embeddings, edge_embeddings = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, X, ppoe, contact_idx = contact_idx)

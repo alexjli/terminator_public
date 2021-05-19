@@ -432,7 +432,7 @@ class IndexDiffEncoding(nn.Module):
         # the idea is, the concept of "sequence distance"
         # between two residues in different chains doesn't
         # make sense :P
-        chain_idx_expand = chain_idx.view(1, 1, -1, 1).expand((N_batch, N_terms, -1, N_neighbors))
+        chain_idx_expand = chain_idx.view(N_batch, 1, -1, 1).expand((-1, N_terms, -1, N_neighbors))
         E_chain_idx = torch.gather(chain_idx_expand.to(dev), 2, E_idx)
         same_chain = (E_chain_idx == E_chain_idx[:, :, :, 0:1]).to(dev)
 

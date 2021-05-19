@@ -442,6 +442,16 @@ class TERMLazyDataLoader(Sampler):
             term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
         term_lens = torch.tensor(term_lens)
 
+        # generate chain_idx from chain_lens
+        chain_idx = []
+        for c_lens in chain_lens:
+            arrs = []
+            for i in range(len(c_lens)):
+                l = c_lens[i]
+                arrs.append(torch.ones(l)*i)
+            chain_idx.append(torch.cat(arrs, dim = -1))
+        chain_idx = pad_sequence(chain_idx, batch_first = True)
+
         """
         # process pair stats if present
         if pair_stats:
@@ -480,7 +490,7 @@ class TERMLazyDataLoader(Sampler):
                 'x_mask':x_mask, 
                 'seqs':seqs, 
                 'ids':ids,
-                'chain_lens':chain_lens}
+                'chain_idx':chain_idx}
 
     def __len__(self):
         return len(self.clusters)

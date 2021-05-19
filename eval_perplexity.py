@@ -136,14 +136,14 @@ if __name__ == '__main__':
             ids = data['ids']
             term_lens = data['term_lens'].to(dev)
             max_seq_len = max(seq_lens.tolist())
-            chain_lens = data['chain_lens']
+            chain_idx = data['chain_idx']
             ppoe = data['ppoe'].to(dev).float()
             contact_idxs = data['contact_idxs'].to(dev)
             #sing_stats = data['sing_stats'].to(dev).float()
             #pair_stats = data['pair_stats'].to(dev).float()
 
             #etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, sing_stats, pair_stats)
-            etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idx = contact_idxs)
+            etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_idx, contact_idx = contact_idxs)
             #etab, E_idx = terminator.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens)
 
             
