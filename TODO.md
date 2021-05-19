@@ -74,3 +74,15 @@ matches transformer
 
 
 objective: average nlcpl over all residue pairs in a batch rather than per protein
+
+
+
+TODO 3/24/21:
+- run per-res nlcpl (in progress)
+- run semi-shuffle
+- run gvp
+- run 6 layers h128
+
+
+ablate coordinates
+
