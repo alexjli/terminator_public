@@ -1,10 +1,12 @@
 import numpy as np
 import os
+import sys
 import json
 import pickle
 import argparse
 import glob
 import multiprocessing as mp
+import traceback
 import time
 
 from utils.packageTensors import dumpTrainingTensors
@@ -97,7 +99,7 @@ def generateDatasetParallel(in_folder, out_folder, cutoff = 1000, num_cores = 1,
     pool.join()
 
 def raise_error(error):
-    raise error
+    traceback.print_exception(Exception, error, None)
 
 # inner loop we wanna parallize
 def dataGen(file, folder, out_folder, cutoff, stats, weight_fn):
@@ -105,17 +107,23 @@ def dataGen(file, folder, out_folder, cutoff, stats, weight_fn):
     out_file = os.path.join(out_folder, name)
     print('out file', out_file)
     #print('red.pdb exists:', os.path.exists(name + '.red.pdb'))
-    dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff, stats = stats, weight_fn = weight_fn)
+    try:
+        dumpTrainingTensors(name, out_path = out_file, cutoff = cutoff, stats = stats, weight_fn = weight_fn)
+    except Exception as e:
+        print(out_file, file=sys.stderr)
+        raise e
 
 
 
 
 
 if __name__ == '__main__':
+    # idek how to do real parallelism but this should fix the bug of stalling when processes crash
+    mp.set_start_method("spawn") # i should use context managers but low priority change
     parser = argparse.ArgumentParser('Generate features data files from dTERMen .dat files')
     parser.add_argument('in_folder', help = 'input folder containing .dat files in proper directory structure', default='dTERMen_data')
     parser.add_argument('out_folder', help = 'folder where features will be placed', default='features')
-    parser.add_argument('--cutoff', dest='cutoff', help = 'max number of MSA entries per TERM', default = 50, type=int)
+    parser.add_argument('--cutoff', dest='cutoff', help = 'max number of match entries per TERM', default = 50, type=int)
     parser.add_argument('-n', dest='num_cores', help = 'number of cores to use', default = 1, type = int)
     parser.add_argument('-u', dest='update', help = 'if added, update existing files. else, files that already exist will not be overwritten', default=False, action='store_true')
     parser.add_argument('--weight_fn', help = 'weighting function for rmsd to use when generating statistics', default = 'neg')
