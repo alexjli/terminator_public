@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-def run_epoch(terminator, dataloader, optimizer = None, grad = False, test = False, dev = "cuda:0"):
+def run_epoch(terminator, dataloader, optimizer = None, scheduler = None, grad = False, test = False, dev = "cuda:0"):
     if test:
         assert not grad, "grad should not be on for test set"
     if grad:
@@ -34,13 +34,13 @@ def run_epoch(terminator, dataloader, optimizer = None, grad = False, test = Fal
         seq_lens = data['seq_lens'].to(dev)
         term_lens = data['term_lens'].to(dev)
         max_seq_len = max(seq_lens.tolist())
-        chain_lens = data['chain_lens']
+        chain_idx = data['chain_idx'].to(dev)
         ppoe = data['ppoe'].to(dev).float()
         contact_idxs = data['contact_idxs'].to(dev)
         ids = data['ids']
 
         try:
-            loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_lens, contact_idxs)
+            loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_idx, contact_idxs)
         except Exception as e:
             print(ids)
             raise e
@@ -62,7 +62,7 @@ def run_epoch(terminator, dataloader, optimizer = None, grad = False, test = Fal
             optimizer.step()
 
         if test:
-            output, E_idx = terminator.module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_lens, contact_idxs)
+            output, E_idx = terminator.module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_idx, contact_idxs)
 
             n_batch, l, n = output.shape[:3]
             dump.append({'out': output.view(n_batch, l, n, 20, 20).cpu().numpy(),
@@ -83,6 +83,10 @@ def run_epoch(terminator, dataloader, optimizer = None, grad = False, test = Fal
     progress.close()
     epoch_loss = running_loss / (global_count)
     avg_prob = running_prob / (global_count)
+    
+    if scheduler:
+        scheduler.step(epoch_loss)
+
 
     torch.set_grad_enabled(True) # just to be safe
     if test:
