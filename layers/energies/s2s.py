@@ -13,6 +13,8 @@ from layers.utils import *
 from layers.gvp import *
 from layers.s2s_modules import *
 from layers.struct2seq import Struct2Seq
+from struct2seq.protein_features import *
+
 
 class SelfEnergies(Struct2Seq):
     def __init__(self, num_letters, node_features, edge_features, input_dim,
@@ -316,28 +318,30 @@ class PairEnergiesFullGraph(nn.Module):
         super(PairEnergiesFullGraph, self).__init__()
         self.hparams = hparams
 
+        hdim = hparams['energies_hidden_dim']
+
         # Hyperparameters
-        self.node_features = hparams['hidden_dim']
-        self.edge_features = hparams['hidden_dim']
-        self.input_dim = hparams['hidden_dim']
-        hidden_dim = hparams['hidden_dim']
+        self.node_features = hdim
+        self.edge_features = hdim
+        self.input_dim = hdim
+        hidden_dim = hdim
         output_dim = hparams['energies_output_dim']
         dropout = hparams['transformer_dropout']
         num_encoder_layers = hparams['energies_encoder_layers']
 
         # Featurization layers
         self.features = MultiChainProteinFeatures(
-            node_features = hparams['hidden_dim'], 
-            edge_features = hparams['hidden_dim'], 
+            node_features = hdim, 
+            edge_features = hdim, 
             top_k = hparams['k_neighbors'], 
             features_type = hparams['energies_protein_features'], 
             augment_eps = hparams['energies_augment_eps'], 
             dropout = hparams['energies_dropout']
         )
         
-         # Embedding layers
-        self.W_v = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
-        self.W_e = nn.Linear(hparams['hidden_dim'] + hparams['energies_input_dim'], hparams['hidden_dim'], bias=True)
+        # Embedding layers
+        self.W_v = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
+        self.W_e = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
         edge_layer = EdgeTransformerLayer if not hparams['energies_use_mpnn'] else EdgeMPNNLayer
         node_layer = TransformerLayer if not hparams['energies_use_mpnn'] else NodeMPNNLayer
 
@@ -350,6 +354,9 @@ class PairEnergiesFullGraph(nn.Module):
             node_layer(hidden_dim, hidden_dim*2, dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
+
+        if "node_self_sub" in hparams.keys():
+            self.W_proj = nn.Linear(hidden_dim, 20)
 
         self.W_out = nn.Linear(hidden_dim, output_dim, bias=True)
 
@@ -382,8 +389,8 @@ class PairEnergiesFullGraph(nn.Module):
             h_V = self.W_v(V)
             h_E = self.W_e(E)
 
-        if torch.isnan(h_V).any() or torch.isnan(h_E).any() or torch.isnan(E_idx).any():
-            raise RuntimeError("nan found at net1/struct2seq intersection")
+        #if torch.isnan(h_V).any() or torch.isnan(h_E).any() or torch.isnan(E_idx).any():
+        #    raise RuntimeError("nan found at net1/struct2seq intersection")
 
         # Encoder is unmasked self-attention
         mask_attend = gather_nodes(x_mask.unsqueeze(-1),  E_idx).squeeze(-1)
@@ -391,19 +398,24 @@ class PairEnergiesFullGraph(nn.Module):
         for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
             h_EV_edges = cat_edge_endpoints(h_E, h_V, E_idx)
             h_E = edge_layer(h_E, h_EV_edges, E_idx, mask_E=x_mask, mask_attend=mask_attend)
-            if torch.isnan(h_E).any():
-                raise RuntimeError("nan found after edge layer")
+            #if torch.isnan(h_E).any():
+            #    raise RuntimeError("nan found after edge layer")
 
             h_EV_nodes = cat_neighbors_nodes(h_V, h_E, E_idx)
             h_V = node_layer(h_V, h_EV_nodes, mask_V = x_mask, mask_attend = mask_attend)
-            if torch.isnan(h_V).any():
-                raise RuntimeError("nan found after node layer")
+            #if torch.isnan(h_V).any():
+            #    raise RuntimeError("nan found after node layer")
 
 
         h_E = self.W_out(h_E)
         n_batch, n_res, k, out_dim = h_E.shape
         h_E = h_E.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
         h_E = merge_duplicate_pairE(h_E, E_idx)
+
+        if "node_self_sub" in self.hparams.keys():
+            h_V = self.W_proj(h_V)
+            h_E[..., 0, :, :] = torch.diag_embed(h_V, dim1=-2, dim2=-1)
+
         h_E = h_E.view(n_batch, n_res, k, out_dim)
 
         if not sparse:
