@@ -20,7 +20,8 @@ if __name__ == '__main__':
     p5 = os.path.join(INPUT_DATA, 'monomer_DB_2/')
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
     p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500/')
-    p = [p0, p1, p2, p3, p4, p5, p6, p7]
+    p8 = os.path.join(INPUT_DATA, 'ingraham_data/')
+    p = [p0, p1, p2, p3, p4, p5, p6, p7, p8]
     # p = [p1, p2, p3, p4, p5, p6]
 
     errors = []
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     recovery = []
     dtermen_recovery = []
     for filename in glob.glob(os.path.join(output_path, '*-output.out')):
-        pdb_id = filename[-len('-output.out')-4:-len('-output.out')]
+        pdb_id = os.path.basename(filename)[:-len('-output.out')]#filename[-len('-output.out')-4:-len('-output.out')]
         #pdb_id = filename[-len('-output.out')-6:-len('-output.out')]
         ids += [pdb_id]
         print(pdb_id)
@@ -73,10 +74,10 @@ if __name__ == '__main__':
                         for line in f:
                             linesplit = line.split('|')
                             if len(linesplit) >= 3:
-                                if linesplit[2] == ' lowest-energy sequence\n' and not already_found:
-                                    dtermen_pred_sequences += [linesplit[0]]
-                                    already_found = True
-                                elif len(linesplit) >= 4 and linesplit[3] == ' recovery\n' and not already_found_recov:
+                                #if linesplit[2] == ' lowest-energy sequence\n' and not already_found:
+                                #    dtermen_pred_sequences += [linesplit[0]]
+                                #    already_found = True
+                                if len(linesplit) >= 4 and linesplit[3] == ' recovery\n' and not already_found_recov:
                                     dtermen_recovery += [float(linesplit[0][:-2])]
                                     already_found_recov = True
                                     break
@@ -97,5 +98,6 @@ if __name__ == '__main__':
         os.system(f"sbatch {sbatch_file}")
 
     results_dict = {'ids': ids, 'pred_sequences': pred_sequences, 'real_sequences': real_sequences, 'dtermen_pred_sequences': dtermen_pred_sequences, 'recovery': recovery, 'dtermen_recovery': dtermen_recovery}
+    print([(key, len(val)) for key, val in results_dict.items()])
     results_df = pd.DataFrame(results_dict)
     results_df.to_csv(os.path.join(OUTPUT_DIR, args.output_dir, 'summary_results.csv'))

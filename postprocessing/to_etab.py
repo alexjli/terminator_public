@@ -225,6 +225,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_cores', help = 'number of processes for parallelization', default=1)
     parser.add_argument('-u', dest = 'update', help = 'flag for force updating etabs', default=False, action = 'store_true')
     args = parser.parse_args()
+    print("args parsed")
 
     output_dir = os.path.join(OUTPUT_DIR, args.output_dir)
 
@@ -236,12 +237,18 @@ if __name__ == '__main__':
     p6 = os.path.join(INPUT_DATA, 'monomer_DB_3/')
     p7 = os.path.join(INPUT_DATA, 'seq_id_50_resid_500/')
     p8 = os.path.join(INPUT_DATA, 'ingraham_db/PDB/')
+    p9 = os.path.join(INPUT_DATA, 'ingraham_data/')
+
+    print("generated paths")
 
     if not os.path.isdir(os.path.join(output_dir, 'etabs')):
         os.mkdir(os.path.join(output_dir, 'etabs'))
+    print("made etabs dir")
 
     with open(os.path.join(output_dir, 'net.out'), 'rb') as fp:
         dump = pickle.load(fp)
+
+    print("loaded dump")
 
     pool = mp.Pool(int(args.num_cores))
     start = time.time()
@@ -249,7 +256,7 @@ if __name__ == '__main__':
     not_worked = []
 
     chain_set = load_jsonl(os.path.join(INPUT_DATA, "chain_set.jsonl"))
-
+    print("starting etab dump")
     for data in dump:
         pdb = data['ids'][0]
         E_idx = data['idx'][0].copy()
@@ -278,7 +285,10 @@ if __name__ == '__main__':
             # copyfile(f'{p6}{pdb}/{pdb}.red.pdb', os.path.join(output_dir, 'etabs', f'{pdb}.red.pdb'))
         elif os.path.isdir(p7 + pdb):
             idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p7, pdb, pdb))
+        elif os.path.isdir(p9 + pdb):
+            idx_dict = get_idx_dict('{}{}/{}.red.pdb'.format(p9, pdb, pdb))
         elif os.path.exists(f"{p8}{pdb[1:3]}/{pdb[:-2].upper()}_{pdb[-1]}.pdb"): # yes i know its bad
+            print("filtering")
             etab, E_idx, ingraham_dict = filter_etab(etab, E_idx, chain_set, pdb)
             pdb, chain = pdb[:-2].upper(), pdb[-1]
             mid = pdb[1:3].lower()
