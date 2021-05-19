@@ -133,9 +133,9 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
     # package cov matrices into one tensor
     max_term_len = max(term_lens)
     num_terms = len(term_lens)
-    num_cov_features = term_pair_stats[0].shape[-1]
 
     if stats:
+        num_cov_features = term_pair_stats[0].shape[-1]
         sing_stats_tensor = np.concatenate(term_sing_stats, axis = 0)
         pair_stats_tensor = np.zeros([num_terms, 
                                       max_term_len, 
