@@ -33,7 +33,7 @@ class GVPPairEnergies(nn.Module):
         self.hv, self.hs = hidden_dim
         self.ev, self.es = edge_features
         input_dim = hparams['energies_input_dim']
-        dropout = hparams['transformer_dropout']
+        dropout = hparams['energies_dropout']
         output_dim = hparams['energies_output_dim']
         num_encoder_layers = hparams['energies_encoder_layers'] 
         node_layer = GVPNodeLayer

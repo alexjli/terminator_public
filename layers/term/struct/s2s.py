@@ -99,9 +99,9 @@ class S2STERMTransformerEncoder(nn.Module):
     def __init__(self, hparams):
         super(S2STERMTransformerEncoder, self).__init__()
         self.hparams = hparams
-        node_features = hparams['hidden_dim']
-        edge_features = hparams['hidden_dim']
-        hidden_dim = hparams['hidden_dim']
+        node_features = hparams['term_hidden_dim']
+        edge_features = hparams['term_hidden_dim']
+        hidden_dim = hparams['term_hidden_dim']
         num_heads = hparams['term_heads']
         dropout = hparams['transformer_dropout']
         num_encoder_layers = hparams['term_layers']
@@ -312,9 +312,9 @@ class TERMGraphTransformerEncoder(nn.Module):
         super(TERMGraphTransformerEncoder, self).__init__()
 
         self.hparams = hparams
-        node_features = hparams['hidden_dim']
-        edge_features = hparams['hidden_dim']
-        hidden_dim = hparams['hidden_dim']
+        node_features = hparams['term_hidden_dim']
+        edge_features = hparams['term_hidden_dim']
+        hidden_dim = hparams['term_hidden_dim']
         num_heads = hparams['term_heads']
         dropout = hparams['transformer_dropout']
         num_encoder_layers = hparams['term_layers']
@@ -375,9 +375,9 @@ class TERMGraphTransformerEncoder_cnkt(nn.Module):
         super(TERMGraphTransformerEncoder_cnkt, self).__init__()
 
         self.hparams = hparams
-        node_features = hparams['hidden_dim']
-        edge_features = hparams['hidden_dim']
-        hidden_dim = hparams['hidden_dim']
+        node_features = hparams['term_hidden_dim']
+        edge_features = hparams['term_hidden_dim']
+        hidden_dim = hparams['term_hidden_dim']
         num_heads = hparams['term_heads']
         dropout = hparams['transformer_dropout']
         num_encoder_layers = hparams['term_layers']

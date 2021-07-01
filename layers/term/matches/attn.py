@@ -10,12 +10,13 @@ class TERMMatchAttention(nn.Module):
     def __init__(self, hparams):
         super(TERMMatchAttention, self).__init__()
         self.hparams = hparams
+        hdim = hparams['term_hidden_dim']
 
         # Self-attention layers: {queries, keys, values, output}
-        self.W_Q = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
-        self.W_K = nn.Linear(hparams['hidden_dim']*2, hparams['hidden_dim'], bias=False)
-        self.W_V = nn.Linear(hparams['hidden_dim']*2, hparams['hidden_dim'], bias=False)
-        self.W_O = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
+        self.W_Q = nn.Linear(hdim, hdim, bias=False)
+        self.W_K = nn.Linear(hdim*2, hdim, bias=False)
+        self.W_V = nn.Linear(hdim*2, hdim, bias=False)
+        self.W_O = nn.Linear(hdim, hdim, bias=False)
 
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
@@ -36,8 +37,8 @@ class TERMMatchAttention(nn.Module):
         key = h_VT
         value = h_VT
 
-        n_heads = self.hparams['term_heads']
-        num_hidden = self.hparams['hidden_dim']
+        n_heads = self.hparams['matches_num_heads']
+        num_hidden = self.hparams['term_hidden_dim']
 
         assert num_hidden % n_heads == 0
 
@@ -72,10 +73,11 @@ class TERMMatchTransformerLayer(nn.Module):
         super(TERMMatchTransformerLayer, self).__init__()
         self.hparams = hparams
         self.dropout = nn.Dropout(hparams['transformer_dropout'])
-        self.norm = nn.ModuleList([Normalize(hparams['hidden_dim']) for _ in range(2)])
+        hdim = hparams['term_hidden_dim']
+        self.norm = nn.ModuleList([Normalize(hdim) for _ in range(2)])
 
         self.attention = TERMMatchAttention(hparams = self.hparams)
-        self.dense = PositionWiseFeedForward(hparams['hidden_dim'], hparams['hidden_dim'] * 4)
+        self.dense = PositionWiseFeedForward(hdim, hdim * 4)
 
     def forward(self, src, target, src_mask=None, mask_attend=None, checkpoint = False):
         """ Parallel computation of full transformer layer """
@@ -105,7 +107,7 @@ class TERMMatchTransformerEncoder(nn.Module):
         self.hparams = hparams
         
         # Hyperparameters
-        hidden_dim = hparams['hidden_dim']
+        hidden_dim = hparams['term_hidden_dim']
         self.hidden_dim = hidden_dim
         num_encoder_layers = hparams['matches_layers']
         num_heads = hparams['matches_num_heads']

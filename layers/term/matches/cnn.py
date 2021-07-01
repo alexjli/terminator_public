@@ -14,11 +14,12 @@ class Conv1DResidual(nn.Module):
     def __init__(self, hparams):
         super(Conv1DResidual, self).__init__()
 
-        self.bn1 = nn.BatchNorm2d(hparams['hidden_dim'])
+        hdim = hparams['term_hidden_dim']
+        self.bn1 = nn.BatchNorm2d(hdim)
         self.relu = nn.ReLU(inplace = True)
-        self.conv1 = conv1xN(hparams['hidden_dim'], hparams['conv_filter'])
-        self.bn2 = nn.BatchNorm2d(hparams['hidden_dim'])
-        self.conv2 = conv1xN(hparams['hidden_dim'], hparams['conv_filter'])
+        self.conv1 = conv1xN(hdim, hparams['conv_filter'])
+        self.bn2 = nn.BatchNorm2d(hdim)
+        self.conv2 = conv1xN(hdim, hparams['conv_filter'])
 
         #self.bn1.register_forward_hook(inf_nan_hook_fn)
         #self.conv1.register_forward_hook(inf_nan_hook_fn)
@@ -48,7 +49,7 @@ class Conv1DResNet(nn.Module):
         super(Conv1DResNet, self).__init__()
         self.hparams = hparams
 
-        blocks = [self._make_layer(hparams) for _ in range(hparams['resnet_blocks'])]
+        blocks = [self._make_layer(hparams) for _ in range(hparams['matches_blocks'])]
         self.resnet = nn.Sequential(*blocks)
 
     def _make_layer(self, hparams):
@@ -111,7 +112,7 @@ class Conv2DResNet(nn.Module):
         super(Conv2DResNet, self).__init__()
         self.hparams = hparams
 
-        hidden_dim = hparams['hidden_dim']
+        hidden_dim = hparams['term_hidden_dim']
 
         self.embed = nn.Conv2d(1, 2, kernel_size = (3, 3), padding = (1, 1))
         blocks = [self._make_layer(hparams) for _ in range(1)]
@@ -124,7 +125,7 @@ class Conv2DResNet(nn.Module):
         # X: num batches x num TERMs x TERM length x TERM length x hidden dim x hidden dim
         # out retains the shape of X
         # X = self.bn(X)
-        if self.hparams['resnet_linear']:
+        if self.hparams['matches_linear']:
             out = X
         else:
             num_batches, num_terms, term_len, _, hidden_dim = X.shape[:-1]

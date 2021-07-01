@@ -20,7 +20,7 @@ class TERMinator(nn.Module):
         self.bot = CondenseMSA(hparams = self.hparams, device = self.dev)
 
         if self.hparams["use_terms"]:
-            self.hparams['energies_input_dim']= self.hparams['hidden_dim']
+            self.hparams['energies_input_dim']= self.hparams['term_hidden_dim']
         else:
             self.hparams['energies_input_dim'] = 0
 
@@ -28,9 +28,8 @@ class TERMinator(nn.Module):
             self.top = AblatedPairEnergies(hparams = self.hparams).to(self.dev)
         else:
             self.top = PairEnergies(hparams = self.hparams).to(self.dev)
-            
-        print(self.bot.hparams['hidden_dim'], self.top.hparams['energies_hidden_dim'])
-
+        
+        print(self.bot.hparams['term_hidden_dim'], self.top.hparams['energies_hidden_dim'])
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
@@ -373,7 +372,7 @@ class MultiChainTERMinator_gcnkt(TERMinator):
         self.bot = MultiChainCondenseMSA_g(hparams, device = self.dev)
 
         if self.hparams["use_terms"]:
-            self.hparams['energies_input_dim']= self.hparams['hidden_dim']
+            self.hparams['energies_input_dim']= self.hparams['term_hidden_dim']
         else:
             self.hparams['energies_input_dim'] = 0
 

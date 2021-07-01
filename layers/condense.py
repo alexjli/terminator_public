@@ -25,15 +25,16 @@ class ResidueFeatures(nn.Module):
     def __init__(self, hparams):
         super(ResidueFeatures, self).__init__()
         self.hparams = hparams
+        hdim = hparams['term_hidden_dim']
         
-        self.embedding = nn.Embedding(NUM_AA, hparams['hidden_dim'] - hparams['num_features'])
-        self.linear = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'])
+        self.embedding = nn.Embedding(NUM_AA, hdim - hparams['num_features'])
+        self.linear = nn.Linear(hdim, hdim)
         
         self.relu = nn.ReLU(inplace = True)
         self.tanh = nn.Tanh()
-        self.lin1 = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'])
-        self.lin2 = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'])
-        self.bn = nn.BatchNorm2d(hparams['hidden_dim'])
+        self.lin1 = nn.Linear(hdim, hdim)
+        self.lin2 = nn.Linear(hdim, hdim)
+        self.bn = nn.BatchNorm2d(hdim)
 
     def forward(self, X, features):
         # X: num batches x num alignments x sum TERM length
@@ -71,11 +72,12 @@ class FocusEncoding(nn.Module):
         super(FocusEncoding, self).__init__()
         self.hparams = hparams
         self.dropout = nn.Dropout(p=hparams['fe_dropout'])
-        self.hidden_dim = hparams['hidden_dim']
+        self.hidden_dim = hparams['term_hidden_dim']
+        hdim = self.hidden_dim
 
-        pe = torch.zeros(hparams['fe_max_len'], hparams['hidden_dim'])
+        pe = torch.zeros(hparams['fe_max_len'], hdim)
         position = torch.arange(0, hparams['fe_max_len'], dtype=torch.double).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hparams['hidden_dim'], 2).double() * (-math.log(10000.0) / hparams['hidden_dim']))
+        div_term = torch.exp(torch.arange(0, hdim, 2).double() * (-math.log(10000.0) / hdim))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
@@ -177,9 +179,6 @@ class EdgeFeatures(nn.Module):
         cov_features = cov_mat.view([n_batch, n_term, n_aa, n_aa, -1])
         return self.W(cov_features)
 
-
-
-
 # TODO: differential positional encodings
 
 class CondenseMSA(nn.Module):
@@ -198,7 +197,7 @@ class CondenseMSA(nn.Module):
         self.encoder = TERMTransformer(hparams = self.hparams, transformer = self.transformer)
         self.batchify = BatchifyTERM()
 
-        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['hidden_dim'])
+        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['term_hidden_dim'])
 
         self.track_nan = track_nans
 
@@ -234,7 +233,7 @@ class CondenseMSA(nn.Module):
         local_dev = X.device
 
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
@@ -248,7 +247,7 @@ class CondenseMSA(nn.Module):
             # project ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
-            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['hidden_dim'])
+            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['term_hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
             # output dimensionality is a little different for transformer
@@ -263,7 +262,7 @@ class CondenseMSA(nn.Module):
 
 
         # add absolute positional encodings before TERM transformer
-        if self.hparams['resnet_linear']:
+        if self.hparams['matches_linear']:
             batched_flat_terms = condensed_matches
         else:
             batched_flat_terms = self.fe(condensed_matches, focuses, mask = ~src_key_mask)
@@ -272,7 +271,7 @@ class CondenseMSA(nn.Module):
         # also reshape the mask
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # big transform
-        if self.hparams['transformer_linear']:
+        if self.hparams['term_mpnn_linear']:
             node_embeddings = batchify_terms
         else:
             node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask, mask_attend = batchify_src_key_mask)
@@ -285,7 +284,7 @@ class CondenseMSA(nn.Module):
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
         # this make sure each batch stays in the same layer during aggregation
         layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
@@ -319,7 +318,7 @@ class MultiChainCondenseMSA(nn.Module):
             raise InvalidArgumentError("arg for matches condenser doesn't look right")
         self.encoder = S2STERMTransformerEncoder(hparams = self.hparams)
         self.batchify = BatchifyTERM()
-        self.term_features = TERMProteinFeatures(edge_features = hparams['hidden_dim'], node_features =  hparams['hidden_dim'])
+        self.term_features = TERMProteinFeatures(edge_features = hparams['term_hidden_dim'], node_features = hparams['term_hidden_dim'])
 
         self.track_nan = track_nans
 
@@ -356,7 +355,7 @@ class MultiChainCondenseMSA(nn.Module):
 
 
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
@@ -379,7 +378,7 @@ class MultiChainCondenseMSA(nn.Module):
 
 
         # add absolute positional encodings before TERM transformer
-        if self.hparams['resnet_linear']:
+        if self.hparams['matches_linear']:
             batched_flat_terms = condensed_matches
         else:
             batched_flat_terms = self.fe(condensed_matches, focuses, mask = ~src_key_mask)
@@ -391,7 +390,7 @@ class MultiChainCondenseMSA(nn.Module):
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
 
         # transform?
-        if self.hparams['transformer_linear']:
+        if self.hparams['term_mpnn_linear']:
             node_embeddings = batchify_terms
         else: 
             # and reshape the coordinates
@@ -408,7 +407,7 @@ class MultiChainCondenseMSA(nn.Module):
 
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
         # this make sure each batch stays in the same layer during aggregation
         layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
@@ -431,7 +430,7 @@ class MultiChainCondenseMSA_g(nn.Module):
     def __init__(self, hparams, device = 'cuda:0', track_nans = True):
         super(MultiChainCondenseMSA_g, self).__init__()
         self.hparams = hparams
-        h_dim = hparams['hidden_dim']
+        h_dim = hparams['term_hidden_dim']
         self.num_sing_stats = hparams['num_sing_stats']
         self.num_pair_stats = hparams['num_pair_stats']
         self.embedding = ResidueFeatures(hparams = self.hparams)
@@ -508,7 +507,7 @@ class MultiChainCondenseMSA_g(nn.Module):
 
 
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
@@ -524,7 +523,7 @@ class MultiChainCondenseMSA_g(nn.Module):
             # project target ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
-            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['hidden_dim'])
+            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['term_hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
             # output dimensionality of embeddings is different for transformer
@@ -574,7 +573,7 @@ class MultiChainCondenseMSA_g(nn.Module):
             shift_E_idx_slice = (E_idx_slice + torch.arange(max_term_len).unsqueeze(1)) % max_term_len
             batch_rel_E_idx = E_idx_slice.view([1,1, max_term_len, max_term_len]).expand([num_batch, max_num_terms, -1, -1]).contiguous().to(local_dev)
             # use gather to rearrange the edge features
-            edge_features = torch.gather(edge_features, -2, batch_rel_E_idx.unsqueeze(-1).expand(list(batch_rel_E_idx.shape) + [self.hparams['hidden_dim']]))
+            edge_features = torch.gather(edge_features, -2, batch_rel_E_idx.unsqueeze(-1).expand(list(batch_rel_E_idx.shape) + [self.hparams['term_hidden_dim']]))
 
             # we need an absolute version of the rel_E_idx so we can aggregate edges
             batch_abs_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, max_term_len, -1), -1, batch_rel_E_idx)
@@ -613,7 +612,7 @@ class MultiChainCondenseMSA_g(nn.Module):
                 raise RuntimeError("nan in edge embeddings")
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim'])).to(local_dev)
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
 
         # this make sure each batch stays in the same layer during aggregation
@@ -666,10 +665,10 @@ class GVPCondenseMSA(nn.Module):
             raise InvalidArgumentError("arg for matches condenser doesn't look right")
         self.encoder = TERMGraphGVPEncoder(hparams = self.hparams)
         self.batchify = BatchifyTERM()
-        self.term_features = GVPTProteinFeatures(edge_features = hparams['hidden_dim']//2, node_features =  hparams['hidden_dim']//2)
+        self.term_features = GVPTProteinFeatures(edge_features = hparams['term_hidden_dim']//2, node_features = hparams['term_hidden_dim']//2)
 
         self.track_nan = track_nans
-        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['hidden_dim'])
+        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['term_hidden_dim'])
 
         if torch.cuda.is_available():
             self.dev = device
@@ -704,7 +703,7 @@ class GVPCondenseMSA(nn.Module):
 
 
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
@@ -718,7 +717,7 @@ class GVPCondenseMSA(nn.Module):
             # project ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
-            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['hidden_dim'])
+            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['term_hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
             # output dimensionality is a little different for transformer
@@ -753,7 +752,7 @@ class GVPCondenseMSA(nn.Module):
         node_embeddings, edge_embeddings = self.encoder(batch_V, batch_E, batch_rel_E_idx, mask = batchify_src_key_mask.float())
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['hidden_dim']*2)).to(local_dev)
+        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim']*2)).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
 
         # this make sure each batch stays in the same layer during aggregation

@@ -8,9 +8,9 @@ class TERMGVPEncoder(nn.Module):
     def __init__(self, hparams):
         super(TERMGVPEncoder, self).__init__()
         self.hparams = hparams
-        node_features = hparams['hidden_dim']
-        edge_features = hparams['hidden_dim']
-        hidden_dim = hparams['hidden_dim']
+        node_features = hparams['term_hidden_dim']
+        edge_features = hparams['term_hidden_dim']
+        hidden_dim = hparams['term_hidden_dim']
         dropout = hparams['transformer_dropout']
         num_encoder_layers = hparams['term_layers']
 
@@ -54,10 +54,10 @@ class TERMGraphGVPEncoder(nn.Module):
         super(TERMGraphGVPEncoder, self).__init__()
 
         self.hparams = hparams
-        node_features = (hparams['hidden_dim']//2, hparams['hidden_dim']//2)
-        edge_features = (hparams['hidden_dim']//2, hparams['hidden_dim']//2)
-        hidden_dim = hparams['hidden_dim']
-        hidden_features = (hparams['hidden_dim']//2, hparams['hidden_dim']//2)
+        node_features = (hparams['term_hidden_dim']//2, hparams['term_hidden_dim']//2)
+        edge_features = (hparams['term_hidden_dim']//2, hparams['term_hidden_dim']//2)
+        hidden_dim = hparams['term_hidden_dim']
+        hidden_features = (hparams['term_hidden_dim']//2, hparams['term_hidden_dim']//2)
         dropout = hparams['transformer_dropout']
         num_encoder_layers = hparams['term_layers']
 

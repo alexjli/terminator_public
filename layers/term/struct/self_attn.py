@@ -11,12 +11,13 @@ class TERMAttention(nn.Module):
     def __init__(self, hparams):
         super(TERMAttention, self).__init__()
         self.hparams = hparams
+        hdim = hparams['term_hidden_dim']
 
         # Self-attention layers: {queries, keys, values, output}
-        self.W_Q = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
-        self.W_K = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
-        self.W_V = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
-        self.W_O = nn.Linear(hparams['hidden_dim'], hparams['hidden_dim'], bias=False)
+        self.W_Q = nn.Linear(hdim, hdim, bias=False)
+        self.W_K = nn.Linear(hdim, hdim, bias=False)
+        self.W_V = nn.Linear(hdim, hdim, bias=False)
+        self.W_O = nn.Linear(hdim, hdim, bias=False)
 
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
@@ -32,7 +33,7 @@ class TERMAttention(nn.Module):
 
         n_batches, n_terms, n_aa = query.shape[:3]
         n_heads = self.hparams['term_heads']
-        num_hidden = self.hparams['hidden_dim']
+        num_hidden = self.hparams['term_hidden_dim']
 
         assert num_hidden % n_heads == 0
 
@@ -65,11 +66,12 @@ class TERMTransformerLayer(nn.Module):
     def __init__(self, hparams):
         super(TERMTransformerLayer, self).__init__()
         self.hparams = hparams
+        hdim = hparams['term_hidden_dim']
         self.dropout = nn.Dropout(hparams['transformer_dropout'])
-        self.norm = nn.ModuleList([Normalize(hparams['hidden_dim']) for _ in range(2)])
+        self.norm = nn.ModuleList([Normalize(hdim) for _ in range(2)])
 
         self.attention = TERMAttention(hparams = self.hparams)
-        self.dense = PositionWiseFeedForward(hparams['hidden_dim'], hparams['hidden_dim'] * 4)
+        self.dense = PositionWiseFeedForward(hdim, hdim * 4)
 
     def forward(self, src, src_mask=None, mask_attend=None, checkpoint = False):
         """ Parallel computation of full transformer layer """

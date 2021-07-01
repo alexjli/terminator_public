@@ -17,6 +17,7 @@ import os
 import sys
 import copy
 import json
+from hparams.default import DEFAULT_HPARAMS
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -24,55 +25,6 @@ except ImportError:
 
 INPUT_DATA = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator/'
 OUTPUT_DIR = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator_runs/'
-
-DEFAULT_HPARAMS = {
-            'model': 'multichain',
-            'hidden_dim': 32,
-            'term_hidden_dim': 32,
-            'energies_hidden_dim': 32,
-            'gradient_checkpointing': True,
-            'cov_features': True,
-            'cov_compress': 'project',
-            'num_pair_stats': 28,
-            'num_sing_stats': 0,
-            'resnet_blocks': 4,
-            'term_layers': 4,
-            'conv_filter': 3,
-            'matches_layers': 4,
-            'matches_num_heads': 4,
-            'term_heads': 4,
-            'k_neighbors': 30,
-            'fe_dropout': 0.1,
-            'fe_max_len': 1000,
-            'transformer_dropout': 0.1,
-            'term_use_mpnn': False,
-            'energies_num_letters': 20,
-            'energies_encoder_layers': 3,
-            'energies_decoder_layers': 3,
-            'energies_vocab': 20,
-            'energies_protein_features': 'full',
-            'energies_augment_eps': 0,
-            'energies_dropout': 0.1,
-            'energies_forward_attention_decoder': True,
-            'energies_use_mpnn': False,
-            'energies_output_dim': 20*20,
-            'energies_gvp': False,
-            'energies_full_graph': False,
-            'res_embed_linear': False,
-            'resnet_linear': False,
-            'matches_linear': False,
-            'term_mpnn_linear': False,
-            'transformer_linear': False,
-            'struct2seq_linear': False,
-            'use_terms': True,
-            'train_batch_size': 16,
-            'shuffle': True,
-            'sort_data': True,
-            'semi_shuffle': False,
-            'regularization': 0,
-            'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
-        }
-
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
 torch.set_printoptions(precision=2)
@@ -139,6 +91,9 @@ def main(args):
                                  **kwargs)
 
     terminator = MultiChainTERMinator_gcnkt(hparams = hparams, device = dev)
+    print(terminator)
+    print("hparams", terminator.hparams)
+
     if torch.cuda.device_count() > 1:
         terminator = nn.DataParallel(terminator)
         terminator_module = terminator.module
@@ -146,7 +101,13 @@ def main(args):
         terminator_module = terminator
     terminator.to(dev)
 
+    """
+    optimizer = optim.Adam(terminator.parameters())
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor = 0.8, patience = 5, verbose = True)
+    """
     optimizer = get_std_opt(terminator.parameters(), d_model = hparams['energies_hidden_dim'], regularization = hparams['regularization'])
+    scheduler = None
+    
 
     save = []
     
@@ -180,7 +141,7 @@ def main(args):
             writer.add_scalar('approx training prob', avg_prob, epoch)
 
             # validate
-            val_loss, val_prob = run_epoch(terminator, val_dataloader, grad = False, dev = dev)
+            val_loss, val_prob = run_epoch(terminator, val_dataloader, scheduler = scheduler, grad = False, dev = dev)
 
             print('val loss', val_loss, '| approx val prob', val_prob)
             writer.add_scalar('val loss', val_loss, epoch)
