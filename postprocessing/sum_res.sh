@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH -p defq
+#SBATCH -o /dev/null
 
 source ~/.bashrc
 conda activate analysis
