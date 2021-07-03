@@ -54,3 +54,35 @@ send vikram path to run_7000_cpl_term1_tanh run
 automatic experiment recording
 
 drop the sequence input from net 1?
+
+
+
+energies archs
+- mpnn (node then edge)
+- mpnn (node, then edge is derived from 2nodes + edges through ffn)
+- attention (node edge alternation)
+- attention (node then edge)
+- attention (node, then edge is derived from 2node + edges through ffn)
+- increase energies dimensionality from 32 to 64?
+- increase num layers from 3 to 6 (currently doing)
+- can i get GVP up and running?
+
+matches transformer
+- embed target info in only pool token
+
+- ablate TERM graph prop (does that actually do much?)
+
+
+objective: average nlcpl over all residue pairs in a batch rather than per protein
+
+
+
+TODO 3/24/21:
+- run per-res nlcpl (in progress)
+- run semi-shuffle
+- run gvp
+- run 6 layers h128
+
+
+ablate coordinates
+

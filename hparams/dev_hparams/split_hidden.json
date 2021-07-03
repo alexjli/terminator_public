@@ -1,0 +1,1 @@
+{"matches": "resnet", "cov_features": "shared_learned", "term_use_mpnn": true, "term_hidden_dim": 32, "energies_hidden_dim": 64}
