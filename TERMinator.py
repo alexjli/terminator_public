@@ -375,8 +375,11 @@ class MultiChainTERMinator_gcnkt(TERMinator):
             self.hparams['energies_input_dim']= self.hparams['term_hidden_dim']
         else:
             self.hparams['energies_input_dim'] = 0
-
-        if hparams['energies_gvp']:
+        
+        
+        if hparams['struct2seq_linear']:
+            self.top = AblatedPairEnergies_g(hparams).to(self.dev)
+        elif hparams['energies_gvp']:
             self.top = GVPPairEnergies(hparams).to(self.dev)
         elif hparams['energies_full_graph']:
             self.top = PairEnergiesFullGraph(hparams).to(self.dev)

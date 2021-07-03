@@ -158,10 +158,22 @@ class PairEnergies(nn.Module):
             return etab, E_idx
 
 
-class AblatedPairEnergies(PairEnergies):
+class AblatedPairEnergies(nn.Module):
     def __init__(self, hparams):
         """ Graph labeling network """
-        super(AblatedPairEnergies, self).__init__(hparams)
+        super(AblatedPairEnergies, self).__init__()
+        hdim = hparams['energies_hidden_dim']
+        self.hparams = hparams
+
+
+        # Featurization layers
+        self.features = S2SProteinFeatures(node_features = hdim, 
+                                        edge_features = hdim, 
+                                        top_k = hparams['k_neighbors'], 
+                                        features_type = hparams['energies_protein_features'], 
+                                        augment_eps = hparams['energies_augment_eps'], 
+                                        dropout = hparams['energies_dropout'])
+
 
         self.k_neighbors = hparams['k_neighbors']
         self.W = nn.Linear(hparams['energies_input_dim'] * 2, hparams['energies_output_dim'])
@@ -182,6 +194,37 @@ class AblatedPairEnergies(PairEnergies):
         h_EV = self.W(h_E)
 
         return h_EV, E_idx
+
+class AblatedPairEnergies_g(nn.Module):
+    def __init__(self, hparams):
+        """ Graph labeling network """
+        super().__init__()
+        hdim = hparams['energies_hidden_dim']
+        self.hparams = hparams
+
+        # Featurization layers
+        self.features = MultiChainProteinFeatures(
+            node_features = hdim, 
+            edge_features = hdim, 
+            top_k = hparams['k_neighbors'], 
+            features_type = hparams['energies_protein_features'], 
+            augment_eps = hparams['energies_augment_eps'], 
+            dropout = hparams['energies_dropout']
+        )
+ 
+        self.k_neighbors = hparams['k_neighbors']
+        self.W = nn.Linear(hparams['energies_input_dim'] * 3, hparams['energies_output_dim'])
+
+    def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse = False):
+        # Prepare node and edge embeddings
+        _, _, E_idx = self.features(X, chain_idx, x_mask)
+        E_embed_neighbors = gather_edges(E_embed, E_idx)
+
+        h_E = cat_edge_endpoints(E_embed_neighbors, V_embed, E_idx)
+        h_EV = self.W(h_E)
+
+        return h_EV, E_idx
+
 
 class MultiChainPairEnergies(PairEnergies):
     def __init__(self, hparams):
