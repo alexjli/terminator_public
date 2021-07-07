@@ -77,6 +77,7 @@ def parseTERM(fp, lastline):
     focus = fp.readline().strip().split()
     focus = [int(i) for i in focus]
     term_dict['focus'] = focus
+    term_dict['contact_idx'] = contact_idx(focus)
     focus_len = len(focus)
 
     # parse each individual structure match, append to term
@@ -100,6 +101,30 @@ def parseTERM(fp, lastline):
     term_dict['rmsds'] = np.concatenate([term_rmsds])
     term_dict['ppoe'] = np.concatenate([term_ppoe])
     return term_dict, current_line
+
+# assign an index based on how close you are to the central element used to create the TERM
+# we set 0 to the central element, increment as you go N->C, decrement as you go C->N
+# central element is middle residue for a first order TERM, central contact for second order TERM
+def contact_idx(focus):
+    l = len(focus)
+    # if all residues are consecutive, first order TERM
+    if focus[-1] - focus[0] + 1 == l:
+        if l % 2 == 1: # if it's odd we can easily make this
+            return [i - l//2 for i in range(l)]
+        else: # if it's even we assign both center elements 0
+            tail_list = [i for i in range(l//2)]
+            head_list = [-i for i in reversed(tail_list)]
+            return head_list + tail_list
+    else: # otherwise, second order TERM
+        breakpoint = 0
+        for i in range(1, l):
+            if focus[i] - focus[i-1] != 1:
+                breakpoint = i
+                break
+        first_chain = focus[:breakpoint]
+        second_chain = focus[breakpoint:]
+        return contact_idx(first_chain) + contact_idx(second_chain)
+        
 
 def makeDataPickle(in_path, out_path = None):
     data = parseTERMdata(in_path)
