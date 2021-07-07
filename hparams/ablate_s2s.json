@@ -1,0 +1,1 @@
+{"cov_features": "all_raw", "cov_compress": "ffn", "term_use_mpnn": true, "matches": "transformer", "contact_idx": true, "train_batch_size": null, "shuffle": false, "semi_shuffle": true, "sort_data": false, "use_terms": true, "struct2seq_linear": true}
