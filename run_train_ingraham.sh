@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH -n 16
 #SBATCH --gres=gpu:volta:2
-#SBATCH --time=120:00:00
+#SBATCH --time=144:00:00
 #SBATCH --exclusive
 #SBATCH -o logfiles/test-output_RUNNAME_ingraham_runRUNNO.out
 #SBATCH -e logfiles/test-error_RUNNAME_ingraham_runRUNNO.out
