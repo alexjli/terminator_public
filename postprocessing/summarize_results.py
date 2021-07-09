@@ -74,9 +74,9 @@ if __name__ == '__main__':
                         for line in f:
                             linesplit = line.split('|')
                             if len(linesplit) >= 3:
-                                #if linesplit[2] == ' lowest-energy sequence\n' and not already_found:
-                                #    dtermen_pred_sequences += [linesplit[0]]
-                                #    already_found = True
+                                if linesplit[2] == ' lowest-energy sequence\n' and not already_found:
+                                    dtermen_pred_sequences += [linesplit[0]]
+                                    already_found = True
                                 if len(linesplit) >= 4 and linesplit[3] == ' recovery\n' and not already_found_recov:
                                     dtermen_recovery += [float(linesplit[0][:-2])]
                                     already_found_recov = True
