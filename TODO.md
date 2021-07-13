@@ -86,3 +86,18 @@ TODO 3/24/21:
 
 ablate coordinates
 
+TODO 7/12/21:
+
+get GVP working and run TERMinator with GVP (replace struct2seq with GVP)
+
+ablate singleton embeddings
+
+ablate pairwise embeddings
+
+ablate TERM graph propagation (delete it and linearize it)
+
+model performance varies as a function of TERM matches
+
+replace Potts model with most likely sequence
+
+interpretability (integrated gradients)
