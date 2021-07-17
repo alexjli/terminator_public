@@ -10,7 +10,7 @@ from .parseCoords import parseCoords
 
 NUM_AA = 21 # including X
 
-def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stats = False, weight_fn = "neg"):
+def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stats = False, weight_fn = "neg", coords_only=False):
     coords = parseCoords(in_path + '.red.pdb', save=False)
     data = parseTERMdata(in_path + '.dat')
     etab, self_etab = parseEtab(in_path + '.etab', save=False)
@@ -189,6 +189,25 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         #'etab': etab,
         #'selfE': self_etab
     }
+
+    if coords_only:
+        dummy_arr_3d = np.zeros([1,1,1])
+        dummy_arr_2d = np.zeros([1,1])
+        output = {
+            'pdb': pdb,
+            'coords': coords_tensor,
+            'ppoe': dummy_arr_3d,
+            'features': dummy_arr_3d,
+            'sing_stats': None,
+            'pair_stats': None,
+            'msas': dummy_arr_2d,
+            'focuses': dummy_arr_2d,
+            'contact_idxs': dummy_arr_2d,
+            'term_lens': len_tensor,
+            'sequence': np.array(data['sequence']),
+            'seq_len': len(data['selection']),
+            'chain_lens': data['chain_lens']
+       }
 
     if save:
         if not out_path:
