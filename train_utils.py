@@ -1,8 +1,9 @@
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
+from torch.cuda.amp import autocast
 
-def run_epoch(terminator, dataloader, optimizer = None, scheduler = None, grad = False, test = False, dev = "cuda:0"):
+def run_epoch(terminator, dataloader, optimizer = None, scheduler = None, grad = False, test = False, dev = "cuda:0", scaler=None):
     if test:
         assert not grad, "grad should not be on for test set"
     if grad:
@@ -40,7 +41,11 @@ def run_epoch(terminator, dataloader, optimizer = None, scheduler = None, grad =
         ids = data['ids']
 
         try:
-            loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_idx, contact_idxs)
+            if scaler:
+                with autocast():
+                    loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_idx, contact_idxs)
+            else:
+                loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, seqs, max_seq_len, ppoe, chain_idx, contact_idxs)
         except Exception as e:
             print(ids)
             raise e
@@ -55,11 +60,16 @@ def run_epoch(terminator, dataloader, optimizer = None, scheduler = None, grad =
         global_count += batch_count.item()
 
         if grad:
-            #max_grad_norm = 1
-            optimizer.zero_grad()
-            loss.backward()
-            #torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
-            optimizer.step()
+            if scaler:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                #max_grad_norm = 1
+                optimizer.zero_grad()
+                loss.backward()
+                #torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
+                optimizer.step()
 
         if test:
             output, E_idx = terminator.module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe, chain_idx, contact_idxs)
