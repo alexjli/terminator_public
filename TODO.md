@@ -32,7 +32,7 @@ at some point
 
 backup files to c3ddb
 
-measure perplexity (***)
+measure perplexity
 
 increase model complexity to see how it does, or just feed it more data
 
@@ -90,11 +90,11 @@ TODO 7/12/21:
 
 get GVP working and run TERMinator with GVP (replace struct2seq with GVP)
 
-ablate singleton embeddings
+ablate singleton embeddings **[in progress: alexjli]**
 
-ablate pairwise embeddings
+ablate pairwise embeddings **[in progress: alexjli]**
 
-ablate TERM graph propagation (delete it and linearize it)
+ablate TERM graph propagation (delete it and linearize it) **[linearize in progress: alexjli]**
 
 model performance varies as a function of TERM matches
 
