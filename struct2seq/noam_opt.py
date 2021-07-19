@@ -45,6 +45,9 @@ class NoamOpt:
         self.model_size = state_dict['model_size']
         self._rate = state_dict['rate']
         self.optimizer.load_state_dict(state_dict['optimizer_state'])
+
+    def __getattr__(self, name):
+        return getattr(self.optimizer, name)
         
 def get_std_opt(parameters, d_model, lr_multiplier = 1, regularization = 1e-3):
     return NoamOpt(
