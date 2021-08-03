@@ -90,14 +90,28 @@ TODO 7/12/21:
 
 get GVP working and run TERMinator with GVP (replace struct2seq with GVP)
 
-ablate singleton embeddings **[in progress: alexjli]**
+ablate singleton embeddings **[finished: alexjli]**
 
-ablate pairwise embeddings **[in progress: alexjli]**
+ablate pairwise embeddings **[finished: alexjli]**
 
-ablate TERM graph propagation (delete it and linearize it) **[linearize in progress: alexjli]**
+ablate TERM graph propagation (delete it and linearize it) **[finished: alexjli]**
 
 model performance varies as a function of TERM matches
 
 replace Potts model with most likely sequence
 
 interpretability (integrated gradients)
+
+TODO 7/28/21:
+
+run all ablation studies in triplicate and see inter-run variability
+
+see performance on multichain to determine whether or not we need triplicate
+
+make a defined split for multichain train/validate (random split and stick with it)
+
+plot performance on test with closest percent id redundant chain in train
+
+try gevorg's sequence complexity penalty on some test sets to see how performance changes
+
+prioritize gvp model!!
