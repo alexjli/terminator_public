@@ -33,6 +33,7 @@ DEFAULT_HPARAMS = {
             'term_mpnn_linear': False,#
             'struct2seq_linear': False,
             'use_terms': True,#
+            'term_matches_cutoff': None,
             'use_coords': True,
             'train_batch_size': 16,
             'shuffle': True,

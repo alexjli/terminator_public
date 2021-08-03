@@ -71,9 +71,9 @@ def main(args):
     val_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
     test_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
     
-    train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=hparams['shuffle'], semi_shuffle = hparams['semi_shuffle'],  sort_data=hparams['sort_data'])
-    val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False)
-    test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
+    train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=hparams['shuffle'], semi_shuffle = hparams['semi_shuffle'],  sort_data=hparams['sort_data'], term_matches_cutoff = hparams['term_matches_cutoff'])
+    val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
+    test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_sampler = train_batch_sampler,

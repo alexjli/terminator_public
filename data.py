@@ -389,7 +389,19 @@ class LazyDataset(Dataset):
             return self.dataset[data_idx]
 
 class TERMLazyDataLoader(Sampler):
-    def __init__(self, dataset, batch_size=4, sort_data = False, shuffle = True, semi_shuffle = False, semi_shuffle_cluster_size = 500, batch_shuffle = True, drop_last = False, max_term_res = 55000, max_seq_tokens = 0):
+    def __init__(self, 
+                 dataset, 
+                 batch_size=4, 
+                 sort_data = False, 
+                 shuffle = True, 
+                 semi_shuffle = False, 
+                 semi_shuffle_cluster_size = 500, 
+                 batch_shuffle = True, 
+                 drop_last = False, 
+                 max_term_res = 55000, 
+                 max_seq_tokens = 0,
+                 term_matches_cutoff = None):
+
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
@@ -408,6 +420,7 @@ class TERMLazyDataLoader(Sampler):
         self.max_seq_tokens = max_seq_tokens
         self.semi_shuffle = semi_shuffle
         self.semi_shuffle_cluster_size = semi_shuffle_cluster_size
+        self.term_matches_cutoff = term_matches_cutoff
 
         assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
         #assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
@@ -539,6 +552,9 @@ class TERMLazyDataLoader(Sampler):
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1,2)
         msas = pad_sequence(msas, batch_first=True).transpose(1,2).long()
+        if self.term_matches_cutoff:
+            features = features[:, :self.term_matches_cutoff]
+            msas = msas[:, :self.term_matches_cutoff]
 
         # we can pad these using standard pad_sequence
         ppoe = pad_sequence(ppoe, batch_first=True)
