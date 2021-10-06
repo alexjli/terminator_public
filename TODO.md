@@ -1,4 +1,4 @@
-give each residue a chain index
+Rive each residue a chain index
 
 some residues have no coordinates (esp in the middle of the chain): just ignore those residue
 - this means you need to modify your nan-removing code / think of a new way to deal with that
@@ -101,3 +101,46 @@ model performance varies as a function of TERM matches
 replace Potts model with most likely sequence
 
 interpretability (integrated gradients)
+
+
+8/17
+on ablate_s2s, look at low recovery vs high recovery structures
+    apply complexity filter
+    label low vs high
+
+anneal to like 0.5
+
+check bad outputs of gvp, see what''s wrong
+
+9/29
+
+see if dTERMen etabs and TERMinator etabs correlate
+fine-tuning
+GVP layers
+
+10/6
+
+journal paper ideas:
+1. ablate singleton model as reference for all numbers (split across mindren/vikram)
+4. GVP (depending on how much work we need to work)
+4. complexity filter effect
+2. compare energy tables (talking up potts model)
+3. run on multichain model
+-- change how chain breaks are represented
+
+people using the model:
+run without TERM match data (but with TERM struture decomposition) vs without TERM data itself
+2. try running with one fake match (without retraining) and see what happens
+3. try training with one fake match and all matches, test with no matches but only fake matches
+1. prepare the form of the model which doesn`t use TERM data
+4. try to feed in partial TERMs
+
+compare energy tables for dTERMen, TERMinator, ablated TERMinator models
+- correlation between energy tables flattened to vector (or maybe matrix correlation)
+make some case of potts vs autoregressive models in journal paper
+replace mpnn layers w GVP layers
+test full TERMinator with 0 TERM inputs
+feed in a blank 1st match with structure info but no sequence
+train multichain model
+
+get model working that runs with no TERM data
