@@ -154,6 +154,8 @@ class EdgeFeatures(nn.Module):
                     nn.Linear(in_dim**2, hidden_dim*4),
                     nn.ReLU(),
                     nn.Linear(hidden_dim*4, hidden_dim))
+        elif compress == "ablate":
+            self.W = torch.zeros_like
 
     def forward(self, matches, term_lens, rmsds, mask, features=None):
         feature_mode = self.feature_mode
@@ -191,6 +193,8 @@ class CondenseMSA(nn.Module):
             self.matches = Conv1DResNet(hparams = self.hparams)
         elif hparams['matches'] == 'transformer':
             self.matches = TERMMatchTransformerEncoder(hparams = hparams)
+        elif hparams['matches'] == 'ablate':
+            self.matches=None
         else:
             raise InvalidArgumentError("arg for matches condenser doesn't look right")
         self.transformer = TERMTransformerLayer(hparams = self.hparams)
@@ -427,7 +431,7 @@ class MultiChainCondenseMSA(nn.Module):
         return aggregate
 
 class MultiChainCondenseMSA_g(nn.Module):
-    def __init__(self, hparams, device = 'cuda:0', track_nans = True):
+    def __init__(self, hparams, device = 'cuda:0', track_nans = False):
         super(MultiChainCondenseMSA_g, self).__init__()
         self.hparams = hparams
         h_dim = hparams['term_hidden_dim']
@@ -448,8 +452,10 @@ class MultiChainCondenseMSA_g(nn.Module):
             self.matches = Conv1DResNet(hparams = self.hparams)
         elif hparams['matches'] == 'transformer':
             self.matches = TERMMatchTransformerEncoder(hparams = hparams)
+        elif hparams['matches'] == 'ablate':
+            self.matches = None
         else:
-            raise InvalidArgumentError("arg for matches condenser doesn't look right")
+            raise InvalidArgumentError(f"arg for matches condenser {hparams['matches']} doesn't look right")
 
         if hparams['contact_idx']:
             self.encoder = TERMGraphTransformerEncoder_cnkt(hparams = self.hparams)
@@ -530,6 +536,8 @@ class MultiChainCondenseMSA_g(nn.Module):
             condensed_matches = self.matches(embeddings.transpose(1,3).transpose(1,2), target, ~src_key_mask)
         elif self.hparams['matches'] == 'resnet':
             condensed_matches = self.matches(embeddings)
+        elif self.hparams['matches'] == 'ablate':
+            condensed_matches = torch.zeros_like(embeddings.mean(dim = -1).transpose(1,2))
 
         
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -n 16
+#SBATCH --mincpu=40
 #SBATCH --gres=gpu:volta:2
 #SBATCH --time=144:00:00
 #SBATCH --exclusive

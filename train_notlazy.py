@@ -18,6 +18,9 @@ import sys
 import copy
 import json
 from hparams.default import DEFAULT_HPARAMS
+
+from torch.cuda.amp import autocast, GradScaler
+
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -67,13 +70,13 @@ def main(args):
     with open(os.path.join(INPUT_DATA, args.dataset, args.test), 'r') as f:
         for line in f:
             test_ids += [line[:-1]]
-    train_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = train_ids) 
-    val_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
-    test_dataset = LazyDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
-    
-    train_batch_sampler = TERMLazyDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=hparams['shuffle'], semi_shuffle = hparams['semi_shuffle'],  sort_data=hparams['sort_data'], term_matches_cutoff = hparams['term_matches_cutoff'])
-    val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
-    test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
+    train_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = train_ids) 
+    val_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = validation_ids)
+    test_dataset = TERMDataset(os.path.join(INPUT_DATA, args.dataset), pdb_ids = test_ids)
+
+    train_batch_sampler = TERMDataLoader(train_dataset, batch_size=hparams['train_batch_size'], shuffle=hparams['shuffle'], semi_shuffle = hparams['semi_shuffle'],  sort_data=hparams['sort_data'])
+    val_batch_sampler = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
+    test_batch_sampler = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_sampler = train_batch_sampler,
@@ -129,12 +132,14 @@ def main(args):
         start_epoch = 0
         writer = SummaryWriter(log_dir = os.path.join(run_output_dir, 'tensorboard'))
 
+    scaler = None#GradScaler()
+
     try:
         #torch.autograd.set_detect_anomaly(True)
         for epoch in range(start_epoch, args.epochs):
             print('epoch', epoch)
 
-            epoch_loss, avg_prob = run_epoch(terminator, train_dataloader, optimizer = optimizer, grad = True, dev = dev)
+            epoch_loss, avg_prob = run_epoch(terminator, train_dataloader, optimizer = optimizer, grad = True, dev = dev, scaler=scaler)
 
             print('epoch loss', epoch_loss, '| approx epoch prob', avg_prob)
             writer.add_scalar('training loss', epoch_loss, epoch)
