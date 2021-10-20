@@ -161,3 +161,28 @@ train multichain model
 
 get model working that runs with no TERM data
 
+10/20
+make repo config file
+- docstrings
+**1. compare energy tables (talking up potts model)**
+- alex
+2. run on multichain model
+- alex (look in to)
+-- change how chain breaks are represented
+3. ablate singleton model as reference for all numbers (split across mindren/vikram)
+- assigned to vikram/mindren
+4. GVP (depending on how much work we need to work)
+- alex
+4. complexity filter effect
+- mindren
+
+people using the model:
+run without TERM match data (but with TERM struture decomposition) vs without TERM data itself
+1. prepare the form of the model which doesn`t use TERM data
+- alex
+2. try running with one fake match (without retraining) and see what happens
+- mindren?
+3. try training with one fake match and all matches, test with no matches but only fake matches
+- mindren?
+4. try to feed in partial TERMs
+- ?
