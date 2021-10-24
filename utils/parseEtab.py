@@ -111,7 +111,7 @@ def parseEtab(filename, save=True):
     print(potts[0][0])
     """
 
-    return potts_dict, potts_selfE
+    return potts_dict, potts_selfE, potts
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Convert an etab into a numpy array of Potts model parameters')

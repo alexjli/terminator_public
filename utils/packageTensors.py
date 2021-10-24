@@ -13,7 +13,7 @@ NUM_AA = 21 # including X
 def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stats = False, weight_fn = "neg", coords_only=False):
     coords = parseCoords(in_path + '.red.pdb', save=False)
     data = parseTERMdata(in_path + '.dat')
-    etab, self_etab = parseEtab(in_path + '.etab', save=False)
+    etab, self_etab, _ = parseEtab(in_path + '.etab', save=False)
 
     selection = data['selection']
 
