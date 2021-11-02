@@ -144,8 +144,8 @@ def nlpl(etab, E_idx, ref_seqs, x_mask):
     avg_prob = (torch.exp(log_seqs_probs) * full_mask).sum() / n_res
 
     # convert to nlpl
-    log_probs *= full_mask # zero out positions that don't have residues or where the native sequence is X
-    nlpl = -torch.sum(log_probs) / n_res
+    log_seqs_probs *= full_mask # zero out positions that don't have residues or where the native sequence is X
+    nlpl = -torch.sum(log_seqs_probs) / n_res
     return nlpl, avg_prob, n_res
 
 
