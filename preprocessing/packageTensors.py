@@ -56,8 +56,10 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         sin_ppo = np.sin(ppo_rads)
         cos_ppo = np.cos(ppo_rads)
         # zero out dihedrals where there is no dihedral angle
+        """
         sin_ppo[is_999] = 0
         cos_ppo[is_999] = 0
+        """
         env = ppoe[:, 3:]
 
         # apply take
