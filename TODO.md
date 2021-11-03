@@ -186,3 +186,21 @@ run without TERM match data (but with TERM struture decomposition) vs without TE
 - mindren?
 4. try to feed in partial TERMs
 - ?
+
+11/3 
+compute average run times to add to the paper
+include sebastian in acknowledgements
+
+poster pdf for neurips
+biorender / diagrams.net / latex / chimera / pymol
+
+Alex:
+1. *** scatter plot for etabs ***
+1. residue likelihoods / energies and correlate
+2. recompute feature files with 999 torsions lifted to 3 torus masked
+2. run multichain (just choose a random split)
+3. test suite to fix GVP + restructure
+- if nothing works then hyperparameter search
+4. TERMless TERMinator
+- dropout TERMs
+
