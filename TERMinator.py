@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import numpy as np
-from utils.common import int_to_aa
+from preprocessing.common import int_to_aa
 from train_utils import nlpl as _nlpl
 from train_utils import nlcpl as _nlcpl
 
