@@ -56,10 +56,8 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         sin_ppo = np.sin(ppo_rads)
         cos_ppo = np.cos(ppo_rads)
         # zero out dihedrals where there is no dihedral angle
-        """
         sin_ppo[is_999] = 0
         cos_ppo[is_999] = 0
-        """
         env = ppoe[:, 3:]
 
         # apply take
@@ -175,8 +173,15 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
     # embed target ppoe
     ppoe = data['ppoe']
     ppo = ppoe[:, :3]
+    ppo_rads = np.radians(ppo)
     env = ppoe[:, 3:]
-    embedded_ppoe = np.concatenate([np.sin(ppo), np.cos(ppo), env], axis = 1)
+    # zero out dihedral embeddings where there are no dihedrals
+    is_999 = (ppo == 999)
+    sin_ppo = np.sin(ppo_rads)
+    sin_ppo[is_999] = 0
+    cos_ppo = np.cos(ppo_rads)
+    cos_ppo[is_999] = 0
+    embedded_ppoe = np.concatenate([sin_ppo, cos_ppo, env], axis = 1)
 
     output = {
         'pdb': pdb,
