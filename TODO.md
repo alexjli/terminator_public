@@ -204,3 +204,14 @@ Alex:
 4. TERMless TERMinator
 - dropout TERMs
 
+
+Code Cleanup notes:
+delete unnecessary TERMinator classes
+docstrings
+tests
+    yapf, pylist, pytest
+    (set up so that can't commit without test)
+    small unit tests for methods, integration tests for large
+    test input and output shapes, deterministic computations, test it runs
+Document hyperparameters in default_hyperparams.py
+make sure code taken from other places is cited

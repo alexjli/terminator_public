@@ -1,6 +1,40 @@
 # TERMinator
 This repo contains code for the TERMinator neural net, a neuronal implementation of dTERMen.
 
+## (outline for how getting set up with TERMinator should work)
+
+(maybe make a high-level "main.py" script that you can run other scripts from?)
+- `./main.py featurize <in> <out> *args` to featurize raw data
+- `./main.py train <hparams> <data> <run_dir>` to train models
+- `./main.py eval <run_dir> <data> <eval_dir>` to eval models on a dataset
+- `./main.py post <eval_dir>` to postprocess an eval dir
+    have a flag for running with sequence complexity filter?
+- `./main.py sum_res <eval_dir>` to summarize results from an eval dir
+- `./main.py npy_etabs <eval_dir>` to convert dTERMen etabs to numpy etabs in an eval dir
+- `./main.py compress <eval_dir>` to compress dTERMen etabs
+
+0. setup environment using env.yaml file. this will create a conda env called `terminator`
+0. modify `scripts/config.sh` at the top level, specifying the path to your MST installation (e.g. `~/MST_workspace/MST`)
+0. run `conda activate terminator` to activate the environment
+0. run `python setup.py install`, which will install the TERMinator software suite as module `terminator` in the environment
+0. it's recommended to place data folders in `data/`, though not strictly required
+0. it's also recommended to place model run folders in `models/`, if using pretrained models
+0. to generate feature files from your raw data, use `python scripts/data/preprocessing/generateDataset.py <input_data_folder> <output_features_folder> -n <num_cores> <-u if you want to force update feature files>`.
+0. to train on supercloud, run `./scripts/models/train/submit_<dataset>.sh <dataset_dir> <hparams_path> <output_dir>`. this will train on the given dataset using TERMinator with the given hyperparameters, and place the trained model and results in the output directory
+0. to eval on supercloud, run `./terminator/models/eval/submit_eval.sh <output_dir_suffix> <input_features_folder>`. this will load the model from `models/runs/test_run_<output_dir_suffix>`, evaluate the features from `<input_features_folder>` using that model, and place them in `data/outputs/<output_dir_suffix>`
+0. to perform postprocessing, run `./terminator/data/postprocesing/submit_etab.sh <output_directory_name>`. this will read the output dump file in `data/outputs/<output_directory_name>` and submit an etab job to the cluster, dumping the etabs in `data/outputs/<output_Directory_name>/etabs`.
+    (perhaps it'd be nice to specify which net.out to use? since you might do multiple runs with the same model)
+
+    a. when it completes, it should submit a batch job to run dTERMen on each of the etabs. in case you want to run this manually, this command is `python terminator/data/postprocessing/batch_arr_dTERMen.py --output_dir=<output_directory_name>`. these files are also dumped in `data/outputs/dTERMen/<output_directory_name>`.
+
+    b. after the previous step completes, a summarization script should also automatically run. this command is `python summarize_results --output_dir=<output_directory_name>`. this will be located at `data/outputs/<output_directory_name>/summary_results.csv`.
+
+    Although these two steps are run automatically, oftentimes certain dTERMen jobs will have not finished (sometimes jobs stall if they're placed on a busy node, so we set the time quota to be small and opt     to rerun them). Run the above step again if you see no `summary_results.csv` in the output directory, and it will resubmit all dTERMen jobs that didn't complete.
+
+0. to convert dTERMen etabs to numpy etabs, run `python terminator/utils/<TODO_SCRIPT> --dir=<directory_name>`. this will search the folder `data/outputs/<directory_name>/etabs` for `*.etab` files and convert them into numpy files, which will be dumped in `data/outputs/<directory_name>/npy_etabs`
+
+0. to compress files, `./terminator/data/postprocessing/submit_compress_files.sh <output_directory_name>`
+
 ## Documentation
 The living documentation for this package can be found [here](https://docs.google.com/document/d/1xiaKvsUgBG5gzdJVc7iZQBsFyWzoPZx4k-vBip66Q20/edit?usp=sharing).
 
@@ -14,29 +48,4 @@ The living documentation for this package can be found [here](https://docs.googl
 * matplotlib
 * seaborn
 
-Above should be all that's needed, but an `env.yaml` file is included just in case (though it's not at all the minimal set needed). 
-
-## Instructions for Running Pipeline
-
-0. Ensure your path references are correct for both c3 and Supercloud.
-
-0. Define a set of hyperparameters and store them in `hparams/<hparams_filename>.json`
-
-0. Run `submit_all_jobs.sh <output_directory_suffix> <hparams_filename>` on Supercloud. This submits jobs to run the pipeline on folds 0, 2, 4, 6, and 8 in sequence automatically. The jobs can take up to 4 days to run, depending on the given hyperparameters. Use `submit_ingraham.sh <output_directory_suffix> <hparams_filename>` instead for running on the Ingraham dataset.
-
-0. Move the output directories from Supercloud to c3ddb.
-
-0. Enter the `postprocessing` folder, all subsequent commands are run from there.
-
-0. Run `submit_etab.sh <output_directory_name>` for each output directory for an individual fold (e.g. Ingraham set) or `submit_pipeline.sh <output_directory_suffix>` to automatically submit folds 0, 2, 4, 6, 8. Each job should take about an 1 hr per 1000 structures and generates the energy tables from the output. 
-The next two steps are run automatically, but below are the commands if something goes wrong in-between:
-
-    a. Run dTERMen on the resulting energy tables via `python batch_arr_dTERMen.py --output_dir=<output_directory_name>` for each output directory (one for each fold). This step should relatively quickly submit all the individual jobs.
-
-    b. Once all the dTERMen jobs are done running, run `touch to_run.out` inside the TERMinator directory to create a `to_run.out` file (to be used in step 7). Then run `python summarize_results.py --output_dir=<output_directory_name>` for each output directory (one for each fold). This step generates a summary .csv file in the output directory with all the relevant results.
-
-    Although these two steps are run automatically, oftentimes certain dTERMen jobs will have not finished (sometimes jobs stall if they're placed on a busy node, so we set the time quota to be small and opt to rerun them). Run 4b again if you see no `summary_results.csv` in the output directory, and it will resubmit all dTERMen jobs that didn't complete.
-
-0. Some dTERMen jobs may not have computed the native sequence recovery for the baseline dTERMen model. If this is an issue, step 6 will list the relevant files in `to_run.out`. Fix this by running `python fix_dTERMen.py`. I believe all such issues should have been fixed already, but you can use this to check.
-
-0. The energy tables take up quite a lot of space on c3ddb's scratch. To conserve memory, run `submit_compress_files.sh <output_directory_name>` for each output directory (one for each fold). This will tarball the `etabs/` folder and then delete the original folder, conserving space. 
+Above should be all that's needed, but an `env.yaml` file is included just in case (though it's not at all the minimal set needed).
