@@ -5,7 +5,7 @@ import pickle
 import argparse
 from terminator.utils.common import seq_to_ints
 from scipy.linalg import block_diag
-from .parseEtab import parseEtab
+from parseEtab import parseEtab
 
 HEAD_LEN = len('* TERM ')
 

@@ -4,9 +4,9 @@ from scipy.linalg import block_diag
 from scipy.special import softmax
 import glob
 
-from .parseTERM import parseTERMdata
-from .parseEtab import parseEtab
-from .parseCoords import parseCoords
+from parseTERM import parseTERMdata
+from parseEtab import parseEtab
+from parseCoords import parseCoords
 
 NUM_AA = 21 # including X
 

@@ -1,6 +1,6 @@
 ## Checklist of pipeline elements that should work before this is merged with master
 
-- [ ] raw data -> featurized data
+- [X] raw data -> featurized data
 - [ ] train model
 - [ ] eval model
 - [ ] to etab

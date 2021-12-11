@@ -4,7 +4,6 @@ Neuronal version of dTERMen
 """
 import sys
 from setuptools import setup, find_packages
-import versioneer
 try:
     import configparser
 except ImportError:

@@ -9,7 +9,7 @@ import multiprocessing as mp
 import traceback
 import time
 
-from .packageTensors import dumpTrainingTensors
+from packageTensors import dumpTrainingTensors
 
 def generateDataset(in_folder, out_folder, cutoff = 50, update = False):
     # make folder where the dataset files are gonna be placed
