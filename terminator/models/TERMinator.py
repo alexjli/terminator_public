@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import numpy as np
-from terminator.data.preprocessing.common import int_to_aa
-from terminator.run_scripts.train.train_utils import nlpl as _nlpl, nlcpl as _nlcpl
+from terminator.utils.common import int_to_aa
+from terminator.utils.loop_utils import nlpl as _nlpl, nlcpl as _nlcpl
 
 class TERMinator(nn.Module):
     def __init__(self, hparams, device = 'cuda:0'):

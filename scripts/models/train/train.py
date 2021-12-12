@@ -1,6 +1,6 @@
 from terminator.models.TERMinator import *
 from terminator.data.data import *
-from .train_utils import *
+from terminator.utils.loop_utils import *
 import pickle
 import torch
 import torch.optim as optim
@@ -11,13 +11,13 @@ import time
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from terminator.models.train.noam_opt import *
+from noam_opt import *
 import argparse
 import os
 import sys
 import copy
 import json
-from .default_hparams import DEFAULT_HPARAMS
+from default_hparams import DEFAULT_HPARAMS
 try:
     import horovod.torch as hvd
 except ImportError:
@@ -222,7 +222,7 @@ if __name__ == '__main__':
         '--lazy',
         help="use lazy data loading",
         type=bool,
-        default=true
+        default=True
     )
     args = parser.parse_args()
     main(args)

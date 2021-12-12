@@ -41,3 +41,5 @@ def aa_to_int(residue):
 # wrapper for AA_to_int
 def int_to_aa(i):
     return int_to_AA[i]
+
+

@@ -111,7 +111,7 @@ ENV/
 *.pyc
 *.etab
 *.dat
-terminator/postprocessing/shell_scripts
-terminator/postprocessing/logfiles
-terminator/run_scripts/bash_files
-terminator/run_scripts/logfiles
+scripts/data/postprocessing/shell_scripts
+scripts/models/train/bash_files
+scripts/models/eval/bash_files
+scripts/submit_scripts
