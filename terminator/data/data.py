@@ -1,3 +1,8 @@
+"""Datasets and dataloaders for loading TERMs.
+
+This file contains dataset and dataloader classes
+to be used when interacting with TERMs.
+"""
 import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -11,13 +16,30 @@ import os
 from tqdm import tqdm
 import multiprocessing as mp
 
+# pylint: disable=no-member
+
 
 def convert(tensor):
+    """Converts given tensor from numpy to pytorch."""
     return torch.from_numpy(tensor)
 
 
-def load_file(in_folder, id, min_protein_len=30):
-    path = f"{in_folder}/{id}/{id}.features"
+def load_file(in_folder, pdb_id, min_protein_len=30):
+    """Loads the given TERM file.
+
+    Args:
+        in_folder: string, folder to find TERM file.
+        pdb_id: string, PDB ID to load.
+        min_protein_len: integer, minimum cutoff for loading TERM
+            file.
+
+    Returns:
+        Tuple with:
+            1. Data from TERM file (as dict)
+            2. Total length of TERM file
+            3. Length of protein sequence
+    """
+    path = f"{in_folder}/{pdb_id}/{pdb_id}.features"
     with open(path, 'rb') as fp:
         data = pickle.load(fp)
         seq_len = data['seq_len']
@@ -35,57 +57,57 @@ class TERMDataset():
                  num_processes=32):
         self.dataset = []
 
-        pool = mp.Pool(num_processes)
+        with mp.Pool(num_processes) as pool:
 
-        if pdb_ids:
-            print("Loading feature files")
-            progress = tqdm(total=len(pdb_ids))
+            if pdb_ids:
+                print("Loading feature files")
+                progress = tqdm(total=len(pdb_ids))
 
-            def update_progress(res):
-                progress.update(1)
+                def update_progress(res):
+                    progress.update(1)
 
-            res_list = [
-                pool.apply_async(load_file, (in_folder, id),
-                                 kwds={"min_protein_len": min_protein_len},
-                                 callback=update_progress) for id in pdb_ids
-            ]
-            pool.close()
-            pool.join()
-            progress.close()
-            for res in res_list:
-                data = res.get()
-                if data is not None:
-                    features, total_term_length, seq_len = data
-                    self.dataset.append((features, total_term_length, seq_len))
-        else:
-            print("Loading feature file paths")
+                res_list = [
+                    pool.apply_async(load_file, (in_folder, id),
+                                     kwds={"min_protein_len": min_protein_len},
+                                     callback=update_progress) for id in pdb_ids
+                ]
+                pool.close()
+                pool.join()
+                progress.close()
+                for res in res_list:
+                    data = res.get()
+                    if data is not None:
+                        features, total_term_length, seq_len = data
+                        self.dataset.append((features, total_term_length, seq_len))
+            else:
+                print("Loading feature file paths")
 
-            filelist = list(glob.glob('{}/*/*.features'.format(in_folder)))
-            progress = tqdm(total=len(filelist))
+                filelist = list(glob.glob('{}/*/*.features'.format(in_folder)))
+                progress = tqdm(total=len(filelist))
 
-            def update_progress(res):
-                progress.update(1)
+                def update_progress(res):
+                    progress.update(1)
 
-            # get pdb_ids
-            pdb_ids = [
-                os.path.basename(path).split(".")[0] for path in filelist
-            ]
+                # get pdb_ids
+                pdb_ids = [
+                    os.path.basename(path).split(".")[0] for path in filelist
+                ]
 
-            res_list = [
-                pool.apply_async(load_file, (in_folder, id),
-                                 kwds={"min_protein_len": min_protein_len},
-                                 callback=update_progress) for id in pdb_ids
-            ]
-            pool.close()
-            pool.join()
-            progress.close()
-            for res in res_list:
-                data = res.get()
-                if data is not None:
-                    features, total_term_length, seq_len = data
-                    self.dataset.append((features, total_term_length, seq_len))
+                res_list = [
+                    pool.apply_async(load_file, (in_folder, id),
+                                     kwds={"min_protein_len": min_protein_len},
+                                     callback=update_progress) for id in pdb_ids
+                ]
+                pool.close()
+                pool.join()
+                progress.close()
+                for res in res_list:
+                    data = res.get()
+                    if data is not None:
+                        features, total_term_length, seq_len = data
+                        self.dataset.append((features, total_term_length, seq_len))
 
-        self.shuffle_idx = np.arange(len(self.dataset))
+            self.shuffle_idx = np.arange(len(self.dataset))
 
     def shuffle(self):
         np.random.shuffle(self.shuffle_idx)
@@ -656,9 +678,9 @@ class TERMLazyDataLoader(Sampler):
                                              num_features])
             for idx, cov_mat in enumerate(pair_stats):
                 num_terms = cov_mat.shape[0]
-                pair_stats_padded[idx, 
-                                 :num_terms, 
-                                 :max_term_len, 
+                pair_stats_padded[idx,
+                                 :num_terms,
+                                 :max_term_len,
                                  :max_term_len,
                                  :num_features,
                                  :num_features] = cov_mat
