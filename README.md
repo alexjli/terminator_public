@@ -47,5 +47,8 @@ The living documentation for this package can be found [here](https://docs.googl
 * tqdm
 * matplotlib
 * seaborn
+* pylint
+* pytest-pylint
+* yapf
 
 Above should be all that's needed, but an `env.yaml` file is included just in case (though it's not at all the minimal set needed).

@@ -6,3 +6,5 @@
 - [ ] to etab
 - [ ] batch dTERMen on etabs
 - [ ] summarize results
+
+## Lint checklist: files that should pass lint test.
