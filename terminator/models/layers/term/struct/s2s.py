@@ -9,6 +9,7 @@ import numpy as np
 from terminator.models.layers.s2s_modules import PositionWiseFeedForward, Normalize
 from terminator.models.layers.utils import *
 
+
 class TERMNeighborAttention(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4):
         super(TERMNeighborAttention, self).__init__()
@@ -26,13 +27,14 @@ class TERMNeighborAttention(nn.Module):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
         mask_attn_dev = mask_attend.device
-        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
+        attend_logits = torch.where(
+            mask_attend > 0, attend_logits,
+            torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend.float() * attend
         return attend
 
-    def forward(self, h_V, h_EV, mask_attend = None, src_key_mask = None):
-        
+    def forward(self, h_V, h_EV, mask_attend=None, src_key_mask=None):
         """ Self-attention, graph-structured O(Nk)
         Args:
             h_V:            Node features           [N_batch, N_nodes, N_hidden]
@@ -48,11 +50,15 @@ class TERMNeighborAttention(nn.Module):
 
         d = int(self.num_hidden / n_heads)
         Q = self.W_Q(h_V).view([n_batch, n_terms, n_nodes, 1, n_heads, 1, d])
-        K = self.W_K(h_EV).view([n_batch, n_terms, n_nodes, n_neighbors, n_heads, d, 1])
-        V = self.W_V(h_EV).view([n_batch, n_terms, n_nodes, n_neighbors, n_heads, d])
+        K = self.W_K(h_EV).view(
+            [n_batch, n_terms, n_nodes, n_neighbors, n_heads, d, 1])
+        V = self.W_V(h_EV).view(
+            [n_batch, n_terms, n_nodes, n_neighbors, n_heads, d])
 
         # Attention with scaled inner product
-        attend_logits = torch.matmul(Q, K).view([n_batch, n_terms, n_nodes, n_neighbors, n_heads]).transpose(-2,-1)
+        attend_logits = torch.matmul(Q, K).view(
+            [n_batch, n_terms, n_nodes, n_neighbors,
+             n_heads]).transpose(-2, -1)
         attend_logits = attend_logits / np.sqrt(d)
 
         if mask_attend is not None:
@@ -62,21 +68,23 @@ class TERMNeighborAttention(nn.Module):
             attend = F.softmax(attend_logits, -1)
 
         # Attentive reduction
-        h_V_update = torch.matmul(attend.unsqueeze(-2), V.transpose(3,4))
-        h_V_update = h_V_update.view([n_batch, n_terms, n_nodes, self.num_hidden])
+        h_V_update = torch.matmul(attend.unsqueeze(-2), V.transpose(3, 4))
+        h_V_update = h_V_update.view(
+            [n_batch, n_terms, n_nodes, self.num_hidden])
         h_V_update = self.W_O(h_V_update)
         return h_V_update
 
 
 class S2STERMTransformerLayer(nn.Module):
-    def __init__(self, num_hidden, num_in = None, num_heads=4, dropout=0.1):
+    def __init__(self, num_hidden, num_in=None, num_heads=4, dropout=0.1):
         super(S2STERMTransformerLayer, self).__init__()
         self.num_heads = num_heads
         self.num_hidden = num_hidden
         self.dropout = nn.Dropout(dropout)
         self.norm = nn.ModuleList([Normalize(num_hidden) for _ in range(2)])
 
-        self.attention = TERMNeighborAttention(num_hidden, num_hidden * 2, num_heads)
+        self.attention = TERMNeighborAttention(num_hidden, num_hidden * 2,
+                                               num_heads)
         self.dense = PositionWiseFeedForward(num_hidden, num_hidden * 4)
 
     def forward(self, h_V, h_E, mask_V=None, mask_attend=None):
@@ -129,13 +137,14 @@ class S2STERMTransformerEncoder(nn.Module):
         h_E = self.W_e(E)
 
         # Encoder is unmasked self-attention
-        mask_attend = gather_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
+        mask_attend = gather_nodes(mask.unsqueeze(-1), E_idx).squeeze(-1)
         mask_attend = mask.unsqueeze(-1) * mask_attend
         for layer in self.encoder_layers:
             h_EV = cat_neighbors_nodes(h_V, h_E, E_idx)
             h_V = layer(h_V, h_EV, mask_V=mask, mask_attend=mask_attend)
 
         return self.W_out(h_V)
+
 
 class TERMEdgeEndpointAttention(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4):
@@ -153,7 +162,9 @@ class TERMEdgeEndpointAttention(nn.Module):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
         mask_attn_dev = mask_attend.device
-        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
+        attend_logits = torch.where(
+            mask_attend > 0, attend_logits,
+            torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend.float() * attend
         return attend
@@ -175,17 +186,21 @@ class TERMEdgeEndpointAttention(nn.Module):
         assert self.num_hidden % n_heads == 0
 
         d = self.num_hidden // n_heads
-        Q = self.W_Q(h_E).view([n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3,4)
-        K = self.W_K(h_EV).view([n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3,4)
-        V = self.W_V(h_EV).view([n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3,4)
+        Q = self.W_Q(h_E).view(
+            [n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3, 4)
+        K = self.W_K(h_EV).view(
+            [n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3, 4)
+        V = self.W_V(h_EV).view(
+            [n_batch, n_terms, n_aa, n_neighbors, n_heads, d]).transpose(3, 4)
 
         # Attention with scaled inner product
-        attend_logits = torch.matmul(Q, K.transpose(-2,-1)) / np.sqrt(d)
+        attend_logits = torch.matmul(Q, K.transpose(-2, -1)) / np.sqrt(d)
 
         if mask_attend is not None:
             # we need to reshape the src key mask for edge-edge attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(3).expand(-1, -1, -1, n_heads, -1).unsqueeze(-1).double()
+            mask = mask_attend.unsqueeze(3).expand(-1, -1, -1, n_heads,
+                                                   -1).unsqueeze(-1).double()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
@@ -196,14 +211,14 @@ class TERMEdgeEndpointAttention(nn.Module):
             attend = F.softmax(attend_logits, -1)
 
         # Attentive reduction
-        h_E_update = torch.matmul(attend, V).transpose(3,4).contiguous()
-        h_E_update = h_E_update.view([n_batch, n_terms, n_aa, n_neighbors, self.num_hidden])
+        h_E_update = torch.matmul(attend, V).transpose(3, 4).contiguous()
+        h_E_update = h_E_update.view(
+            [n_batch, n_terms, n_aa, n_neighbors, self.num_hidden])
         h_E_update = self.W_O(h_E_update)
         # nondirected edges are actually represented as two directed edges in opposite directions
         # to allow information flow, merge these duplicate edges
         h_E_update = merge_duplicate_term_edges(h_E_update, E_idx)
         return h_E_update
-
 
 
 class TERMEdgeTransformerLayer(nn.Module):
@@ -215,7 +230,8 @@ class TERMEdgeTransformerLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.norm = nn.ModuleList([Normalize(num_hidden) for _ in range(2)])
 
-        self.attention = TERMEdgeEndpointAttention(num_hidden, num_in, num_heads)
+        self.attention = TERMEdgeEndpointAttention(num_hidden, num_in,
+                                                   num_heads)
         self.dense = PositionWiseFeedForward(num_hidden, num_hidden * 4)
 
     def forward(self, h_E, h_EV, E_idx, mask_E=None, mask_attend=None):
@@ -233,8 +249,14 @@ class TERMEdgeTransformerLayer(nn.Module):
             h_E = mask_E * h_E
         return h_E
 
+
 class TERMNodeMPNNLayer(nn.Module):
-    def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
+    def __init__(self,
+                 num_hidden,
+                 num_in,
+                 dropout=0.1,
+                 num_heads=None,
+                 scale=30):
         super(TERMNodeMPNNLayer, self).__init__()
         self.num_hidden = num_hidden
         self.num_in = num_in
@@ -252,7 +274,7 @@ class TERMNodeMPNNLayer(nn.Module):
         """ Parallel computation of full transformer layer """
 
         # Concatenate h_V_i to h_E_ij
-        h_V_expand = h_V.unsqueeze(-2).expand(-1,-1,-1,h_E.size(-2),-1)
+        h_V_expand = h_V.unsqueeze(-2).expand(-1, -1, -1, h_E.size(-2), -1)
         h_EV = torch.cat([h_V_expand, h_E], -1)
 
         h_message = self.W3(F.relu(self.W2(F.relu(self.W1(h_EV)))))
@@ -271,8 +293,14 @@ class TERMNodeMPNNLayer(nn.Module):
             h_V = mask_V * h_V
         return h_V
 
+
 class TERMEdgeMPNNLayer(nn.Module):
-    def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
+    def __init__(self,
+                 num_hidden,
+                 num_in,
+                 dropout=0.1,
+                 num_heads=None,
+                 scale=30):
         super(TERMEdgeMPNNLayer, self).__init__()
         self.num_hidden = num_hidden
         self.num_in = num_in
@@ -329,17 +357,21 @@ class TERMGraphTransformerEncoder(nn.Module):
         # Embedding layers
         self.W_v = nn.Linear(node_features, hidden_dim, bias=True)
         self.W_e = nn.Linear(edge_features, hidden_dim, bias=True)
-        edge_layer = TERMEdgeTransformerLayer if not hparams['term_use_mpnn'] else TERMEdgeMPNNLayer
-        node_layer = S2STERMTransformerLayer if not hparams['term_use_mpnn'] else TERMNodeMPNNLayer
+        edge_layer = TERMEdgeTransformerLayer if not hparams[
+            'term_use_mpnn'] else TERMEdgeMPNNLayer
+        node_layer = S2STERMTransformerLayer if not hparams[
+            'term_use_mpnn'] else TERMNodeMPNNLayer
 
         # Encoder layers
         self.edge_encoder = nn.ModuleList([
-            edge_layer(hidden_dim, hidden_dim*3, dropout=dropout)
+            edge_layer(hidden_dim, hidden_dim * 3, dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
         self.node_encoder = nn.ModuleList([
-            node_layer(hidden_dim, num_in = hidden_dim * 2, num_heads = num_heads, dropout=dropout)
-            for _ in range(num_encoder_layers)
+            node_layer(hidden_dim,
+                       num_in=hidden_dim * 2,
+                       num_heads=num_heads,
+                       dropout=dropout) for _ in range(num_encoder_layers)
         ])
 
         self.W_out = nn.Linear(hidden_dim, hidden_dim, bias=True)
@@ -354,20 +386,29 @@ class TERMGraphTransformerEncoder(nn.Module):
         h_E = self.W_e(E)
 
         # Encoder is unmasked self-attention
-        mask_attend = gather_term_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
+        mask_attend = gather_term_nodes(mask.unsqueeze(-1), E_idx).squeeze(-1)
         mask_attend = mask.unsqueeze(-1) * mask_attend
 
-        for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
+        for edge_layer, node_layer in zip(self.edge_encoder,
+                                          self.node_encoder):
             h_EV_edges = cat_term_edge_endpoints(h_E, h_V, E_idx)
-            h_E = edge_layer(h_E, h_EV_edges, E_idx, mask_E=mask_attend, mask_attend=mask_attend)
+            h_E = edge_layer(h_E,
+                             h_EV_edges,
+                             E_idx,
+                             mask_E=mask_attend,
+                             mask_attend=mask_attend)
 
             h_EV_nodes = cat_term_neighbors_nodes(h_V, h_E, E_idx)
-            h_V = node_layer(h_V, h_EV_nodes, mask_V = mask, mask_attend = mask_attend)
+            h_V = node_layer(h_V,
+                             h_EV_nodes,
+                             mask_V=mask,
+                             mask_attend=mask_attend)
 
         h_E = self.W_out(h_E)
         h_E = merge_duplicate_term_edges(h_E, E_idx)
 
         return h_V, h_E
+
 
 class TERMGraphTransformerEncoder_cnkt(nn.Module):
     def __init__(self, hparams):
@@ -392,17 +433,21 @@ class TERMGraphTransformerEncoder_cnkt(nn.Module):
         # Embedding layers
         self.W_v = nn.Linear(node_features, hidden_dim, bias=True)
         self.W_e = nn.Linear(edge_features, hidden_dim, bias=True)
-        edge_layer = TERMEdgeTransformerLayer if not hparams['term_use_mpnn'] else TERMEdgeMPNNLayer
-        node_layer = S2STERMTransformerLayer if not hparams['term_use_mpnn'] else TERMNodeMPNNLayer
+        edge_layer = TERMEdgeTransformerLayer if not hparams[
+            'term_use_mpnn'] else TERMEdgeMPNNLayer
+        node_layer = S2STERMTransformerLayer if not hparams[
+            'term_use_mpnn'] else TERMNodeMPNNLayer
 
         # Encoder layers
         self.edge_encoder = nn.ModuleList([
-            edge_layer(hidden_dim, hidden_dim*5, dropout=dropout)
+            edge_layer(hidden_dim, hidden_dim * 5, dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
         self.node_encoder = nn.ModuleList([
-            node_layer(hidden_dim, num_in = hidden_dim * 4, num_heads = num_heads, dropout=dropout)
-            for _ in range(num_encoder_layers)
+            node_layer(hidden_dim,
+                       num_in=hidden_dim * 4,
+                       num_heads=num_heads,
+                       dropout=dropout) for _ in range(num_encoder_layers)
         ])
 
         self.W_out = nn.Linear(hidden_dim, hidden_dim, bias=True)
@@ -417,21 +462,28 @@ class TERMGraphTransformerEncoder_cnkt(nn.Module):
         h_E = self.W_e(E)
 
         # Encoder is unmasked self-attention
-        mask_attend = gather_term_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
+        mask_attend = gather_term_nodes(mask.unsqueeze(-1), E_idx).squeeze(-1)
         mask_attend = mask.unsqueeze(-1) * mask_attend
 
-        for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
+        for edge_layer, node_layer in zip(self.edge_encoder,
+                                          self.node_encoder):
             h_EV_edges = cat_term_edge_endpoints(h_E, h_V, E_idx)
-            h_EV_edges = cat_term_edge_endpoints(h_EV_edges, contact_idx, E_idx)
-            h_E = edge_layer(h_E, h_EV_edges, E_idx, mask_E=mask_attend, mask_attend=mask_attend)
+            h_EV_edges = cat_term_edge_endpoints(h_EV_edges, contact_idx,
+                                                 E_idx)
+            h_E = edge_layer(h_E,
+                             h_EV_edges,
+                             E_idx,
+                             mask_E=mask_attend,
+                             mask_attend=mask_attend)
 
             h_EI = cat_term_edge_endpoints(h_E, contact_idx, E_idx)
             h_EV_nodes = cat_term_neighbors_nodes(h_V, h_EI, E_idx)
-            h_V = node_layer(h_V, h_EV_nodes, mask_V = mask, mask_attend = mask_attend)
+            h_V = node_layer(h_V,
+                             h_EV_nodes,
+                             mask_V=mask,
+                             mask_attend=mask_attend)
 
         h_E = self.W_out(h_E)
         h_E = merge_duplicate_term_edges(h_E, E_idx)
 
         return h_V, h_E
-
-

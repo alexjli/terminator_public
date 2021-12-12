@@ -23,9 +23,11 @@ OUTPUT_DIR = '/home/gridsan/alexjli/keatinglab_shared/alexjli/TERMinator_runs/'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Eval TERMinator Psuedoperplexity')
-    parser.add_argument('--dev', help = 'device to train on', default = 'cuda:0')
+    parser.add_argument('--dev', help='device to train on', default='cuda:0')
     # parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
-    parser.add_argument('--run_name', help = 'name for run, to use for output subfolder', default = 'test_run')
+    parser.add_argument('--run_name',
+                        help='name for run, to use for output subfolder',
+                        default='test_run')
     args = parser.parse_args()
 
     run_output_dir = os.path.join(OUTPUT_DIR, args.run_name)
@@ -46,11 +48,11 @@ if __name__ == '__main__':
         hparams['energies_gvp'] = False
     if "num_stats" not in hparams.keys():
         hparams['num_stats'] = 0
-    
-    best_checkpoint_state = torch.load(os.path.join(run_output_dir, 'net_best_checkpoint.pt'), map_location=torch.device('cpu'))
+
+    best_checkpoint_state = torch.load(os.path.join(run_output_dir,
+                                                    'net_best_checkpoint.pt'),
+                                       map_location=torch.device('cpu'))
     best_checkpoint = best_checkpoint_state['state_dict']
     W_sing = best_checkpoint['bot.W_ppoe.weight'][:, :5].cpu().detach().numpy()
     sns.heatmap(W_sing, cmap="YlGnBu", center=0)
     plt.show()
-
-

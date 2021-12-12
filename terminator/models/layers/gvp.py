@@ -3,30 +3,26 @@
 import torch
 import torch.nn as nn
 
-def norm_no_nan(x, dim = -1, keepdim = False, eps=1e-8, sqrt=True):
+
+def norm_no_nan(x, dim=-1, keepdim=False, eps=1e-8, sqrt=True):
     local_dev = x.device
-    inner = torch.sum(torch.square(x.clone()), dim = dim, keepdim = keepdim)
-    eps_tensor = torch.tensor(eps).view([1 for _ in range(len(inner.shape))]).expand(inner.shape).to(local_dev)
+    inner = torch.sum(torch.square(x.clone()), dim=dim, keepdim=keepdim)
+    eps_tensor = torch.tensor(eps).view([1 for _ in range(len(inner.shape))
+                                         ]).expand(inner.shape).to(local_dev)
     out = torch.where(inner > eps, inner, eps_tensor)
     return (torch.sqrt(out) if sqrt else out)
 
+
 class GVP(nn.Module):
-    def __init__(self, vi, vo, si, so,
-                 nlv = torch.sigmoid, nls = nn.ReLU):
+    def __init__(self, vi, vo, si, so, nlv=torch.sigmoid, nls=nn.ReLU):
         '''[v/s][i/o] = number of [vector/scalar] channels [in/out]'''
         super(GVP, self).__init__()
         nh = max(vi, vo)
         if vi: self.wh = nn.Linear(vi, nh)
         if nls and vi:
-            self.ws = nn.Sequential(
-                        nn.Linear(nh + si, so),
-                        nls()
-                    )
+            self.ws = nn.Sequential(nn.Linear(nh + si, so), nls())
         elif nls:
-            self.ws = nn.Sequential(
-                        nn.Linear(nh, so),
-                        nls()
-                    )
+            self.ws = nn.Sequential(nn.Linear(nh, so), nls())
         elif vi:
             self.ws = nn.Linear(nh + si, so)
         else:
@@ -35,7 +31,7 @@ class GVP(nn.Module):
         if vo: self.wv = nn.Linear(nh, vo)
         self.vi, self.vo, self.si, self.so, self.nlv = vi, vo, si, so, nlv
 
-    def forward(self, x, return_split = False):
+    def forward(self, x, return_split=False):
         # X: [..., 3*vi + si]
         # if split, returns: [..., 3, vo], [..., so]
         # if not split, returns [..., 3*vo + so]
@@ -45,12 +41,14 @@ class GVP(nn.Module):
             vn = norm_no_nan(vh, dim=-2)
             out = self.ws(torch.cat([s, vn], dim=-1))
 
-            if self.vo: 
+            if self.vo:
                 vo = self.wv(vh)
-                if self.nlv: vo *= self.nlv(norm_no_nan(vo, dim=-2, keepdim=True))
+                if self.nlv:
+                    vo *= self.nlv(norm_no_nan(vo, dim=-2, keepdim=True))
                 out = (vo, out) if return_split else merge(vo, out)
 
-        else: out = self.ws(s)
+        else:
+            out = self.ws(s)
         return out
 
 
@@ -74,13 +72,15 @@ class GVPDropout(nn.Module):
         dev = x.device
 
         p = self.rate
-        p_mask = torch.tensor(1-p).to(dev) # probability of a 1
-        p_mask = p_mask.view([1 for _ in range(len(x.shape))]) # view so we can expand
-        p_mask = p_mask.expand(list(x.shape[:-2]) + [1, self.nv]) # e x p a n d
-        mask = torch.bernoulli(p_mask) # now we have dropout probs
+        p_mask = torch.tensor(1 - p).to(dev)  # probability of a 1
+        p_mask = p_mask.view([1 for _ in range(len(x.shape))
+                              ])  # view so we can expand
+        p_mask = p_mask.expand(list(x.shape[:-2]) +
+                               [1, self.nv])  # e x p a n d
+        mask = torch.bernoulli(p_mask)  # now we have dropout probs
 
-        x = mask * x # apply dropout
-        x *= 1/(1-p) if p != 1 else 0 # scale by prob, avoid div by 0
+        x = mask * x  # apply dropout
+        x *= 1 / (1 - p) if p != 1 else 0  # scale by prob, avoid div by 0
         return x
 
 
@@ -91,40 +91,43 @@ class GVPLayerNorm(nn.Module):
         self.nv = nv
         self.ns = ns
         self.snorm = nn.LayerNorm(ns)
+
     def forward(self, x):
         v, s = split(x, self.nv)
-        vn = norm_no_nan(v, dim=-2, keepdim=True, sqrt=False) # [..,1, nv]
+        vn = norm_no_nan(v, dim=-2, keepdim=True, sqrt=False)  # [..,1, nv]
         vn = torch.sqrt(torch.mean(vn, dim=-1, keepdim=True))
-        return merge(v/vn, self.snorm(s))
+        return merge(v / vn, self.snorm(s))
+
 
 # [..., 3*nv + ns] -> [..., 3, nv], [..., ns]
 # nv = number of vector channels
 # ns = number of scalar channels
 # vector channels are ALWAYS at the top!
 def split(x, nv):
-    v = torch.reshape(x[..., :3*nv], list(x.shape[:-1]) + [3, nv])
-    s = x[..., 3*nv:]
+    v = torch.reshape(x[..., :3 * nv], list(x.shape[:-1]) + [3, nv])
+    s = x[..., 3 * nv:]
     return v, s
+
 
 # [..., 3, nv], [..., ns] -> [..., 3*nv + ns]
 def merge(v, s):
-    v = torch.reshape(v, list(v.shape[:-2]) + [3*v.shape[-1]])
+    v = torch.reshape(v, list(v.shape[:-2]) + [3 * v.shape[-1]])
     return torch.cat([v, s], dim=-1)
+
 
 # Concat in a way that keeps vector channels at the top
 def vs_concat(x1, x2, nv1, nv2):
-    
+
     v1, s1 = split(x1, nv1)
     v2, s2 = split(x2, nv2)
-    
+
     v = torch.cat([v1, v2], -1)
     s = torch.cat([s1, s2], -1)
     return merge(v, s)
 
 
-
-
 # common layers using GVP
+
 
 class GVPNodeLayer(nn.Module):
     def __init__(self, nv, ns, ev, es, dropout=0.1):
@@ -138,15 +141,13 @@ class GVPNodeLayer(nn.Module):
 
         # this receives the vec_in message AND the receiver node
         self.W_EV = nn.Sequential(
-                            GVP(vi=vec_in+vo, vo=vo, si=2*so+es, so=so),
-                            GVP(vi=vo, vo=vo, si=so, so=so),
-                            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None)
-                        )
+            GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so),
+            GVP(vi=vo, vo=vo, si=so, so=so),
+            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
 
         self.W_dh = nn.Sequential(
-                            GVP(vi=vo, vo=2*vo, si=so, so=4*so),
-                            GVP(vi=2*vo, vo=vo, si=4*so, so=so, nls=None, nlv=None)
-                        )
+            GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
+            GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
 
     def forward(self, h_V, h_EV, mask_V=None, mask_attend=None):
         # Concatenate h_V_i to h_E_ij
@@ -166,6 +167,7 @@ class GVPNodeLayer(nn.Module):
             h_V = mask_V * h_V
         return h_V
 
+
 class GVPEdgeLayer(nn.Module):
     def __init__(self, nv, ns, ev, es, dropout=0.1):
         super(GVPEdgeLayer, self).__init__()
@@ -178,15 +180,13 @@ class GVPEdgeLayer(nn.Module):
 
         # this receives the vec_in message AND the receiver node
         self.W_EV = nn.Sequential(
-                            GVP(vi=vec_in+vo, vo=vo, si=2*so+es, so=so),
-                            GVP(vi=vo, vo=vo, si=so, so=so),
-                            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None)
-                        )
+            GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so),
+            GVP(vi=vo, vo=vo, si=so, so=so),
+            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
 
         self.W_dh = nn.Sequential(
-                            GVP(vi=vo, vo=2*vo, si=so, so=4*so),
-                            GVP(vi=2*vo, vo=vo, si=4*so, so=so, nls=None, nlv=None)
-                        )
+            GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
+            GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
 
     def forward(self, h_E, h_EV, mask_E=None, mask_attend=None):
         # Concatenate h_V_i to h_E_ij
@@ -203,5 +203,3 @@ class GVPEdgeLayer(nn.Module):
             mask_E = mask_E.unsqueeze(-1)
             h_E = mask_E * h_E
         return h_E
-
-
