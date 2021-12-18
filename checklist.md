@@ -2,7 +2,7 @@
 
 - [X] raw data -> featurized data
 - [X] train model
-- [ ] eval model
+- [X] eval model
 - [ ] to etab
 - [ ] batch dTERMen on etabs
 - [ ] summarize results

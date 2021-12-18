@@ -15,7 +15,7 @@ import os
 import sys
 import copy
 import json
-from ..train.train_utils import run_epoch
+from terminator.utils.loop_utils import run_epoch
 
 
 if __name__ == '__main__':
@@ -62,7 +62,10 @@ if __name__ == '__main__':
     terminator = MultiChainTERMinator_gcnkt(hparams=hparams, device=dev)
     terminator = nn.DataParallel(terminator)
 
-    best_checkpoint_state = torch.load(os.path.join(args.model_dir, 'net_best_checkpoint.pt'))
+    best_checkpoint_state = torch.load(
+        os.path.join(args.model_dir, 'net_best_checkpoint.pt'),
+        map_location=dev
+    )
     best_checkpoint = best_checkpoint_state['state_dict']
     terminator.module.load_state_dict(best_checkpoint)
     terminator.to(dev)
