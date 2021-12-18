@@ -12,5 +12,12 @@ CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
 conda activate terminator
 
-python to_etab.py --output_dir=OUTPUTDIR --dtermen_data=DTERMENDATA --num_cores=128
-python batch_arr_dTERMen.py --output_dir=OUTPUTDIR --pdb_root=PDBROOT --dtermen_data=DTERMENDATA
+python to_etab.py \
+    --output_dir=OUTPUTDIR \
+    --dtermen_data=DTERMENDATA \
+    --num_cores=64 -u
+python batch_arr_dTERMen.py \
+    --output_dir=OUTPUTDIR \
+    --pdb_root=PDBROOT \
+    --dtermen_data=DTERMENDATA \
+    --batch_size=20

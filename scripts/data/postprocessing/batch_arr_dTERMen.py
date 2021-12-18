@@ -20,6 +20,12 @@ if __name__ == '__main__':
         help="The root for all raw data PDB databases"
     )
     parser.add_argument('--dtermen_data', help="Root directory for dTERMen runs")
+    parser.add_argument(
+        '--batch_size', 
+        help='number of dTERMen runs to run per node',
+        default=20,
+        type=int
+    )
     args = parser.parse_args()
     os.chdir(DIR)
 
@@ -50,13 +56,12 @@ if __name__ == '__main__':
         for pdb in pdbs:
             fp.write(pdb + "\n")
 
-    batch_size = 20
-    num_batches = len(pdbs)//batch_size + 1
+    num_batches = len(pdbs)//args.batch_size + 1
 
     bid = os.popen(
         (
-            f"sbatch --parsable --array=0-{num_batches} "
-            f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {batch_size}"
+            f"sbatch --parsable --array=0-{args.num_batches} "
+            f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {args.batch_size}"
         )
     ).read()
     bid = int(bid.strip())
