@@ -17,8 +17,13 @@ from .graph_features import *
 from .gvp import *
 
 NUM_AA = 21
-NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
-NUM_TARGET_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env'])
+NUM_FEATURES = len([
+    'sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega',
+    'env', 'rmsd', 'term_len'
+])
+NUM_TARGET_FEATURES = len([
+    'sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env'
+])
 
 
 class ResidueFeatures(nn.Module):
@@ -26,11 +31,11 @@ class ResidueFeatures(nn.Module):
         super(ResidueFeatures, self).__init__()
         self.hparams = hparams
         hdim = hparams['term_hidden_dim']
-        
+
         self.embedding = nn.Embedding(NUM_AA, hdim - hparams['num_features'])
         self.linear = nn.Linear(hdim, hdim)
-        
-        self.relu = nn.ReLU(inplace = True)
+
+        self.relu = nn.ReLU(inplace=True)
         self.tanh = nn.Tanh()
         self.lin1 = nn.Linear(hdim, hdim)
         self.lin2 = nn.Linear(hdim, hdim)
@@ -48,13 +53,13 @@ class ResidueFeatures(nn.Module):
 
         # transpose so that features = number of channels for convolution
         # out: num batches x num channels x TERM length x num alignments
-        out = out.transpose(1,3)
+        out = out.transpose(1, 3)
 
         # normalize over channels (TERM length x num alignments)
         out = self.bn(out)
 
         # embed features using ffn
-        out = out.transpose(1,3)
+        out = out.transpose(1, 3)
         out = self.lin1(out)
         if not self.hparams['res_embed_linear']:
             out = self.relu(out)
@@ -62,9 +67,10 @@ class ResidueFeatures(nn.Module):
             out = self.tanh(out)
 
         # retranspose so features are channels
-        out = out.transpose(1,3)
+        out = out.transpose(1, 3)
 
         return out
+
 
 # from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 class FocusEncoding(nn.Module):
@@ -76,14 +82,16 @@ class FocusEncoding(nn.Module):
         hdim = self.hidden_dim
 
         pe = torch.zeros(hparams['fe_max_len'], hdim)
-        position = torch.arange(0, hparams['fe_max_len'], dtype=torch.double).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hdim, 2).double() * (-math.log(10000.0) / hdim))
+        position = torch.arange(0, hparams['fe_max_len'],
+                                dtype=torch.double).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, hdim, 2).double() * (-math.log(10000.0) / hdim))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
 
     #def forward(self, X, focuses, mask = None):
-    def forward(self, focuses, mask = None):
+    def forward(self, focuses, mask=None):
         fe = self.pe[focuses, :]
         if mask is not None:
             fe = fe * mask.unsqueeze(-1).float()
@@ -105,13 +113,14 @@ def covariation_features(matches, term_lens, rmsds, mask, eps=1e-8):
         """
         # try using -rmsd as weight
         term_rmsds = -term_rmsds
-        term_rmsds[term_rmsds == 0] == torch.tensor(np.finfo(np.float32).min).to(local_dev)
-        weights = F.softmax(term_rmsds, dim=-1) 
+        term_rmsds[term_rmsds == 0] == torch.tensor(np.finfo(
+            np.float32).min).to(local_dev)
+        weights = F.softmax(term_rmsds, dim=-1)
 
         weighted_mean = (weights.unsqueeze(-1) * batchify_terms).sum(dim=-2)
         centered = batchify_terms - weighted_mean.unsqueeze(-2)
         weighted_centered = weights.unsqueeze(-1) * centered
-        X = weighted_centered.unsqueeze(-3).transpose(-2,-1)
+        X = weighted_centered.unsqueeze(-3).transpose(-2, -1)
         X_t = weighted_centered.unsqueeze(-4)
         cov_mat = X @ X_t
         mask = mask.unsqueeze(-1).float()
@@ -122,15 +131,20 @@ def covariation_features(matches, term_lens, rmsds, mask, eps=1e-8):
 
 
 class EdgeFeatures(nn.Module):
-    def __init__(self, hparams, in_dim, hidden_dim, feature_mode = "shared_learned", compress = "project"):
+    def __init__(self,
+                 hparams,
+                 in_dim,
+                 hidden_dim,
+                 feature_mode="shared_learned",
+                 compress="project"):
         super(EdgeFeatures, self).__init__()
-        
+
         self.feature_mode = feature_mode
         self.hparams = hparams
 
         if feature_mode == "shared_learned":
             pass
-        elif feature_mode == "all_raw": 
+        elif feature_mode == "all_raw":
             self.one_hot = torch.eye(NUM_AA)
             self.embedding = lambda x: self.one_hot[x]
             in_dim = NUM_AA + NUM_FEATURES
@@ -145,16 +159,15 @@ class EdgeFeatures(nn.Module):
             self.one_hot = torch.eye(NUM_AA)
             self.embedding = lambda x: self.one_hot[x]
             in_dim = NUM_AA
-        elif feature_mode == "cnn": # this will explode your gpu but keeping it here anyway
+        elif feature_mode == "cnn":  # this will explode your gpu but keeping it here anyway
             self.cnn = Conv2DResNet(hparams)
 
         if compress == "project":
-            self.W = nn.Linear(in_dim**2, hidden_dim, bias = False)
+            self.W = nn.Linear(in_dim**2, hidden_dim, bias=False)
         elif compress == "ffn":
-            self.W = nn.Sequential(
-                    nn.Linear(in_dim**2, hidden_dim*4),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim*4, hidden_dim))
+            self.W = nn.Sequential(nn.Linear(in_dim**2, hidden_dim * 4),
+                                   nn.ReLU(),
+                                   nn.Linear(hidden_dim * 4, hidden_dim))
         elif compress == "ablate":
             self.W = torch.zeros_like
 
@@ -182,27 +195,32 @@ class EdgeFeatures(nn.Module):
         cov_features = cov_mat.view([n_batch, n_term, n_aa, n_aa, -1])
         return self.W(cov_features)
 
+
 # TODO: differential positional encodings
 
+
 class CondenseMSA(nn.Module):
-    def __init__(self, hparams, device = 'cuda:0', track_nans = True):
+    def __init__(self, hparams, device='cuda:0', track_nans=True):
         super(CondenseMSA, self).__init__()
         self.hparams = hparams
-        self.embedding = ResidueFeatures(hparams = self.hparams)
-        self.fe = FocusEncoding(hparams = self.hparams)
+        self.embedding = ResidueFeatures(hparams=self.hparams)
+        self.fe = FocusEncoding(hparams=self.hparams)
         if hparams['matches'] == 'resnet':
-            self.matches = Conv1DResNet(hparams = self.hparams)
+            self.matches = Conv1DResNet(hparams=self.hparams)
         elif hparams['matches'] == 'transformer':
-            self.matches = TERMMatchTransformerEncoder(hparams = hparams)
+            self.matches = TERMMatchTransformerEncoder(hparams=hparams)
         elif hparams['matches'] == 'ablate':
-            self.matches=None
+            self.matches = None
         else:
-            raise InvalidArgumentError("arg for matches condenser doesn't look right")
-        self.transformer = TERMTransformerLayer(hparams = self.hparams)
-        self.encoder = TERMTransformer(hparams = self.hparams, transformer = self.transformer)
+            raise InvalidArgumentError(
+                "arg for matches condenser doesn't look right")
+        self.transformer = TERMTransformerLayer(hparams=self.hparams)
+        self.encoder = TERMTransformer(hparams=self.hparams,
+                                       transformer=self.transformer)
         self.batchify = BatchifyTERM()
 
-        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['term_hidden_dim'])
+        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES,
+                                hparams['term_hidden_dim'])
 
         self.track_nan = track_nans
 
@@ -217,16 +235,16 @@ class CondenseMSA(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-
     def get_aa_embedding_layer(self):
         return self.embedding.embedding
-
 
     """
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, ppoe):
+
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask,
+                max_seq_len, ppoe):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -238,39 +256,46 @@ class CondenseMSA(nn.Module):
         local_dev = X.device
 
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(
+            -1, -1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
         if self.track_nan:
-            process_nan(embeddings, (X, features, self.embedding.embedding.weight), 'embed')
+            process_nan(embeddings,
+                        (X, features, self.embedding.embedding.weight),
+                        'embed')
 
-
-        # use Convolutional ResNet or Transformer 
+        # use Convolutional ResNet or Transformer
         # for further embedding and to reduce dimensionality
         if self.hparams['matches'] == 'transformer':
             # project ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
-            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['term_hidden_dim'])
+            focuses_gather = focuses.unsqueeze(-1).expand(
+                -1, -1, self.hparams['term_hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
             # output dimensionality is a little different for transformer
-            embeddings = embeddings.transpose(1,3).transpose(1,2)
-            condensed_matches = self.matches(embeddings, target, mask = ~src_key_mask)
+            embeddings = embeddings.transpose(1, 3).transpose(1, 2)
+            condensed_matches = self.matches(embeddings,
+                                             target,
+                                             mask=~src_key_mask)
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
         condensed_matches *= negate_padding_mask
 
-        if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
-
+        if self.track_nan:
+            process_nan(condensed_matches, embeddings, 'convolve')
 
         # add absolute positional encodings before TERM transformer
         if self.hparams['matches_linear']:
             batched_flat_terms = condensed_matches
         else:
-            batched_flat_terms = self.fe(condensed_matches, focuses, mask = ~src_key_mask)
+            batched_flat_terms = self.fe(condensed_matches,
+                                         focuses,
+                                         mask=~src_key_mask)
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(batched_flat_terms, term_lens)
         # also reshape the mask
@@ -279,9 +304,12 @@ class CondenseMSA(nn.Module):
         if self.hparams['term_mpnn_linear']:
             node_embeddings = batchify_terms
         else:
-            node_embeddings = self.encoder(batchify_terms, src_mask = batchify_src_key_mask, mask_attend = batchify_src_key_mask)
+            node_embeddings = self.encoder(batchify_terms,
+                                           src_mask=batchify_src_key_mask,
+                                           mask_attend=batchify_src_key_mask)
 
-        if self.track_nan: process_nan(node_embeddings, condensed_matches, 'transform')
+        if self.track_nan:
+            process_nan(node_embeddings, condensed_matches, 'transform')
 
         # zero out padding for aggregation
         node_embeddings *= batchify_src_key_mask.unsqueeze(-1)
@@ -289,14 +317,22 @@ class CondenseMSA(nn.Module):
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
+        aggregate = torch.zeros(
+            (n_batches, max_seq_len,
+             self.hparams['term_hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
         # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
+        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(
+            batched_focuses.shape).long().to(local_dev)
         # aggregate node embeddings and associated counts
-        aggregate = aggregate.index_put((layer, batched_focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(local_dev)
-        count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
+        aggregate = aggregate.index_put((layer, batched_focuses),
+                                        node_embeddings,
+                                        accumulate=True)
+        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(
+            local_dev)
+        count = count.index_put((layer, batched_focuses),
+                                count_idx,
+                                accumulate=True)
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
         for batch, sel in enumerate(seq_lens):
             count[batch, sel:] = 1
@@ -305,25 +341,27 @@ class CondenseMSA(nn.Module):
 
         if self.track_nan: process_nan(aggregate, node_embeddings, 'aggregate')
 
-
         return aggregate
 
 
 class MultiChainCondenseMSA(nn.Module):
-    def __init__(self, hparams, device = 'cuda:0', track_nans = True):
+    def __init__(self, hparams, device='cuda:0', track_nans=True):
         super(MultiChainCondenseMSA, self).__init__()
         self.hparams = hparams
-        self.embedding = ResidueFeatures(hparams = self.hparams)
-        self.fe = FocusEncoding(hparams = self.hparams)
+        self.embedding = ResidueFeatures(hparams=self.hparams)
+        self.fe = FocusEncoding(hparams=self.hparams)
         if hparams['matches'] == 'resnet':
-            self.matches = Conv1DResNet(hparams = self.hparams)
+            self.matches = Conv1DResNet(hparams=self.hparams)
         elif hparams['matches'] == 'transformer':
-            self.matches = TERMMatchTransformerEncoder(hparams = hparams)
+            self.matches = TERMMatchTransformerEncoder(hparams=hparams)
         else:
-            raise InvalidArgumentError("arg for matches condenser doesn't look right")
-        self.encoder = S2STERMTransformerEncoder(hparams = self.hparams)
+            raise InvalidArgumentError(
+                "arg for matches condenser doesn't look right")
+        self.encoder = S2STERMTransformerEncoder(hparams=self.hparams)
         self.batchify = BatchifyTERM()
-        self.term_features = TERMProteinFeatures(edge_features = hparams['term_hidden_dim'], node_features = hparams['term_hidden_dim'])
+        self.term_features = TERMProteinFeatures(
+            edge_features=hparams['term_hidden_dim'],
+            node_features=hparams['term_hidden_dim'])
 
         self.track_nan = track_nans
 
@@ -338,16 +376,16 @@ class MultiChainCondenseMSA(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-
     def get_aa_embedding_layer(self):
         return self.embedding.embedding
-
 
     """
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords):
+
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask,
+                max_seq_len, chain_idx, coords):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -358,35 +396,38 @@ class MultiChainCondenseMSA(nn.Module):
                     break
         local_dev = X.device
 
-
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(
+            -1, -1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
         if self.track_nan:
-            process_nan(embeddings, (X, features, self.embedding.embedding.weight), 'embed')
+            process_nan(embeddings,
+                        (X, features, self.embedding.embedding.weight),
+                        'embed')
 
-
-        # use Convolutional ResNet or Transformer 
+        # use Convolutional ResNet or Transformer
         # for further embedding and to reduce dimensionality
         if self.hparams['matches'] == 'transformer':
             # output dimensionality is a little different for transformer
-            embeddings = embeddings.transpose(1,3).transpose(1,2)
+            embeddings = embeddings.transpose(1, 3).transpose(1, 2)
             condensed_matches = self.matches(embeddings, ~src_key_mask)
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
         condensed_matches *= negate_padding_mask.float()
 
-        if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
-
+        if self.track_nan:
+            process_nan(condensed_matches, embeddings, 'convolve')
 
         # add absolute positional encodings before TERM transformer
         if self.hparams['matches_linear']:
             batched_flat_terms = condensed_matches
         else:
-            batched_flat_terms = self.fe(condensed_matches, focuses, mask = ~src_key_mask)
+            batched_flat_terms = self.fe(condensed_matches,
+                                         focuses,
+                                         mask=~src_key_mask)
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(batched_flat_terms, term_lens)
         # also reshape the mask
@@ -397,29 +438,45 @@ class MultiChainCondenseMSA(nn.Module):
         # transform?
         if self.hparams['term_mpnn_linear']:
             node_embeddings = batchify_terms
-        else: 
+        else:
             # and reshape the coordinates
-            term_coords = torch.gather(coords, 1, focuses.view(list(focuses.shape) + [1,1]).expand(-1, -1, 4, 3).to(local_dev))
+            term_coords = torch.gather(
+                coords, 1,
+                focuses.view(list(focuses.shape) + [1, 1]).expand(
+                    -1, -1, 4, 3).to(local_dev))
             batchify_coords = self.batchify(term_coords, term_lens)
 
             # generate node, edge features from batchified coords
-            batch_V, batch_E, batch_E_idx, _ = self.term_features(batchify_coords, batched_focuses, chain_idx, batchify_src_key_mask.float())
+            batch_V, batch_E, batch_E_idx, _ = self.term_features(
+                batchify_coords, batched_focuses, chain_idx,
+                batchify_src_key_mask.float())
 
             # big transform
-            node_embeddings = self.encoder(batchify_terms, batch_E, batch_E_idx, mask = batchify_src_key_mask.float())
+            node_embeddings = self.encoder(batchify_terms,
+                                           batch_E,
+                                           batch_E_idx,
+                                           mask=batchify_src_key_mask.float())
 
-        if self.track_nan: process_nan(node_embeddings, condensed_matches, 'transform')
-
+        if self.track_nan:
+            process_nan(node_embeddings, condensed_matches, 'transform')
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
+        aggregate = torch.zeros(
+            (n_batches, max_seq_len,
+             self.hparams['term_hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
         # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
+        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(
+            batched_focuses.shape).long().to(local_dev)
         # aggregate node embeddings and associated counts
-        aggregate = aggregate.index_put((layer, batched_focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(local_dev)
-        count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
+        aggregate = aggregate.index_put((layer, batched_focuses),
+                                        node_embeddings,
+                                        accumulate=True)
+        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(
+            local_dev)
+        count = count.index_put((layer, batched_focuses),
+                                count_idx,
+                                accumulate=True)
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
         for batch, sel in enumerate(seq_lens):
             count[batch, sel:] = 1
@@ -428,17 +485,17 @@ class MultiChainCondenseMSA(nn.Module):
 
         if self.track_nan: process_nan(aggregate, node_embeddings, 'aggregate')
 
-
         return aggregate
 
+
 class MultiChainCondenseMSA_g(nn.Module):
-    def __init__(self, hparams, device = 'cuda:0', track_nans = False):
+    def __init__(self, hparams, device='cuda:0', track_nans=False):
         super(MultiChainCondenseMSA_g, self).__init__()
         self.hparams = hparams
         h_dim = hparams['term_hidden_dim']
         self.num_sing_stats = hparams['num_sing_stats']
         self.num_pair_stats = hparams['num_pair_stats']
-        self.embedding = ResidueFeatures(hparams = self.hparams)
+        self.embedding = ResidueFeatures(hparams=self.hparams)
 
         # configure edge embeddings
         if hparams['cov_features']:
@@ -446,26 +503,35 @@ class MultiChainCondenseMSA_g(nn.Module):
                 in_dim = self.num_pair_stats
             else:
                 in_dim = h_dim
-            self.edge_features = EdgeFeatures(hparams, in_dim = in_dim, hidden_dim = h_dim, feature_mode=hparams['cov_features'], compress = hparams['cov_compress'])
-        
+            self.edge_features = EdgeFeatures(
+                hparams,
+                in_dim=in_dim,
+                hidden_dim=h_dim,
+                feature_mode=hparams['cov_features'],
+                compress=hparams['cov_compress'])
+
         # choose matches condenser
         if hparams['matches'] == 'resnet':
-            self.matches = Conv1DResNet(hparams = self.hparams)
+            self.matches = Conv1DResNet(hparams=self.hparams)
         elif hparams['matches'] == 'transformer':
-            self.matches = TERMMatchTransformerEncoder(hparams = hparams)
+            self.matches = TERMMatchTransformerEncoder(hparams=hparams)
         elif hparams['matches'] == 'ablate':
             self.matches = None
         else:
-            raise InvalidArgumentError(f"arg for matches condenser {hparams['matches']} doesn't look right")
+            raise InvalidArgumentError(
+                f"arg for matches condenser {hparams['matches']} doesn't look right"
+            )
 
         if hparams['contact_idx']:
-            self.encoder = TERMGraphTransformerEncoder_cnkt(hparams = self.hparams)
+            self.encoder = TERMGraphTransformerEncoder_cnkt(
+                hparams=self.hparams)
         else:
-            self.encoder = TERMGraphTransformerEncoder(hparams = self.hparams)
+            self.encoder = TERMGraphTransformerEncoder(hparams=self.hparams)
         self.batchify = BatchifyTERM()
-        self.term_features = TERMProteinFeatures(edge_features = h_dim, node_features =  h_dim)
+        self.term_features = TERMProteinFeatures(edge_features=h_dim,
+                                                 node_features=h_dim)
         if hparams['contact_idx']:
-            self.fe = FocusEncoding(hparams = self.hparams)
+            self.fe = FocusEncoding(hparams=self.hparams)
 
         # project target ppoe to hidden dim
         self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, h_dim)
@@ -492,16 +558,28 @@ class MultiChainCondenseMSA_g(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-
     def get_aa_embedding_layer(self):
         return self.embedding.embedding
-
 
     """
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords, ppoe, sing_stats = None, pair_stats = None, contact_idx = None):
+
+    def forward(self,
+                X,
+                features,
+                seq_lens,
+                focuses,
+                term_lens,
+                src_key_mask,
+                max_seq_len,
+                chain_idx,
+                coords,
+                ppoe,
+                sing_stats=None,
+                pair_stats=None,
+                contact_idx=None):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -512,39 +590,42 @@ class MultiChainCondenseMSA_g(nn.Module):
                     break
         local_dev = X.device
 
-
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(
+            -1, -1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
         if self.track_nan:
-            process_nan(embeddings, (X, features, self.embedding.embedding.weight), 'embed')
+            process_nan(embeddings,
+                        (X, features, self.embedding.embedding.weight),
+                        'embed')
 
-
-        # use Convolutional ResNet or Transformer 
+        # use Convolutional ResNet or Transformer
         # for further embedding and to reduce dimensionality
         if self.hparams['matches_linear']:
-            condensed_matches = embeddings.mean(dim = -1).transpose(1,2)
+            condensed_matches = embeddings.mean(dim=-1).transpose(1, 2)
         elif self.hparams['matches'] == 'transformer':
             # project target ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
-            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['term_hidden_dim'])
+            focuses_gather = focuses.unsqueeze(-1).expand(
+                -1, -1, self.hparams['term_hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
             # output dimensionality of embeddings is different for transformer
-            condensed_matches = self.matches(embeddings.transpose(1,3).transpose(1,2), target, ~src_key_mask)
+            condensed_matches = self.matches(
+                embeddings.transpose(1, 3).transpose(1, 2), target,
+                ~src_key_mask)
         elif self.hparams['matches'] == 'resnet':
             condensed_matches = self.matches(embeddings)
         elif self.hparams['matches'] == 'ablate':
-            condensed_matches = torch.zeros_like(embeddings.mean(dim = -1).transpose(1,2))
-
-        
+            condensed_matches = torch.zeros_like(
+                embeddings.mean(dim=-1).transpose(1, 2))
 
         if self.num_sing_stats:
-            condensed_matches = self.W_sing(torch.cat([condensed_matches, sing_stats], dim=-1))
-
+            condensed_matches = self.W_sing(
+                torch.cat([condensed_matches, sing_stats], dim=-1))
 
         # zero out biases introduced into padding
         condensed_matches *= negate_padding_mask
@@ -555,22 +636,28 @@ class MultiChainCondenseMSA_g(nn.Module):
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
- 
-        if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
-        
+
+        if self.track_nan:
+            process_nan(condensed_matches, embeddings, 'convolve')
+
         cv = self.hparams['cov_features']
         if cv:
             if cv == 'shared_learned' or cv == 'cnn':
                 # generate covariation features
-                embeddings = embeddings.transpose(1,3).transpose(1,2)
+                embeddings = embeddings.transpose(1, 3).transpose(1, 2)
             elif cv == 'aa_learned' or cv == 'aa_counts' or cv == "all_raw" or cv == "all_learned":
                 embeddings = X.transpose(-2, -1)
             elif cv == 'preprocessed':
                 assert pair_stats is not None, "pair_stats can't be None under cv = preprocessed!"
                 embeddings = pair_stats
-                
-            rmsds = features[..., 7].transpose(-2, -1) 
-            edge_features = self.edge_features(embeddings, term_lens, rmsds, batchify_src_key_mask, features = features.transpose(1,2))
+
+            rmsds = features[..., 7].transpose(-2, -1)
+            edge_features = self.edge_features(embeddings,
+                                               term_lens,
+                                               rmsds,
+                                               batchify_src_key_mask,
+                                               features=features.transpose(
+                                                   1, 2))
 
             # edge features don't have the self edge as the first element in the row
             # so we need to rearrange the edges so they are
@@ -578,20 +665,37 @@ class MultiChainCondenseMSA_g(nn.Module):
             num_batch = edge_features.shape[0]
             max_num_terms = max([len(l) for l in term_lens])
             max_term_len = edge_features.shape[2]
-            E_idx_slice = torch.arange(max_term_len).unsqueeze(0).expand([max_term_len, max_term_len])
-            shift_E_idx_slice = (E_idx_slice + torch.arange(max_term_len).unsqueeze(1)) % max_term_len
-            batch_rel_E_idx = E_idx_slice.view([1,1, max_term_len, max_term_len]).expand([num_batch, max_num_terms, -1, -1]).contiguous().to(local_dev)
+            E_idx_slice = torch.arange(max_term_len).unsqueeze(0).expand(
+                [max_term_len, max_term_len])
+            shift_E_idx_slice = (
+                E_idx_slice +
+                torch.arange(max_term_len).unsqueeze(1)) % max_term_len
+            batch_rel_E_idx = E_idx_slice.view(
+                [1, 1, max_term_len,
+                 max_term_len]).expand([num_batch, max_num_terms, -1,
+                                        -1]).contiguous().to(local_dev)
             # use gather to rearrange the edge features
-            edge_features = torch.gather(edge_features, -2, batch_rel_E_idx.unsqueeze(-1).expand(list(batch_rel_E_idx.shape) + [self.hparams['term_hidden_dim']]))
+            edge_features = torch.gather(
+                edge_features, -2,
+                batch_rel_E_idx.unsqueeze(-1).expand(
+                    list(batch_rel_E_idx.shape) +
+                    [self.hparams['term_hidden_dim']]))
 
             # we need an absolute version of the rel_E_idx so we can aggregate edges
-            batch_abs_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, max_term_len, -1), -1, batch_rel_E_idx)
+            batch_abs_E_idx = torch.gather(
+                batched_focuses.unsqueeze(-2).expand(-1, -1, max_term_len, -1),
+                -1, batch_rel_E_idx)
         else:
             # reshape the coordinates
-            term_coords = torch.gather(coords, 1, focuses.view(list(focuses.shape) + [1,1]).expand(-1, -1, 4, 3).to(local_dev))
+            term_coords = torch.gather(
+                coords, 1,
+                focuses.view(list(focuses.shape) + [1, 1]).expand(
+                    -1, -1, 4, 3).to(local_dev))
             batchify_coords = self.batchify(term_coords, term_lens)
             # generate node, edge features from batchified coords
-            _, edge_features, batch_rel_E_idx, batch_abs_E_idx = self.term_features(batchify_coords, batched_focuses, chain_idx, batchify_src_key_mask.float())
+            _, edge_features, batch_rel_E_idx, batch_abs_E_idx = self.term_features(
+                batchify_coords, batched_focuses, chain_idx,
+                batchify_src_key_mask.float())
 
         if self.track_nan:
             if torch.isnan(edge_features).any():
@@ -602,17 +706,29 @@ class MultiChainCondenseMSA_g(nn.Module):
             contact_idx = self.batchify(contact_idx, term_lens)
             if not self.hparams['term_mpnn_linear']:
                 # big transform
-                node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float(), contact_idx = contact_idx)
+                node_embeddings, edge_embeddings = self.encoder(
+                    batchify_terms,
+                    edge_features,
+                    batch_rel_E_idx,
+                    mask=batchify_src_key_mask.float(),
+                    contact_idx=contact_idx)
             else:
-                node_embeddings = self.W_v(torch.cat([batchify_terms, contact_idx], dim=-1))
+                node_embeddings = self.W_v(
+                    torch.cat([batchify_terms, contact_idx], dim=-1))
                 node_embeddings *= batchify_src_key_mask.unsqueeze(-1)
-                edge_embeddings = self.W_e(cat_term_edge_endpoints(edge_features, contact_idx, batch_rel_E_idx))
+                edge_embeddings = self.W_e(
+                    cat_term_edge_endpoints(edge_features, contact_idx,
+                                            batch_rel_E_idx))
                 mask = batchify_src_key_mask.unsqueeze(-1).float()
-                edge_mask = mask @ mask.transpose(-1,-2)
+                edge_mask = mask @ mask.transpose(-1, -2)
                 edge_embeddings *= edge_mask.unsqueeze(-1)
 
         else:
-            node_embeddings, edge_embeddings = self.encoder(batchify_terms, edge_features, batch_rel_E_idx, mask = batchify_src_key_mask.float())
+            node_embeddings, edge_embeddings = self.encoder(
+                batchify_terms,
+                edge_features,
+                batch_rel_E_idx,
+                mask=batchify_src_key_mask.float())
 
         if self.track_nan:
             if torch.isnan(node_embeddings).any():
@@ -621,16 +737,24 @@ class MultiChainCondenseMSA_g(nn.Module):
                 raise RuntimeError("nan in edge embeddings")
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
+        aggregate = torch.zeros(
+            (n_batches, max_seq_len,
+             self.hparams['term_hidden_dim'])).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
 
         # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
+        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(
+            batched_focuses.shape).long().to(local_dev)
 
         # aggregate node embeddings and associated counts
-        aggregate = aggregate.index_put((layer, batched_focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(local_dev)
-        count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
+        aggregate = aggregate.index_put((layer, batched_focuses),
+                                        node_embeddings,
+                                        accumulate=True)
+        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(
+            local_dev)
+        count = count.index_put((layer, batched_focuses),
+                                count_idx,
+                                accumulate=True)
 
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
         batch_zeros = []
@@ -640,7 +764,9 @@ class MultiChainCondenseMSA_g(nn.Module):
             if (count[batch] == 0).any():
                 batch_zeros.append(batch)
         if len(batch_zeros) > 0:
-            raise RuntimeError(f"entries {batch_zeros} should have nonzero count but count[batches] is {count[batch_zeros]}")
+            raise RuntimeError(
+                f"entries {batch_zeros} should have nonzero count but count[batches] is {count[batch_zeros]}"
+            )
 
         if self.track_nan:
             if torch.isnan(aggregate).any():
@@ -649,7 +775,8 @@ class MultiChainCondenseMSA_g(nn.Module):
         # average the aggregate
         aggregate = aggregate / count.float()
 
-        agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx, max_seq_len)
+        agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx,
+                                    max_seq_len)
 
         if self.track_nan:
             if torch.isnan(agg_edges).any():
@@ -661,23 +788,27 @@ class MultiChainCondenseMSA_g(nn.Module):
 
 
 class GVPCondenseMSA(nn.Module):
-    def __init__(self, hparams, device = 'cuda:0', track_nans = True):
+    def __init__(self, hparams, device='cuda:0', track_nans=True):
         super(GVPCondenseMSA, self).__init__()
         self.hparams = hparams
-        self.embedding = ResidueFeatures(hparams = self.hparams)
-        self.fe = FocusEncoding(hparams = self.hparams)
+        self.embedding = ResidueFeatures(hparams=self.hparams)
+        self.fe = FocusEncoding(hparams=self.hparams)
         if hparams['matches'] == 'resnet':
-            self.matches = Conv1DResNet(hparams = self.hparams)
+            self.matches = Conv1DResNet(hparams=self.hparams)
         elif hparams['matches'] == 'transformer':
-            self.matches = TERMMatchTransformerEncoder(hparams = hparams)
+            self.matches = TERMMatchTransformerEncoder(hparams=hparams)
         else:
-            raise InvalidArgumentError("arg for matches condenser doesn't look right")
-        self.encoder = TERMGraphGVPEncoder(hparams = self.hparams)
+            raise InvalidArgumentError(
+                "arg for matches condenser doesn't look right")
+        self.encoder = TERMGraphGVPEncoder(hparams=self.hparams)
         self.batchify = BatchifyTERM()
-        self.term_features = GVPTProteinFeatures(edge_features = hparams['term_hidden_dim']//2, node_features = hparams['term_hidden_dim']//2)
+        self.term_features = GVPTProteinFeatures(
+            edge_features=hparams['term_hidden_dim'] // 2,
+            node_features=hparams['term_hidden_dim'] // 2)
 
         self.track_nan = track_nans
-        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, hparams['term_hidden_dim'])
+        self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES,
+                                hparams['term_hidden_dim'])
 
         if torch.cuda.is_available():
             self.dev = device
@@ -690,16 +821,16 @@ class GVPCondenseMSA(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-
     def get_aa_embedding_layer(self):
         return self.embedding.embedding
-
 
     """
     S p e e e e d
     Fully batched
     """
-    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, chain_idx, coords, ppoe):
+
+    def forward(self, X, features, seq_lens, focuses, term_lens, src_key_mask,
+                max_seq_len, chain_idx, coords, ppoe):
         n_batches = X.shape[0]
         seq_lens = seq_lens.tolist()
         term_lens = term_lens.tolist()
@@ -710,34 +841,37 @@ class GVPCondenseMSA(nn.Module):
                     break
         local_dev = X.device
 
-
         # zero out all positions used as padding so they don't contribute to aggregation
-        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(-1,-1, self.hparams['term_hidden_dim'])
+        negate_padding_mask = (~src_key_mask).unsqueeze(-1).expand(
+            -1, -1, self.hparams['term_hidden_dim'])
         # embed MSAs and concat other features on
         embeddings = self.embedding(X, features)
 
         if self.track_nan:
-            process_nan(embeddings, (X, features, self.embedding.embedding.weight), 'embed')
+            process_nan(embeddings,
+                        (X, features, self.embedding.embedding.weight),
+                        'embed')
 
-
-        # use Convolutional ResNet or Transformer 
+        # use Convolutional ResNet or Transformer
         # for further embedding and to reduce dimensionality
         if self.hparams['matches'] == 'transformer':
             # project ppoe
             ppoe = self.W_ppoe(ppoe)
             # gather to generate target ppoe per term residue
-            focuses_gather = focuses.unsqueeze(-1).expand(-1, -1, self.hparams['term_hidden_dim'])
+            focuses_gather = focuses.unsqueeze(-1).expand(
+                -1, -1, self.hparams['term_hidden_dim'])
             target = torch.gather(ppoe, 1, focuses_gather)
 
             # output dimensionality is a little different for transformer
-            embeddings = embeddings.transpose(1,3).transpose(1,2)
+            embeddings = embeddings.transpose(1, 3).transpose(1, 2)
             condensed_matches = self.matches(embeddings, target, ~src_key_mask)
         else:
             condensed_matches = self.matches(embeddings)
         # zero out biases introduced into padding
         condensed_matches *= negate_padding_mask.float()
 
-        if self.track_nan: process_nan(condensed_matches, embeddings, 'convolve')
+        if self.track_nan:
+            process_nan(condensed_matches, embeddings, 'convolve')
 
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(condensed_matches, term_lens)
@@ -745,32 +879,51 @@ class GVPCondenseMSA(nn.Module):
         batchify_src_key_mask = self.batchify(~src_key_mask, term_lens)
         # we also need to batch focuses to we can aggregate data
         batched_focuses = self.batchify(focuses, term_lens).to(local_dev)
-        
+
         # and reshape the coordinates
-        term_coords = torch.gather(coords, 1, focuses.view(list(focuses.shape) + [1,1]).expand(-1, -1, 4, 3).to(local_dev))
+        term_coords = torch.gather(
+            coords, 1,
+            focuses.view(list(focuses.shape) + [1, 1]).expand(-1, -1, 4,
+                                                              3).to(local_dev))
         batchify_coords = self.batchify(term_coords, term_lens)
 
         # generate node, edge features from batchified coords
-        batch_V, batch_E, batch_rel_E_idx, batch_abs_E_idx = self.term_features(batchify_coords, batchify_src_key_mask.float(), chain_idx, batched_focuses = batched_focuses)
+        batch_V, batch_E, batch_rel_E_idx, batch_abs_E_idx = self.term_features(
+            batchify_coords,
+            batchify_src_key_mask.float(),
+            chain_idx,
+            batched_focuses=batched_focuses)
 
         # we can do this because the scale channels are on the bottom
         # and there are no vector channels to add
         batch_V = torch.cat([batch_V, batchify_terms], dim=-1)
 
         # big transform
-        node_embeddings, edge_embeddings = self.encoder(batch_V, batch_E, batch_rel_E_idx, mask = batchify_src_key_mask.float())
+        node_embeddings, edge_embeddings = self.encoder(
+            batch_V,
+            batch_E,
+            batch_rel_E_idx,
+            mask=batchify_src_key_mask.float())
 
         # create a space to aggregate term data
-        aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim']*2)).to(local_dev)
+        aggregate = torch.zeros(
+            (n_batches, max_seq_len,
+             self.hparams['term_hidden_dim'] * 2)).to(local_dev)
         count = torch.zeros((n_batches, max_seq_len, 1)).to(local_dev).long()
 
         # this make sure each batch stays in the same layer during aggregation
-        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(batched_focuses.shape).long().to(local_dev)
+        layer = torch.arange(n_batches).unsqueeze(-1).unsqueeze(-1).expand(
+            batched_focuses.shape).long().to(local_dev)
 
         # aggregate node embeddings and associated counts
-        aggregate = aggregate.index_put((layer, batched_focuses), node_embeddings, accumulate=True)
-        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(local_dev)
-        count = count.index_put((layer, batched_focuses), count_idx, accumulate=True)
+        aggregate = aggregate.index_put((layer, batched_focuses),
+                                        node_embeddings,
+                                        accumulate=True)
+        count_idx = torch.ones_like(batched_focuses).unsqueeze(-1).to(
+            local_dev)
+        count = count.index_put((layer, batched_focuses),
+                                count_idx,
+                                accumulate=True)
 
         # set all the padding zeros in count to 1 so we don't get nan's from divide by zero
         for batch, sel in enumerate(seq_lens):
@@ -779,8 +932,7 @@ class GVPCondenseMSA(nn.Module):
         # average the aggregate
         aggregate /= count.float()
 
-        agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx, max_seq_len)
+        agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx,
+                                    max_seq_len)
 
         return aggregate, agg_edges
-
-
