@@ -23,6 +23,12 @@ HPARAMS=$2
 OUTPUTDIR=$3
 RUNNAME=${3##*/}
 echo "$DATANAME $RUNNAME"
+
+if [[ ! -d $OUTPUTDIR ]];
+then
+  mkdir $OUTPUTDIR
+fi
+
 sed \
   -e "s|DATASET|${DATASET}|g" \
   -e "s|DATANAME|${DATANAME}|g" \
