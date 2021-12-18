@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH --mem=1000
-#SBATCH --partition=defq
-#SBATCH --time=0:15:00
+#SBATCH --partition=xeon-p8
+#SBATCH --time=1:00:00
 #SBATCH -o /dev/null
 
 . /etc/profile.d/modules.sh
@@ -13,22 +13,25 @@ RUNLIST_LEN=${#RUNLIST[@]}
 
 let start=$batch_size*$SLURM_ARRAY_TASK_ID
 # compute the end of the batch
-let next=$batch_size*($SLURM_ARRAY_TASK_ID+1)
+let next=$SLURM_ARRAY_TASK_ID+1
+let next=$batch_size*$next
 if [[ $next -gt $RUNLIST_LEN ]]
 then
-  let end=$RUNLIST_LEN-1
+  let end=$RUNLIST_LEN
 else
-  let end=$next-1
+  let end=$next
 fi
 
 output_dir=$1
 cd $1
 
 # run the batch
-for i in {$start..$end}
+i=$start
+while [[ $i -lt $end ]]
 do
   ID=${RUNLIST[$i]}
   echo $ID
   runfile="run_${ID}.sh"
   bash $runfile > "${ID}-output.out" 2> "${ID}-error.err"
-end
+  i=$(($i + 1))
+done

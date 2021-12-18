@@ -2,7 +2,7 @@ import os
 import argparse
 import glob
 
-from .search_utils import find_pdb_folder
+from search_utils import find_pdb_path
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 assert DIR[0] == "/", "DIR should be an abspath"
@@ -19,6 +19,7 @@ if __name__ == '__main__':
         "--pdb_root",
         help="The root for all raw data PDB databases"
     )
+    parser.add_argument('--dtermen_data', help="Root directory for dTERMen runs")
     args = parser.parse_args()
     os.chdir(DIR)
 
@@ -30,19 +31,22 @@ if __name__ == '__main__':
         pdb_id = os.path.basename(filename)[:-5]
         print(pdb_id)
 
-        pdb_folder = find_pdb_folder(pdb_id)
-        os.system(f"cp {pdb_folder}/{pdb_id}.pdb {output_path}/{pdb_id}.pdb")
+        pdb_path = find_pdb_path(pdb_id, args.pdb_root)
+        os.system(f"cp {pdb_path} {output_path}/{pdb_id}.pdb")
         os.system(
             (
                 f"sed -e \"s|ID|{pdb_id}|g\" "
                 f"-e \"s|OUTPUTDIR|{output_path}|g\" "
+                f"-e \"s|POSTDIR|{DIR}|g\" "
                 f"< run_dTERMen.sh "
                 f" >{output_path}/run_{pdb_id}.sh"
             )
         )
         pdbs.append(pdb_id)
 
-    with open(f"logfiles/{basename}.list", 'w') as fp:
+    batch_arr_list = os.path.join(args.output_dir, f"{basename}_batch_arr.list")
+
+    with open(batch_arr_list, 'w') as fp:
         for pdb in pdbs:
             fp.write(pdb + "\n")
 
@@ -52,8 +56,8 @@ if __name__ == '__main__':
     bid = os.popen(
         (
             f"sbatch --parsable --array=0-{num_batches} "
-            f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} logfiles/{basename}.list {batch_size}"
+            f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {batch_size}"
         )
     ).read()
     bid = int(bid.strip())
-    os.system(f"sbatch --dependency=afterany:{bid} sum_res.sh {args.output_dir}")
+    os.system(f"sbatch --dependency=afterany:{bid} sum_res.sh {args.output_dir} {args.dtermen_data}")

@@ -9,7 +9,7 @@ import time
 import traceback
 from tqdm import tqdm
 import json
-from .search_utils import find_pdb_folder
+from search_utils import find_dtermen_folder
 from terminator.utils.common import AA_to_int, int_to_AA
 
 
@@ -18,9 +18,9 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path, ingraham_dict=None):
+def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
     try:
-        return to_etab_file(etab_matrix, E_idx, idx_dict, out_path, ingraham_dict)
+        return to_etab_file(etab_matrix, E_idx, idx_dict, out_path)
     except Exception as e:
         eprint(out_path)
         eprint(idx_dict)
@@ -60,6 +60,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
         for k, k_slice in enumerate(nrg_slice):
             j_idx = E_idx[i_idx][k]
             chain_i, i_resid = idx_dict[i_idx]
+            chain_j, j_resid = idx_dict[j_idx]
 
             for i, i_slice in enumerate(k_slice):
                 i_3lt_id = int_to_AA[i]
@@ -158,7 +159,6 @@ if __name__ == '__main__':
         pdb = data['ids'][0]
         E_idx = data['idx'][0].copy()
         etab = data['out'][0].copy()
-        ingraham_dict = None
 
         print(pdb)
         pdb_path = find_dtermen_folder(pdb, args.dtermen_data)
@@ -179,9 +179,10 @@ if __name__ == '__main__':
 
         def raise_error(error):
             raise error
+
         res = pool.apply_async(
             to_etab_file_wrapper,
-            args=(etab, E_idx, idx_dict, out_path, ingraham_dict),
+            args=(etab, E_idx, idx_dict, out_path),
             callback=check_worked,
             error_callback=raise_error
         )

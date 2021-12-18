@@ -76,7 +76,7 @@ if __name__ == '__main__':
         if len(dtermen_recovery) < len(pred_sequences):
             dtermen_recovery += [-1]
             with open('to_run.out', 'a') as f:
-                f.write(f'{last_testfolder}{pdb_id}\n')
+                f.write(os.path.join(last_testfolder, pdb_id) + '\n')
 
     print("Errors:", errors)
     os.chdir(output_path)
@@ -94,4 +94,4 @@ if __name__ == '__main__':
     }
     print([(key, len(val)) for key, val in results_dict.items()])
     results_df = pd.DataFrame(results_dict)
-    results_df.to_csv(os.path.join(OUTPUT_DIR, args.output_dir, 'summary_results.csv'))
+    results_df.to_csv(os.path.join(args.output_dir, 'summary_results.csv'))

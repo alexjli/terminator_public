@@ -10,12 +10,23 @@ done
 # DIR is the directory this file is in, e.g. postprocessing
 DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
+cd $DIR
+
 # check if shell_scripts exists and if not create it
-if [[ ! -d $DIR/shell_scripts ]];
+if [[ ! -d shell_scripts ]];
 then
-  mkdir $DIR/shell_scripts
+  mkdir shell_scripts
 fi
 
-RUNNAME="basename $2"
-sed -e "s|DTERMENDATA|$1|g" -e "s|OUTPUTDIR|$2|g" -e "s|RUNNAME|${RUNNAME}|g" <${DIR}/to_etab.sh >${DIR}/shell_scripts/to_etab_${RUNNAME}.sh
-sbatch ${DIR}/shell_scripts/to_etab_${RUNNAME}.sh
+DTERMENDATA=$1
+PDBROOT=$2
+OUTPUTDIR=$3
+RUNNAME=${3##*/}
+sed \
+    -e "s|DTERMENDATA|${DTERMENDATA}|g" \
+    -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
+    -e "s|RUNNAME|${RUNNAME}|g" \
+    -e "s|PDBROOT|${PDBROOT}|g" \
+    <to_etab.sh \
+    >shell_scripts/to_etab_${RUNNAME}.sh
+sbatch shell_scripts/to_etab_${RUNNAME}.sh

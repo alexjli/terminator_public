@@ -3,6 +3,6 @@
 - [X] raw data -> featurized data
 - [X] train model
 - [X] eval model
-- [ ] to etab
-- [ ] batch dTERMen on etabs
-- [ ] summarize results
+- [X] to etab
+- [-] batch dTERMen on etabs (everything works except % recov on my setup)
+- [X] summarize results
