@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 import numpy as np
+import sys
 from .gvp import vs_concat
 
 """
@@ -225,6 +226,16 @@ def merge_duplicate_term_edges(h_E_update, E_idx):
     return merged_E_updates
 
 def merge_duplicate_pairE(h_E, E_idx):
+    try:
+        return merge_duplicate_pairE_dense(h_E, E_idx)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        print("We're handling this error as if it's an out-of-memory error", file=sys.stderr)
+        torch.cuda.empty_cache()  # this is probably unnecessary but just in case
+        return merge_duplicate_pairE_sparse(h_E, E_idx)
+
+
+def merge_duplicate_pairE_dense(h_E, E_idx):
     dev = h_E.device
     n_batch, n_nodes, k, n_aa, _ = h_E.shape
     # collect edges into NxN tensor shape
@@ -240,6 +251,58 @@ def merge_duplicate_pairE(h_E, E_idx):
     # average h_E and reverse_E at non-zero positions
     merged_E = torch.where(reverse_E != 0, (h_E + reverse_E)/2, h_E)
     return merged_E
+
+# TODO: rigorous test that this is equiv to the dense version
+def merge_duplicate_pairE_sparse(h_E, E_idx):
+    """
+    sparse tensor version of merge_duplicate_pairE
+    significant slowdown so only worth using if memory is an issue
+    """
+    dev = h_E.device
+    n_batch, n_nodes, k, n_aa, _ = h_E.shape
+    # convert etab into a sparse etab
+    # self idx of the edge
+    ref_idx = E_idx[:, :, 0:1].expand(-1, -1, k)
+    # sparse idx
+    g_idx = torch.cat([E_idx.unsqueeze(1), ref_idx.unsqueeze(1)], dim=1)
+    sparse_idx = g_idx.view([n_batch, 2, -1])
+    # generate a 1D idx for the forward and backward direction
+    scaler = torch.ones_like(sparse_idx).to(dev)
+    scaler = scaler * n_nodes
+    scaler_f = scaler
+    scaler_f[:, 0] = 1
+    scaler_r = torch.flip(scaler_f, [1])
+    batch_offset = torch.arange(n_batch).unsqueeze(-1).expand([-1, n_nodes * k]) * n_nodes * k
+    batch_offset = batch_offset.to(dev)
+    sparse_idx_f = torch.sum(scaler_f * sparse_idx, 1) + batch_offset
+    flat_idx_f = sparse_idx_f.view([-1])
+    sparse_idx_r = torch.sum(scaler_r * sparse_idx, 1) + batch_offset
+    flat_idx_r = sparse_idx_r.view([-1])
+    # generate sparse tensors
+    flat_h_E_f = h_E.view([n_batch * n_nodes * k, n_aa ** 2])
+    reverse_h_E = h_E.transpose(-2, -1).contiguous()
+    flat_h_E_r = reverse_h_E.view([n_batch * n_nodes * k, n_aa ** 2])
+    sparse_etab_f = torch.sparse_coo_tensor(flat_idx_f.unsqueeze(0), flat_h_E_f, (n_batch * n_nodes * n_nodes, n_aa ** 2))
+    count_f = torch.sparse_coo_tensor(flat_idx_f.unsqueeze(0), torch.ones_like(flat_idx_f), (n_batch * n_nodes * n_nodes,))
+    sparse_etab_r = torch.sparse_coo_tensor(flat_idx_r.unsqueeze(0), flat_h_E_r, (n_batch * n_nodes * n_nodes, n_aa ** 2))
+    count_r = torch.sparse_coo_tensor(flat_idx_r.unsqueeze(0), torch.ones_like(flat_idx_r), (n_batch * n_nodes * n_nodes,))
+    # merge 
+    sparse_etab = sparse_etab_f + sparse_etab_r
+    sparse_etab = sparse_etab.coalesce()
+    count = count_f + count_r
+    count = count.coalesce()
+
+    # this step is very slow, but implementing something faster is probably a lot of work 
+    # requires pytorch 1.10 to be fast enough to be usable
+    collect = sparse_etab.index_select(0, flat_idx_f).to_dense()
+    weight = count.index_select(0, flat_idx_f).to_dense()
+    
+    flat_merged_etab = collect / weight.unsqueeze(-1)
+    merged_etab = flat_merged_etab.view(h_E.shape)
+    return merged_etab
+
+
+
 
 """
     edge aggregation fns
