@@ -23,7 +23,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--batch_size', 
         help='number of dTERMen runs to run per node',
-        default=20,
+        default=5,
         type=int
     )
     args = parser.parse_args()
@@ -60,7 +60,7 @@ if __name__ == '__main__':
 
     bid = os.popen(
         (
-            f"sbatch --parsable --array=0-{args.num_batches} "
+            f"sbatch --parsable --array=0-{num_batches} "
             f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {args.batch_size}"
         )
     ).read()
