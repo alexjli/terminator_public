@@ -21,17 +21,21 @@ from terminator.utils.loop_utils import run_epoch
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Eval TERMinator Psuedoperplexity')
     parser.add_argument('--dataset', help='input folder .features files in proper directory structure')
-    parser.add_argument('--subset', help='file specifiying subset of dataset to evaluate', default='test.in')
+    parser.add_argument('--subset', help='file specifiying subset of dataset to evaluate. if non provided, the whole dataset folder will be evaluated')
     parser.add_argument('--output_dir', help='where to dump net.out')
     parser.add_argument('--model_dir', help='trained model folder')
     parser.add_argument('--dev', help='device to train on', default='cuda:0')
     args = parser.parse_args()
 
     dev = args.dev
-    test_ids = []
-    with open(os.path.join(args.dataset, args.subset), 'r') as f:
-        for line in f:
-            test_ids += [line[:-1]]
+    if args.subset:
+        test_ids = []
+        with open(os.path.join(args.subset), 'r') as f:
+            for line in f:
+                test_ids += [line[:-1]]
+    else:
+        test_ids = None
+
     test_dataset = LazyDataset(args.dataset, pdb_ids=test_ids)
     test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
     test_dataloader = DataLoader(test_dataset,
