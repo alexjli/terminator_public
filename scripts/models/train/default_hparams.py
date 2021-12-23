@@ -40,5 +40,7 @@ DEFAULT_HPARAMS = {
             'sort_data': True,
             'semi_shuffle': False,
             'regularization': 0,
+            'max_term_res': 55000,
+            'max_seq_tokens': 0,
             'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])#
         }

@@ -76,7 +76,9 @@ def main(args):
             shuffle=hparams['shuffle'],
             semi_shuffle=hparams['semi_shuffle'],
             sort_data=hparams['sort_data'],
-            term_matches_cutoff=hparams['term_matches_cutoff']
+            term_matches_cutoff=hparams['term_matches_cutoff'],
+            max_term_res=hparams['max_term_res'], 
+            max_seq_tokens=hparams['max_seq_tokens']
         )
         val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
         test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
@@ -109,7 +111,7 @@ def main(args):
     print(terminator)
     print("hparams", terminator.hparams)
 
-    if torch.cuda.device_count() > 1:
+    if torch.cuda.device_count() > 1 and dev != "cpu":
         terminator = nn.DataParallel(terminator)
         terminator_module = terminator.module
     else:
@@ -189,8 +191,16 @@ def main(args):
     terminator_module.load_state_dict(best_checkpoint)
     test_loss, test_prob, dump = run_epoch(terminator, test_dataloader, grad = False, test = True, dev = dev)
     print(f"test loss {test_loss} test prob {test_prob}")
+
+    if args.out_dir:
+        if not os.path.isdir(args.out_dir):
+            os.mkdir(args.out_dir)
+        net_out_path = os.path.join(args.out_dir, "net.out")
+    else:
+        net_out_path = os.path.join(run_dir, "net.out")
+
     # save etab outputs for dTERMen runs
-    with open(run_dir + '/net.out', 'wb') as fp:
+    with open(net_out_path, 'wb') as fp:
         pickle.dump(dump, fp)
 
     writer.close()
@@ -209,8 +219,12 @@ if __name__ == '__main__':
     # parser.add_argument('--shuffle_splits', help = 'shuffle dataset before creating train, validate, test splits', default = False, type=bool)
     parser.add_argument(
         '--run_dir',
-        help='path to run folder',
+        help='path to place folder to store model files',
         default='test_run'
+    )
+    parser.add_argument(
+        '--out_dir',
+        help='path to place test set eval results (e.g. net.out)'
     )
     parser.add_argument('--epochs', help = 'number of epochs to train for', default = 100, type=int)
     parser.add_argument(
