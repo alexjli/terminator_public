@@ -22,6 +22,7 @@ DATASET=$1
 DATANAME=${1##*/}
 MODELDIR=$2
 OUTPUTDIR=$3
+SUBSET=$4
 if [[ ! -d $OUTPUTDIR ]];
 then
   mkdir $OUTPUTDIR
@@ -33,6 +34,7 @@ sed \
   -e "s|MODELDIR|${MODELDIR}|g" \
   -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
   -e "s|RUNNAME|${RUNNAME}|g" \
+  -e "s|SUBSET|${SUBSET}|g" \
   <run_eval.sh \
   >bash_files/eval_${DATANAME}_${RUNNAME}.sh
 jid0=$(sbatch --parsable bash_files/eval_${DATANAME}_${RUNNAME}.sh)

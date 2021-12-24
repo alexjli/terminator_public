@@ -12,4 +12,8 @@ source ${CONDA_ROOT}/etc/profile.d/conda.sh
 conda activate terminator
 ulimit -s unlimited
 
-python eval.py --dataset=DATASET --model_dir=MODELDIR --output_dir=OUTPUTDIR
+python eval.py \
+    --dataset=DATASET \
+    --model_dir=MODELDIR \
+    --output_dir=OUTPUTDIR \
+    --subset=SUBSET
