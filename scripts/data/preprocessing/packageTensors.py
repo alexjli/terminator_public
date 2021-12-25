@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pickle
 from scipy.linalg import block_diag
@@ -7,15 +8,36 @@ import glob
 from parseTERM import parseTERMdata
 from parseEtab import parseEtab
 from parseCoords import parseCoords
+from terminator.utils.common import seq_to_ints
 
-NUM_AA = 21 # including X
+NUM_AA = 21  # including X
+ZERO = 1e-10  # 0 is used for padding
 
-def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stats = False, weight_fn = "neg", coords_only=False):
-    coords = parseCoords(in_path + '.red.pdb', save=False)
+def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stats = False, weight_fn = "neg", coords_only=False, dummy_terms=None):
+    if dummy_terms is not None:
+        assert dummy_terms in ['replace', 'include'], f"dummy_terms={dummy_terms} is an invalid argument"
+
+    if dummy_terms == 'replace':
+        cutoff = 1
+
+    coords, _ = parseCoords(in_path + '.red.pdb', save=False)
     data = parseTERMdata(in_path + '.dat')
     etab, self_etab, _ = parseEtab(in_path + '.etab', save=False)
 
     selection = data['selection']
+
+    # embed target ppoe
+    struct_ppoe = data['ppoe']
+    struct_ppo = struct_ppoe[:, :3]
+    struct_ppo_rads = np.radians(struct_ppo)
+    struct_env = struct_ppoe[:, 3:]
+    # zero out dihedral embeddings where there are no dihedrals
+    struct_is_999 = (struct_ppo == 999)
+    struct_sin_ppo = np.sin(struct_ppo_rads)
+    struct_sin_ppo[struct_is_999] = 0
+    struct_cos_ppo = np.cos(struct_ppo_rads)
+    struct_cos_ppo[struct_is_999] = 0
+    struct_embedded_ppoe = np.concatenate([struct_sin_ppo, struct_cos_ppo, struct_env], axis = 1)
 
     term_msas = []
     term_features = []
@@ -33,8 +55,19 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         msa = term_data['labels']
         # apply take
         msa = np.take(msa, take, axis=-1)
-        # cutoff MSAs at top N
-        term_msas.append(msa[:cutoff])
+        if dummy_terms is None:
+            # cutoff MSAs at top N
+            term_msas.append(msa[:cutoff])
+        elif dummy_terms == 'replace':
+            # replace the whole TERM with one sequence of only X
+            term_msas.append(np.ones_like(msa[:1]).astype(int) * 20)
+        elif dummy_terms == "include":
+            dummy_seq = np.ones_like(msa[:1]).astype(int) * 20
+            term_msas.append(
+                np.concatenate(
+                    [dummy_seq, msa[:cutoff-1]]
+                )
+            )
 
         # add focus
         focus_take = [item for item in focus if item in selection]
@@ -47,7 +80,13 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         term_lens.append(len(focus_take))
 
         # process ppoe
-        ppoe = term_data['ppoe']
+        if dummy_terms is None:
+            ppoe = term_data['ppoe']
+        elif dummy_terms == "replace":
+            ppoe = np.expand_dims(struct_ppoe[focus].transpose(1,0), 0)
+        elif dummy_terms == "include":
+            dummy_ppoe = np.expand_dims(struct_ppoe[focus].transpose(1,0), 0)
+            ppoe = np.concatenate([dummy_ppoe, term_data['ppoe']], axis=0)
         term_len = ppoe.shape[2]
         num_alignments = ppoe.shape[0]
         # project to sin, cos 
@@ -64,9 +103,19 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         ppoe = np.take(ppoe, take, axis=-1)
 
         # place rmsds into np array
-        rmsd = np.expand_dims(term_data['rmsds'], 1) #term_data['rmsds'][:cutoff]
+        if dummy_terms is None:
+            rmsd = np.expand_dims(term_data['rmsds'], 1) 
+        elif dummy_terms == "include":
+            rmsd = np.concatenate([
+                np.array([ZERO]),
+                term_data['rmsds'],
+            ], axis=0)
+            rmsd = np.expand_dims(rmsd, 1) 
         rmsd_arr = np.concatenate([rmsd for _ in range(term_len)], axis=1)
         rmsd_arr = np.expand_dims(rmsd_arr, 1)
+        if dummy_terms == 'replace':
+            # we set the RMSD of the true match to be 0
+            rmsd_arr = np.ones_like(rmsd_arr) * ZERO
         term_len_arr = np.zeros((cutoff, 1, term_len))
         term_len_arr += term_len
         num_alignments_arr = np.zeros((cutoff, 1, term_len))
@@ -167,26 +216,12 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
     else:
         chains = sorted(coords.keys())
         coords_tensor = np.vstack([coords[c] for c in chains])
-
     assert coords_tensor.shape[0] == len(data['sequence']), "num aa coords != seq length"
-
-    # embed target ppoe
-    ppoe = data['ppoe']
-    ppo = ppoe[:, :3]
-    ppo_rads = np.radians(ppo)
-    env = ppoe[:, 3:]
-    # zero out dihedral embeddings where there are no dihedrals
-    is_999 = (ppo == 999)
-    sin_ppo = np.sin(ppo_rads)
-    sin_ppo[is_999] = 0
-    cos_ppo = np.cos(ppo_rads)
-    cos_ppo[is_999] = 0
-    embedded_ppoe = np.concatenate([sin_ppo, cos_ppo, env], axis = 1)
 
     output = {
         'pdb': pdb,
         'coords': coords_tensor,
-        'ppoe': embedded_ppoe,
+        'ppoe': struct_embedded_ppoe,
         'features': features_tensor,
         'sing_stats': sing_stats_tensor,
         'pair_stats': pair_stats_tensor,
@@ -234,4 +269,52 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
 
     return output
 
+def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
+    """
+    Create a feature file based only on the coordinate information,
+    placing dummy arrays for all TERM based items
+    """
+    in_file = in_path + ('.red.pdb' if red_pdb else '.pdb')
+    coords, seq = parseCoords(in_file + '.red.pdb', save=False)
+
+    if len(coords) == 1:
+        chain = next(iter(coords.keys()))
+        coords_tensor = coords[chain]
+    else:
+        chains = sorted(coords.keys())
+        coords_tensor = np.vstack([coords[c] for c in chains])
+
+    chain_lens = [len(coords[c]) for c in sorted(coords.keys())]
+    pdb = os.path.basename(in_path)
+
+    dummy_arr_3d = np.zeros([1,1,1])
+    dummy_arr_2d = np.zeros([1,1])
+    dummy_arr_1d = np.ones([1])
+    output = {
+        'pdb': pdb,
+        'coords': coords_tensor,
+        'ppoe': dummy_arr_3d,
+        'features': dummy_arr_3d,
+        'sing_stats': None,
+        'pair_stats': None,
+        'msas': dummy_arr_2d,
+        'focuses': dummy_arr_2d,
+        'contact_idxs': dummy_arr_2d,
+        'term_lens': dummy_arr_1d.astype(int),
+        'sequence': np.array(seq_to_ints(seq)),
+        'seq_len': len(seq),
+        'chain_lens': chain_lens
+   }
+
+
+    if save:
+        with open(out_path + '.features', 'wb') as fp:
+            pickle.dump(output, fp)
+        with open(out_path + '.length', 'w') as fp:
+            fp.write(str(1) + '\n')
+            fp.write(str(len(seq)))
+
+    print('Done with', pdb)
+
+    return output
 
