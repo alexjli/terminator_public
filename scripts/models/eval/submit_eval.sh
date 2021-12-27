@@ -18,9 +18,9 @@ then
 fi
 
 
-DATASET=$1
-DATANAME=${1##*/}
-MODELDIR=$2
+MODELDIR=$1
+DATASET=$2
+DATANAME=${2##*/}
 OUTPUTDIR=$3
 SUBSET=$4
 if [[ ! -d $OUTPUTDIR ]];
