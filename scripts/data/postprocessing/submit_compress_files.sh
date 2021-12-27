@@ -10,12 +10,19 @@ done
 # DIR is the directory this file is in, e.g. postprocessing
 DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
+cd $DIR
+
 # check if shell_scripts exists and if not create it
-if [[ ! -d $DIR/shell_scripts ]];
+if [[ ! -d shell_scripts ]];
 then
-  mkdir $DIR/shell_scripts
+  mkdir shell_scripts
 fi
 
-RUNNAME="basename $1"
-sed -e "s|OUTPUTDIR|$1|g" -e "s|RUNNAME|$2|g" <${DIR}/compress_files.sh >${DIR}/shell_scripts/compress_files_${RUNNAME}.sh
-sbatch ${DIR}/shell_scripts/compress_files_${RUNNAME}.sh
+OUTPUTDIR=$1
+RUNNAME=${1##*/}
+sed \
+    -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
+    -e "s|RUNNAME|${RUNNAME}|g" \
+    <compress_files.sh \
+    >shell_scripts/compress_files_${RUNNAME}.sh
+sbatch shell_scripts/compress_files_${RUNNAME}.sh
