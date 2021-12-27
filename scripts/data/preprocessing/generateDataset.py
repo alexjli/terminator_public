@@ -128,7 +128,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--dummy_terms', 
-        help='option for how to use dummy TERMs in the feature files'
+        help='option for how to use dummy TERMs in the feature files',
         default=None
     )
     args = parser.parse_args()
