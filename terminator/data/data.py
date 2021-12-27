@@ -463,7 +463,8 @@ class TERMLazyDataLoader(Sampler):
                  drop_last=False,
                  max_term_res=55000,
                  max_seq_tokens=0,
-                 term_matches_cutoff=None):
+                 term_matches_cutoff=None,
+                 term_dropout=False):
 
         self.dataset = dataset
         self.size = len(dataset)
@@ -487,6 +488,8 @@ class TERMLazyDataLoader(Sampler):
         self.semi_shuffle = semi_shuffle
         self.semi_shuffle_cluster_size = semi_shuffle_cluster_size
         self.term_matches_cutoff = term_matches_cutoff
+        assert term_dropout in ["keep_first", "all", False], f"term_dropout={term_dropout} is not a valid argument"
+        self.term_dropout = term_dropout
 
         assert not (
             shuffle and semi_shuffle
@@ -622,6 +625,44 @@ class TERMLazyDataLoader(Sampler):
         if self.term_matches_cutoff:
             features = features[:, :self.term_matches_cutoff]
             msas = msas[:, :self.term_matches_cutoff]
+        if self.term_dropout:
+            # sample a random number of alignments to keep
+            n_batch, n_align, n_terms, n_features = features.shape
+            if self.term_dropout == 'keep_first':
+                n_keep = torch.randint(0, n_align, [1]).item()
+            elif self.term_dropout == 'all':
+                n_keep = torch.randint(1, n_align, [1]).item()
+            # sample from a multinomial distribution
+            weights = torch.ones([1, 1]).expand([n_batch * n_terms, n_keep])
+            if n_keep == 0:
+                sample_idx = torch.ones(1)
+            else:
+                sample_idx = torch.multinomial(weights, n_keep)
+                sample_idx = sample_idx.view([n_batch, n_terms, n_keep]).transpose(-1, -2)
+                sample_idx_features = sample_idx.unsqueeze(-1).expand(
+                    [n_batch, n_keep, n_terms, n_features]
+                )
+                sample_idx_msas = sample_idx
+            
+            if self.term_dropout == 'keep_first':
+                if n_keep == 0:
+                    features = features[:, 0:1]
+                    msas = msas[:, 0:1]
+                else:
+                    sample_features = torch.gather(features[:, 1:], 1, sample_idx_features)
+                    sample_msas = torch.gather(msas[:, 1:], 1, sample_idx_msas)
+                    features = torch.cat([
+                        features[:, 0:1],
+                        sample_features
+                    ], dim=1)
+                    msas = torch.cat([
+                        msas[:, 0:1],
+                        sample_msas
+                    ], dim=1)
+            elif self.term_dropout == 'all':
+                features = torch.gather(features, 1, sample_idx_features)
+                msaa = torch.gather(msas, 1, sample_idx_msas)
+                
 
         # we can pad these using standard pad_sequence
         ppoe = pad_sequence(ppoe, batch_first=True)

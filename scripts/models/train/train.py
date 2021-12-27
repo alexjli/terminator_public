@@ -78,10 +78,12 @@ def main(args):
             sort_data=hparams['sort_data'],
             term_matches_cutoff=hparams['term_matches_cutoff'],
             max_term_res=hparams['max_term_res'], 
-            max_seq_tokens=hparams['max_seq_tokens']
+            max_seq_tokens=hparams['max_seq_tokens'],
+            term_dropout=hparams['term_dropout']
         )
-        val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
-        test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False, term_matches_cutoff = hparams['term_matches_cutoff'])
+        test_term_matches_cutoff = hparams['test_term_matches_cutoff'] if 'test_term_matches_cutoff' in hparams else hparams['term_matches_cutoff']
+        val_batch_sampler = TERMLazyDataLoader(val_dataset, batch_size=1, shuffle=False, term_matches_cutoff = test_term_matches_cutoff)
+        test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False, term_matches_cutoff = test_term_matches_cutoff)
     else:
         train_dataset = TERMDataset(args.dataset, pdb_ids = train_ids)
         val_dataset = TERMDataset(args.dataset, pdb_ids = validation_ids)

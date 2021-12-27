@@ -34,6 +34,7 @@ DEFAULT_HPARAMS = {
             'struct2seq_linear': False,
             'use_terms': True,#
             'term_matches_cutoff': None,
+            # 'test_term_matches_cutoff': None,  # is an optional hparam if you want to use a different TERM matches cutoff during validation/testing vs training
             'use_coords': True,
             'train_batch_size': 16,
             'shuffle': True,
@@ -42,5 +43,6 @@ DEFAULT_HPARAMS = {
             'regularization': 0,
             'max_term_res': 55000,
             'max_seq_tokens': 0,
+            'term_dropout': False,
             'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])#
         }
