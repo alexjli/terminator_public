@@ -1,10 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
-from .utils import gather_nodes, gather_edges, gather_term_nodes
-from .gvp import *
+from .gvp import GVP
+from .utils import gather_edges, gather_nodes, gather_term_nodes
+
 """
     struct2seq features
     adapted from https://github.com/jingraham/neurips19-graph-protein-design
@@ -23,8 +24,7 @@ class PositionalEncodings(nn.Module):
         N_batch = E_idx.size(0)
         N_nodes = E_idx.size(1)
         N_neighbors = E_idx.size(2)
-        ii = torch.arange(N_nodes, dtype=torch.float32).view(
-            (1, -1, 1)).to(dev)
+        ii = torch.arange(N_nodes, dtype=torch.float32).view((1, -1, 1)).to(dev)
         d = (E_idx.float() - ii).unsqueeze(-1)
         # Original Transformer frequencies
         frequency = torch.exp(
@@ -79,10 +79,8 @@ class S2SProteinFeatures(nn.Module):
         node_in, edge_in = self.feature_dimensions[features_type]
         self.node_embedding = nn.Linear(node_in, node_features, bias=True)
         self.edge_embedding = nn.Linear(edge_in, edge_features, bias=True)
-        self.norm_nodes = nn.LayerNorm(
-            node_features)  #Normalize(node_features)
-        self.norm_edges = nn.LayerNorm(
-            edge_features)  #Normalize(edge_features)
+        self.norm_nodes = nn.LayerNorm(node_features)  # Normalize(node_features)
+        self.norm_edges = nn.LayerNorm(edge_features)  # Normalize(edge_features)
 
     def _dist(self, X, mask, eps=1E-6):
         """ Pairwise euclidean distances """
@@ -94,10 +92,7 @@ class S2SProteinFeatures(nn.Module):
         # Identify k nearest neighbors (including self)
         D_max, _ = torch.max(D, -1, keepdim=True)
         D_adjust = D + (1. - mask_2D) * D_max
-        D_neighbors, E_idx = torch.topk(D_adjust,
-                                        self.top_k,
-                                        dim=-1,
-                                        largest=False)
+        D_neighbors, E_idx = torch.topk(D_adjust, self.top_k, dim=-1, largest=False)
         mask_neighbors = gather_edges(mask_2D.unsqueeze(-1), E_idx)
 
         # Debug plot KNN
@@ -142,21 +137,16 @@ class S2SProteinFeatures(nn.Module):
             R [...,3,3]
             Q [...,4]
         """
+        def _R(i, j):
+            return R[:, :, :, i, j]
         # Simple Wikipedia version
         # en.wikipedia.org/wiki/Rotation_matrix#Quaternion
         # For other options see math.stackexchange.com/questions/2074316/calculating-rotation-axis-from-rotation-matrix
         diag = torch.diagonal(R, dim1=-2, dim2=-1)
         Rxx, Ryy, Rzz = diag.unbind(-1)
         magnitudes = 0.5 * torch.sqrt(
-            torch.abs(1 + torch.stack(
-                [Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1)))
-        _R = lambda i, j: R[:, :, :, i, j]
-        signs = torch.sign(
-            torch.stack([
-                _R(2, 1) - _R(1, 2),
-                _R(0, 2) - _R(2, 0),
-                _R(1, 0) - _R(0, 1)
-            ], -1))
+            torch.abs(1 + torch.stack([Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1)))
+        signs = torch.sign(torch.stack([_R(2, 1) - _R(1, 2), _R(0, 2) - _R(2, 0), _R(1, 0) - _R(0, 1)], -1))
         xyz = signs * magnitudes
         # The relu enforces a non-negative trace
         w = torch.sqrt(F.relu(1 + diag.sum(-1, keepdim=True))) / 2.
@@ -186,8 +176,7 @@ class S2SProteinFeatures(nn.Module):
     def _contacts(self, D_neighbors, E_idx, mask_neighbors, cutoff=8):
         """ Contacts """
         D_neighbors = D_neighbors.unsqueeze(-1)
-        neighbor_C = mask_neighbors * (D_neighbors < cutoff).type(
-            torch.float32)
+        neighbor_C = mask_neighbors * (D_neighbors < cutoff).type(torch.float32)
         return neighbor_C
 
     def _hbonds(self, X, E_idx, mask_neighbors, eps=1E-3):
@@ -196,11 +185,9 @@ class S2SProteinFeatures(nn.Module):
         X_atoms = dict(zip(['N', 'CA', 'C', 'O'], torch.unbind(X, 2)))
 
         # Virtual hydrogens
-        X_atoms['C_prev'] = F.pad(X_atoms['C'][:, 1:, :], (0, 0, 0, 1),
-                                  'constant', 0)
+        X_atoms['C_prev'] = F.pad(X_atoms['C'][:, 1:, :], (0, 0, 0, 1), 'constant', 0)
         X_atoms['H'] = X_atoms['N'] + F.normalize(
-            F.normalize(X_atoms['N'] - X_atoms['C_prev'], -1) +
-            F.normalize(X_atoms['N'] - X_atoms['CA'], -1), -1)
+            F.normalize(X_atoms['N'] - X_atoms['C_prev'], -1) + F.normalize(X_atoms['N'] - X_atoms['CA'], -1), -1)
 
         def _distance(X_a, X_b):
             return torch.norm(X_a[:, None, :, :] - X_b[:, :, None, :], dim=-1)
@@ -209,10 +196,8 @@ class S2SProteinFeatures(nn.Module):
             return 1. / (_distance(X_a, X_b) + eps)
 
         # DSSP vacuum electrostatics model
-        U = (0.084 * 332) * (_inv_distance(X_atoms['O'], X_atoms['N']) +
-                             _inv_distance(X_atoms['C'], X_atoms['H']) -
-                             _inv_distance(X_atoms['O'], X_atoms['H']) -
-                             _inv_distance(X_atoms['C'], X_atoms['N']))
+        U = (0.084 * 332) * (_inv_distance(X_atoms['O'], X_atoms['N']) + _inv_distance(X_atoms['C'], X_atoms['H']) -
+                             _inv_distance(X_atoms['O'], X_atoms['H']) - _inv_distance(X_atoms['C'], X_atoms['N']))
 
         HB = (U < -0.5).type(torch.float32)
         neighbor_HB = mask_neighbors * gather_edges(HB.unsqueeze(-1), E_idx)
@@ -253,8 +238,7 @@ class S2SProteinFeatures(nn.Module):
         cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
         D = torch.sign((u_2 * n_1).sum(-1)) * torch.acos(cosD)
         # Backbone features
-        AD_features = torch.stack((torch.cos(A), torch.sin(A) * torch.cos(D),
-                                   torch.sin(A) * torch.sin(D)), 2)
+        AD_features = torch.stack((torch.cos(A), torch.sin(A) * torch.cos(D), torch.sin(A) * torch.sin(D)), 2)
         AD_features = F.pad(AD_features, (0, 0, 1, 2), 'constant', 0)
 
         # Build relative orientations
@@ -381,10 +365,8 @@ class S2SProteinFeatures(nn.Module):
             neighbor_HB = self.dropout(neighbor_HB)
             # Pack
             V = mask.unsqueeze(-1) * torch.ones_like(AD_features)
-            neighbor_C = neighbor_C.expand(
-                -1, -1, -1, int(self.num_positional_embeddings / 2))
-            neighbor_HB = neighbor_HB.expand(
-                -1, -1, -1, int(self.num_positional_embeddings / 2))
+            neighbor_C = neighbor_C.expand(-1, -1, -1, int(self.num_positional_embeddings / 2))
+            neighbor_HB = neighbor_HB.expand(-1, -1, -1, int(self.num_positional_embeddings / 2))
             E = torch.cat((E_positional, neighbor_C, neighbor_HB), -1)
         elif self.features_type == 'full':
             # Full backbone angles
@@ -409,12 +391,10 @@ class S2SProteinFeatures(nn.Module):
         return V, E, E_idx
 
 
-"""
-   modified positional encoding for multi-chain and term features
-"""
-
-
 class IndexDiffEncoding(nn.Module):
+    """
+       modified positional encoding for multi-chain and term features
+    """
     def __init__(self, num_embeddings, period_range=[2, 1000]):
         super(IndexDiffEncoding, self).__init__()
         self.num_embeddings = num_embeddings
@@ -427,8 +407,7 @@ class IndexDiffEncoding(nn.Module):
         N_terms = E_idx.size(1)
         N_nodes = E_idx.size(2)
         N_neighbors = E_idx.size(3)
-        ii = torch.arange(N_nodes, dtype=torch.float32).view(
-            (1, -1, 1)).to(dev)
+        ii = torch.arange(N_nodes, dtype=torch.float32).view((1, -1, 1)).to(dev)
         d = (E_idx.float() - ii).unsqueeze(-1)
 
         # Original Transformer frequencies
@@ -450,8 +429,7 @@ class IndexDiffEncoding(nn.Module):
         # the idea is, the concept of "sequence distance"
         # between two residues in different chains doesn't
         # make sense :P
-        chain_idx_expand = chain_idx.view(N_batch, 1, -1, 1).expand(
-            (-1, N_terms, -1, N_neighbors))
+        chain_idx_expand = chain_idx.view(N_batch, 1, -1, 1).expand((-1, N_terms, -1, N_neighbors))
         E_chain_idx = torch.gather(chain_idx_expand.to(dev), 2, E_idx)
         same_chain = (E_chain_idx == E_chain_idx[:, :, :, 0:1]).to(dev)
 
@@ -497,10 +475,7 @@ class TERMProteinFeatures(S2SProteinFeatures):
         D_max, _ = torch.max(D, -1, keepdim=True)
         D_max += 1
         D_adjust = D + (1. - mask_2D) * D_max
-        D_neighbors, E_idx = torch.topk(D_adjust,
-                                        N_nodes,
-                                        dim=-1,
-                                        largest=False)
+        D_neighbors, E_idx = torch.topk(D_adjust, N_nodes, dim=-1, largest=False)
 
         # Debug plot KNN
         # print(E_idx[:10,:10])
@@ -544,21 +519,16 @@ class TERMProteinFeatures(S2SProteinFeatures):
             R [...,3,3]
             Q [...,4]
         """
+        def _R(i, j):
+            return R[:, :, :, :, i, j]
         # Simple Wikipedia version
         # en.wikipedia.org/wiki/Rotation_matrix#Quaternion
         # For other options see math.stackexchange.com/questions/2074316/calculating-rotation-axis-from-rotation-matrix
         diag = torch.diagonal(R, dim1=-2, dim2=-1)
         Rxx, Ryy, Rzz = diag.unbind(-1)
         magnitudes = 0.5 * torch.sqrt(
-            torch.abs(1 + torch.stack(
-                [Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1)))
-        _R = lambda i, j: R[:, :, :, :, i, j]
-        signs = torch.sign(
-            torch.stack([
-                _R(2, 1) - _R(1, 2),
-                _R(0, 2) - _R(2, 0),
-                _R(1, 0) - _R(0, 1)
-            ], -1))
+            torch.abs(1 + torch.stack([Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1)))
+        signs = torch.sign(torch.stack([_R(2, 1) - _R(1, 2), _R(0, 2) - _R(2, 0), _R(1, 0) - _R(0, 1)], -1))
         xyz = signs * magnitudes
         # The relu enforces a non-negative trace
         w = torch.sqrt(F.relu(1 + diag.sum(-1, keepdim=True))) / 2.
@@ -657,8 +627,7 @@ class TERMProteinFeatures(S2SProteinFeatures):
 
     def _dihedrals(self, X, eps=1e-7):
         # First 3 coordinates are N, CA, C
-        X = X[:, :, :, :3, :].reshape(X.shape[0], X.shape[1], 3 * X.shape[2],
-                                      3)
+        X = X[:, :, :, :3, :].reshape(X.shape[0], X.shape[1], 3 * X.shape[2], 3)
 
         # Shifted slices of unit vectors
         dX = X[:, :, 1:, :] - X[:, :, :-1, :]
@@ -719,9 +688,7 @@ class TERMProteinFeatures(S2SProteinFeatures):
         # E_idx initially only contains relative indices
         # convert to absolute indices using batched_focuses for pairwise embeddings
         N_nodes = relative_E_idx.size(2)
-        absolute_E_idx = torch.gather(
-            batched_focuses.unsqueeze(-2).expand(-1, -1, N_nodes, -1), -1,
-            relative_E_idx)
+        absolute_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, N_nodes, -1), -1, relative_E_idx)
         # Pairwise embeddings
         E_positional = self.embeddings(absolute_E_idx, chain_idx)
 
@@ -754,15 +721,14 @@ class MultiChainProteinFeatures(S2SProteinFeatures):
                  augment_eps=0.,
                  dropout=0.1):
         """ Extract protein features """
-        super(MultiChainProteinFeatures,
-              self).__init__(edge_features,
-                             node_features,
-                             num_positional_embeddings=16,
-                             num_rbf=16,
-                             top_k=30,
-                             features_type='full',
-                             augment_eps=0.,
-                             dropout=0.1)
+        super(MultiChainProteinFeatures, self).__init__(edge_features,
+                                                        node_features,
+                                                        num_positional_embeddings=16,
+                                                        num_rbf=16,
+                                                        top_k=30,
+                                                        features_type='full',
+                                                        augment_eps=0.,
+                                                        dropout=0.1)
 
         # so uh this is designed to work on the batched TERMS
         # but if we just treat the whole sequence as one big TERM
@@ -787,8 +753,7 @@ class MultiChainProteinFeatures(S2SProteinFeatures):
         # Pairwise embeddings
         # we unsqueeze to generate "1 TERM" per sequence,
         # then squeeze it back to get rid of it
-        E_positional = self.embeddings(E_idx.unsqueeze(1),
-                                       chain_idx).squeeze(1)
+        E_positional = self.embeddings(E_idx.unsqueeze(1), chain_idx).squeeze(1)
 
         if self.features_type == 'coarse':
             # Coarse backbone features
@@ -803,10 +768,8 @@ class MultiChainProteinFeatures(S2SProteinFeatures):
             neighbor_HB = self.dropout(neighbor_HB)
             # Pack
             V = mask.unsqueeze(-1) * torch.ones_like(AD_features)
-            neighbor_C = neighbor_C.expand(
-                -1, -1, -1, int(self.num_positional_embeddings / 2))
-            neighbor_HB = neighbor_HB.expand(
-                -1, -1, -1, int(self.num_positional_embeddings / 2))
+            neighbor_C = neighbor_C.expand(-1, -1, -1, int(self.num_positional_embeddings / 2))
+            neighbor_HB = neighbor_HB.expand(-1, -1, -1, int(self.num_positional_embeddings / 2))
             E = torch.cat((E_positional, neighbor_C, neighbor_HB), -1)
         elif self.features_type == 'full':
             # Full backbone angles
@@ -831,13 +794,11 @@ class MultiChainProteinFeatures(S2SProteinFeatures):
         return V, E, E_idx
 
 
-"""
-    gvp features
-    adapted from https://github.com/drorlab/gvp/blob/master/src/models.py
-"""
-
-
 class GVPTProteinFeatures(nn.Module):
+    """
+        gvp features
+        adapted from https://github.com/drorlab/gvp/blob/master/src/models.py
+    """
     def __init__(self,
                  edge_features,
                  node_features,
@@ -862,12 +823,7 @@ class GVPTProteinFeatures(nn.Module):
         vo, so = node_features, node_features
         ve, se = edge_features, edge_features
         self.node_embedding = GVP(vi=3, vo=vo, si=6, so=so, nlv=None, nls=None)
-        self.edge_embedding = GVP(vi=1,
-                                  vo=ve,
-                                  si=32,
-                                  so=se,
-                                  nlv=None,
-                                  nls=None)
+        self.edge_embedding = GVP(vi=1, vo=ve, si=32, so=se, nlv=None, nls=None)
         self.norm_nodes = nn.LayerNorm(so)
         self.norm_edges = nn.LayerNorm(se)
 
@@ -887,10 +843,7 @@ class GVPTProteinFeatures(nn.Module):
         D_max, _ = torch.max(D, -1, keepdim=True)
         D_max += 1
         D_adjust = D + (1. - mask_2D) * D_max
-        D_neighbors, E_idx = torch.topk(D_adjust,
-                                        N_nodes,
-                                        dim=-1,
-                                        largest=False)
+        D_neighbors, E_idx = torch.topk(D_adjust, N_nodes, dim=-1, largest=False)
 
         # Debug plot KNN
         # print(E_idx[:10,:10])
@@ -942,9 +895,7 @@ class GVPTProteinFeatures(nn.Module):
         backward = F.normalize(X[:, :, :-1] - X[:, :, 1:], dim=-1)
         forward = F.pad(forward, [0, 0, 0, 1, 0, 0])
         backward = F.pad(backward, [0, 0, 1, 0, 0, 0])
-        return torch.cat([forward.unsqueeze(-1),
-                          backward.unsqueeze(-1)],
-                         dim=-1)  # B, T, N, 3, 2
+        return torch.cat([forward.unsqueeze(-1), backward.unsqueeze(-1)], dim=-1)  # B, T, N, 3, 2
 
     def _sidechains(self, X):
         # ['N', 'CA', 'C', 'O']
@@ -958,8 +909,7 @@ class GVPTProteinFeatures(nn.Module):
 
     def _dihedrals(self, X, eps=1e-7):
         # First 3 coordinates are N, CA, C
-        X = X[:, :, :, :3, :].reshape(X.shape[0], X.shape[1], 3 * X.shape[2],
-                                      3)
+        X = X[:, :, :, :3, :].reshape(X.shape[0], X.shape[1], 3 * X.shape[2], 3)
 
         # Shifted slices of unit vectors
         dX = X[:, :, 1:, :] - X[:, :, :-1, :]
@@ -1016,9 +966,7 @@ class GVPTProteinFeatures(nn.Module):
         # E_idx initially only contains relative indices
         # convert to absolute indices using batched_focuses for pairwise embeddings
         N_nodes = relative_E_idx.size(2)
-        absolute_E_idx = torch.gather(
-            batched_focuses.unsqueeze(-2).expand(-1, -1, N_nodes, -1), -1,
-            relative_E_idx)
+        absolute_E_idx = torch.gather(batched_focuses.unsqueeze(-2).expand(-1, -1, N_nodes, -1), -1, relative_E_idx)
         # Pairwise embeddings
         E_positional = self.embeddings(absolute_E_idx, chain_idx)
 
@@ -1074,12 +1022,7 @@ class GVPProteinFeatures(nn.Module):
         vo, so = node_features
         ve, se = edge_features
         self.node_embedding = GVP(vi=3, vo=vo, si=6, so=so, nlv=None, nls=None)
-        self.edge_embedding = GVP(vi=1,
-                                  vo=ve,
-                                  si=32,
-                                  so=se,
-                                  nlv=None,
-                                  nls=None)
+        self.edge_embedding = GVP(vi=1, vo=ve, si=32, so=se, nlv=None, nls=None)
         self.norm_nodes = nn.LayerNorm(so)
         self.norm_edges = nn.LayerNorm(se)
 
@@ -1093,10 +1036,7 @@ class GVPProteinFeatures(nn.Module):
         # Identify k nearest neighbors (including self)
         D_max, _ = torch.max(D, -1, keepdim=True)
         D_adjust = D + (1. - mask_2D) * D_max
-        D_neighbors, E_idx = torch.topk(D_adjust,
-                                        self.top_k,
-                                        dim=-1,
-                                        largest=False)
+        D_neighbors, E_idx = torch.topk(D_adjust, self.top_k, dim=-1, largest=False)
 
         # Debug plot KNN
         # print(E_idx[:10,:10])
@@ -1148,9 +1088,7 @@ class GVPProteinFeatures(nn.Module):
         backward = F.normalize(X[:, :, :-1] - X[:, :, 1:], dim=-1)
         forward = F.pad(forward, [0, 0, 0, 1, 0, 0])
         backward = F.pad(backward, [0, 0, 1, 0, 0, 0])
-        return torch.cat([forward.unsqueeze(-1),
-                          backward.unsqueeze(-1)],
-                         dim=-1)  # B, T, N, 3, 2
+        return torch.cat([forward.unsqueeze(-1), backward.unsqueeze(-1)], dim=-1)  # B, T, N, 3, 2
 
     def _sidechains(self, X):
         # ['N', 'CA', 'C', 'O']
@@ -1164,8 +1102,7 @@ class GVPProteinFeatures(nn.Module):
 
     def _dihedrals(self, X, eps=1e-7):
         # First 3 coordinates are N, CA, C
-        X = X[:, :, :, :3, :].reshape(X.shape[0], X.shape[1], 3 * X.shape[2],
-                                      3)
+        X = X[:, :, :, :3, :].reshape(X.shape[0], X.shape[1], 3 * X.shape[2], 3)
 
         # Shifted slices of unit vectors
         dX = X[:, :, 1:, :] - X[:, :, :-1, :]

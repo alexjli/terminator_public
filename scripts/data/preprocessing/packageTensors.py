@@ -1,19 +1,28 @@
+import glob
 import os
-import numpy as np
 import pickle
+
+import numpy as np
+from parseCoords import parseCoords
+from parseEtab import parseEtab
+from parseTERM import parseTERMdata
 from scipy.linalg import block_diag
 from scipy.special import softmax
-import glob
 
-from parseTERM import parseTERMdata
-from parseEtab import parseEtab
-from parseCoords import parseCoords
 from terminator.utils.common import seq_to_ints
 
 NUM_AA = 21  # including X
 ZERO = 1e-10  # 0 is used for padding
 
-def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stats = False, weight_fn = "neg", coords_only=False, dummy_terms=None):
+
+def dumpTrainingTensors(in_path,
+                        out_path=None,
+                        cutoff=1000,
+                        save=True,
+                        stats=False,
+                        weight_fn="neg",
+                        coords_only=False,
+                        dummy_terms=None):
     if dummy_terms is not None:
         assert dummy_terms in ['replace', 'include'], f"dummy_terms={dummy_terms} is an invalid argument"
 
@@ -37,7 +46,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
     struct_sin_ppo[struct_is_999] = 0
     struct_cos_ppo = np.cos(struct_ppo_rads)
     struct_cos_ppo[struct_is_999] = 0
-    struct_embedded_ppoe = np.concatenate([struct_sin_ppo, struct_cos_ppo, struct_env], axis = 1)
+    struct_embedded_ppoe = np.concatenate([struct_sin_ppo, struct_cos_ppo, struct_env], axis=1)
 
     term_msas = []
     term_features = []
@@ -63,11 +72,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
             term_msas.append(np.ones_like(msa[:1]).astype(int) * 20)
         elif dummy_terms == "include":
             dummy_seq = np.ones_like(msa[:1]).astype(int) * 20
-            term_msas.append(
-                np.concatenate(
-                    [dummy_seq, msa[:cutoff-1]]
-                )
-            )
+            term_msas.append(np.concatenate([dummy_seq, msa[:cutoff - 1]]))
 
         # add focus
         focus_take = [item for item in focus if item in selection]
@@ -83,14 +88,14 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         if dummy_terms is None:
             ppoe = term_data['ppoe']
         elif dummy_terms == "replace":
-            ppoe = np.expand_dims(struct_ppoe[focus].transpose(1,0), 0)
+            ppoe = np.expand_dims(struct_ppoe[focus].transpose(1, 0), 0)
         elif dummy_terms == "include":
-            dummy_ppoe = np.expand_dims(struct_ppoe[focus].transpose(1,0), 0)
+            dummy_ppoe = np.expand_dims(struct_ppoe[focus].transpose(1, 0), 0)
             ppoe = np.concatenate([dummy_ppoe, term_data['ppoe']], axis=0)
         term_len = ppoe.shape[2]
         num_alignments = ppoe.shape[0]
-        # project to sin, cos 
-        ppo_rads = ppoe[:, :3]/180*np.pi
+        # project to sin, cos
+        ppo_rads = ppoe[:, :3] / 180 * np.pi
         is_999 = (ppoe[:, :3] == 999)
         sin_ppo = np.sin(ppo_rads)
         cos_ppo = np.cos(ppo_rads)
@@ -104,13 +109,13 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
 
         # place rmsds into np array
         if dummy_terms is None:
-            rmsd = np.expand_dims(term_data['rmsds'], 1) 
+            rmsd = np.expand_dims(term_data['rmsds'], 1)
         elif dummy_terms == "include":
             rmsd = np.concatenate([
                 np.array([ZERO]),
                 term_data['rmsds'],
             ], axis=0)
-            rmsd = np.expand_dims(rmsd, 1) 
+            rmsd = np.expand_dims(rmsd, 1)
         rmsd_arr = np.concatenate([rmsd for _ in range(term_len)], axis=1)
         rmsd_arr = np.expand_dims(rmsd_arr, 1)
         if dummy_terms == 'replace':
@@ -122,7 +127,13 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         num_alignments_arr += num_alignments
 
         # select features, cutoff at top N
-        selected_features = [sin_ppo[:cutoff], cos_ppo[:cutoff], env[:cutoff], rmsd_arr[:cutoff], term_len_arr]
+        selected_features = [
+            sin_ppo[:cutoff],
+            cos_ppo[:cutoff],
+            env[:cutoff],
+            rmsd_arr[:cutoff],
+            term_len_arr
+        ]
 
         features = np.concatenate(selected_features, axis=1)
 
@@ -139,46 +150,48 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         ident = np.eye(NUM_AA)
         one_hot_msa = ident[msa]
 
-        rmsd = np.expand_dims(term_data['rmsds'], (1,2))
+        rmsd = np.expand_dims(term_data['rmsds'], (1, 2))
         if weight_fn == "neg":
             weights = softmax(-np.sqrt(rmsd))
         elif weight_fn == "inv":
             eps = 1e-8
-            weights = softmax(1/(rmsd + eps)) # eps included for safety but in theory isn't necessary
+            weights = softmax(1 / (rmsd + eps))  # eps included for safety but in theory isn't necessary
         else:
             raise Exception("weight fn must be either neg or inv")
-        weighted_aa_freq = np.sum(one_hot_msa * weights, axis = 0)
-        weighted_sin_ppo = np.sum(sin_ppo * weights, axis = 0)
-        weighted_cos_ppo = np.sum(cos_ppo * weights, axis = 0)
-        weighted_env = np.sum(env * weights, axis = 0)
-        var_sin_ppo = np.sum( np.square(sin_ppo - weighted_sin_ppo), axis=0)
-        var_cos_ppo = np.sum( np.square(cos_ppo - weighted_cos_ppo), axis=0)
-        var_env = np.sum( np.square(env - weighted_env), axis=0)
+        weighted_aa_freq = np.sum(one_hot_msa * weights, axis=0)
+        weighted_sin_ppo = np.sum(sin_ppo * weights, axis=0)
+        weighted_cos_ppo = np.sum(cos_ppo * weights, axis=0)
+        weighted_env = np.sum(env * weights, axis=0)
+        var_sin_ppo = np.sum(np.square(sin_ppo - weighted_sin_ppo), axis=0)
+        var_cos_ppo = np.sum(np.square(cos_ppo - weighted_cos_ppo), axis=0)
+        var_env = np.sum(np.square(env - weighted_env), axis=0)
 
-        sing_stats = np.concatenate([weighted_aa_freq.transpose(),
-                                     weighted_sin_ppo,
-                                     weighted_cos_ppo,
-                                     weighted_env,
-                                     var_sin_ppo,
-                                     var_cos_ppo,
-                                     var_env], axis=0)
+        sing_stats = np.concatenate([
+            weighted_aa_freq.transpose(),
+            weighted_sin_ppo,
+            weighted_cos_ppo,
+            weighted_env,
+            var_sin_ppo,
+            var_cos_ppo,
+            var_env
+        ], axis=0)
 
         term_sing_stats.append(sing_stats.transpose())
 
-        #print("weighted_aa_freq", weighted_aa_freq)
-        #print("raw aa freq", np.mean(one_hot_msa, axis=0))
-        #print("top cutoff aa freq", np.mean(one_hot_msa[:cutoff], axis=0))
+        # print("weighted_aa_freq", weighted_aa_freq)
+        # print("raw aa freq", np.mean(one_hot_msa, axis=0))
+        # print("top cutoff aa freq", np.mean(one_hot_msa[:cutoff], axis=0))
 
-        pre_cov_features = np.concatenate([one_hot_msa.transpose(0,2,1), sin_ppo, cos_ppo, env], axis=1)
-        pre_cov_features = pre_cov_features.transpose(0,2,1)
-        mu_x = np.sum(pre_cov_features * weights, axis = 0)
-        X = np.expand_dims(pre_cov_features - mu_x, -1).transpose(1,3,2,0)
-        X_T = X.transpose(1,0,3,2)
+        pre_cov_features = np.concatenate([one_hot_msa.transpose(0, 2, 1), sin_ppo, cos_ppo, env], axis=1)
+        pre_cov_features = pre_cov_features.transpose(0, 2, 1)
+        mu_x = np.sum(pre_cov_features * weights, axis=0)
+        X = np.expand_dims(pre_cov_features - mu_x, -1).transpose(1, 3, 2, 0)
+        X_T = X.transpose(1, 0, 3, 2)
         weighted_cov = X @ X_T
-        term_pair_stats.append(np.expand_dims(weighted_cov,0))
+        term_pair_stats.append(np.expand_dims(weighted_cov, 0))
 
-    msa_tensor = np.concatenate(term_msas, axis = -1)
-    features_tensor = np.concatenate(term_features, axis = 1)
+    msa_tensor = np.concatenate(term_msas, axis=-1)
+    features_tensor = np.concatenate(term_features, axis=1)
     len_tensor = np.array(term_lens)
     term_focuses = np.array(term_focuses)
     term_contact_idxs = np.array(term_contact_idxs)
@@ -189,13 +202,9 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
 
     if stats:
         num_cov_features = term_pair_stats[0].shape[-1]
-        sing_stats_tensor = np.concatenate(term_sing_stats, axis = 0)
-        pair_stats_tensor = np.zeros([num_terms, 
-                                      max_term_len, 
-                                      max_term_len, 
-                                      num_cov_features, 
-                                      num_cov_features])
-                                      
+        sing_stats_tensor = np.concatenate(term_sing_stats, axis=0)
+        pair_stats_tensor = np.zeros([num_terms, max_term_len, max_term_len, num_cov_features, num_cov_features])
+
         for idx, cov_mat in enumerate(term_pair_stats):
             term_len = cov_mat.shape[1]
             pair_stats_tensor[idx, :term_len, :term_len] = cov_mat
@@ -232,13 +241,13 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
         'sequence': np.array(data['sequence']),
         'seq_len': len(data['selection']),
         'chain_lens': data['chain_lens']
-        #'etab': etab,
-        #'selfE': self_etab
+        # 'etab': etab,
+        # 'selfE': self_etab
     }
 
     if coords_only:
-        dummy_arr_3d = np.zeros([1,1,1])
-        dummy_arr_2d = np.zeros([1,1])
+        dummy_arr_3d = np.zeros([1, 1, 1])
+        dummy_arr_2d = np.zeros([1, 1])
         output = {
             'pdb': pdb,
             'coords': coords_tensor,
@@ -253,7 +262,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
             'sequence': np.array(data['sequence']),
             'seq_len': len(data['selection']),
             'chain_lens': data['chain_lens']
-       }
+        }
 
     if save:
         if not out_path:
@@ -268,6 +277,7 @@ def dumpTrainingTensors(in_path, out_path = None, cutoff = 1000, save=True, stat
     print('Done with', pdb)
 
     return output
+
 
 def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
     """
@@ -287,8 +297,8 @@ def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
     chain_lens = [len(coords[c]) for c in sorted(coords.keys())]
     pdb = os.path.basename(in_path)
 
-    dummy_arr_3d = np.zeros([1,1,1])
-    dummy_arr_2d = np.zeros([1,1])
+    dummy_arr_3d = np.zeros([1, 1, 1])
+    dummy_arr_2d = np.zeros([1, 1])
     dummy_arr_1d = np.ones([1])
     output = {
         'pdb': pdb,
@@ -304,8 +314,7 @@ def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
         'sequence': np.array(seq_to_ints(seq)),
         'seq_len': len(seq),
         'chain_lens': chain_lens
-   }
-
+    }
 
     if save:
         with open(out_path + '.features', 'wb') as fp:
@@ -317,4 +326,3 @@ def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
     print('Done with', pdb)
 
     return output
-

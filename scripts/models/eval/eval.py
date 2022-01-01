@@ -1,30 +1,38 @@
-from terminator.models.TERMinator import *
-from terminator.data.data import *
-import pickle
-import torch
-import torch.optim as optim
-import torch.nn as nn
-import torch.multiprocessing as mp
-import numpy as np
-import time
-from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader
 import argparse
-import os
-import sys
 import copy
 import json
-from terminator.utils.loop_utils import run_epoch
+import os
+import pickle
+import sys
+import time
 
+import numpy as np
+import torch
+import torch.multiprocessing as mp
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
+from terminator.data.data import LazyDataset, TERMLazyDataLoader
+from terminator.models.TERMinator import MultiChainTERMinator_gcnkt
+from terminator.utils.loop_utils import run_epoch
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Eval TERMinator Psuedoperplexity')
-    parser.add_argument('--dataset', help='input folder .features files in proper directory structure')
-    parser.add_argument('--subset', help='file specifiying subset of dataset to evaluate. if non provided, the whole dataset folder will be evaluated')
-    parser.add_argument('--output_dir', help='where to dump net.out')
-    parser.add_argument('--model_dir', help='trained model folder')
-    parser.add_argument('--dev', help='device to train on', default='cuda:0')
+    parser.add_argument('--dataset',
+                        help='input folder .features files in proper directory structure')
+    parser.add_argument('--subset',
+                        help=('file specifiying subset of dataset to evaluate. '
+                              'if none provided, the whole dataset folder will be evaluated'))
+    parser.add_argument('--output_dir',
+                        help='where to dump net.out')
+    parser.add_argument('--model_dir',
+                        help='trained model folder')
+    parser.add_argument('--dev',
+                        help='device to train on',
+                        default='cuda:0')
     args = parser.parse_args()
 
     dev = args.dev
@@ -66,10 +74,7 @@ if __name__ == '__main__':
     terminator = MultiChainTERMinator_gcnkt(hparams=hparams, device=dev)
     terminator = nn.DataParallel(terminator)
 
-    best_checkpoint_state = torch.load(
-        os.path.join(args.model_dir, 'net_best_checkpoint.pt'),
-        map_location=dev
-    )
+    best_checkpoint_state = torch.load(os.path.join(args.model_dir, 'net_best_checkpoint.pt'), map_location=dev)
     best_checkpoint = best_checkpoint_state['state_dict']
     terminator.module.load_state_dict(best_checkpoint)
     terminator.to(dev)
@@ -79,13 +84,7 @@ if __name__ == '__main__':
 
     terminator.eval()
     # test
-    test_loss, test_prob, dump = run_epoch(
-        terminator,
-        test_dataloader,
-        grad=False,
-        test=True,
-        dev=dev
-    )
+    test_loss, test_prob, dump = run_epoch(terminator, test_dataloader, grad=False, test=True, dev=dev)
     print(f"test loss {test_loss} test prob {test_prob}")
 
     # save etab outputs for dTERMen runs

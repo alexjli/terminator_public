@@ -7,8 +7,7 @@ import torch.nn as nn
 def norm_no_nan(x, dim=-1, keepdim=False, eps=1e-8, sqrt=True):
     local_dev = x.device
     inner = torch.sum(torch.square(x.clone()), dim=dim, keepdim=keepdim)
-    eps_tensor = torch.tensor(eps).view([1 for _ in range(len(inner.shape))
-                                         ]).expand(inner.shape).to(local_dev)
+    eps_tensor = torch.tensor(eps).view([1 for _ in range(len(inner.shape))]).expand(inner.shape).to(local_dev)
     out = torch.where(inner > eps, inner, eps_tensor)
     return (torch.sqrt(out) if sqrt else out)
 
@@ -18,7 +17,8 @@ class GVP(nn.Module):
         '''[v/s][i/o] = number of [vector/scalar] channels [in/out]'''
         super(GVP, self).__init__()
         nh = max(vi, vo)
-        if vi: self.wh = nn.Linear(vi, nh)
+        if vi:
+            self.wh = nn.Linear(vi, nh)
         if nls and vi:
             self.ws = nn.Sequential(nn.Linear(nh + si, so), nls())
         elif nls:
@@ -28,7 +28,8 @@ class GVP(nn.Module):
         else:
             self.ws = nn.Linear(nh, so)
 
-        if vo: self.wv = nn.Linear(nh, vo)
+        if vo:
+            self.wv = nn.Linear(nh, vo)
         self.vi, self.vo, self.si, self.so, self.nlv = vi, vo, si, so, nlv
 
     def forward(self, x, return_split=False):
@@ -61,7 +62,8 @@ class GVPDropout(nn.Module):
         self.sdropout = nn.Dropout(rate)
 
     def forward(self, x):
-        if not self.training: return x
+        if not self.training:
+            return x
         v, s = split(x, self.nv)
         v, s = self.vdropout(v), self.sdropout(s)
         return merge(v, s)
@@ -73,10 +75,8 @@ class GVPDropout(nn.Module):
 
         p = self.rate
         p_mask = torch.tensor(1 - p).to(dev)  # probability of a 1
-        p_mask = p_mask.view([1 for _ in range(len(x.shape))
-                              ])  # view so we can expand
-        p_mask = p_mask.expand(list(x.shape[:-2]) +
-                               [1, self.nv])  # e x p a n d
+        p_mask = p_mask.view([1 for _ in range(len(x.shape))])  # view so we can expand
+        p_mask = p_mask.expand(list(x.shape[:-2]) + [1, self.nv])  # e x p a n d
         mask = torch.bernoulli(p_mask)  # now we have dropout probs
 
         x = mask * x  # apply dropout
@@ -140,14 +140,11 @@ class GVPNodeLayer(nn.Module):
         self.dropout = GVPDropout(dropout, nv)
 
         # this receives the vec_in message AND the receiver node
-        self.W_EV = nn.Sequential(
-            GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so),
-            GVP(vi=vo, vo=vo, si=so, so=so),
-            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
+        self.W_EV = nn.Sequential(GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so), GVP(vi=vo, vo=vo, si=so, so=so),
+                                  GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
 
-        self.W_dh = nn.Sequential(
-            GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
-            GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
+        self.W_dh = nn.Sequential(GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
+                                  GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
 
     def forward(self, h_V, h_EV, mask_V=None, mask_attend=None):
         # Concatenate h_V_i to h_E_ij
@@ -179,14 +176,11 @@ class GVPEdgeLayer(nn.Module):
         self.dropout = GVPDropout(dropout, nv)
 
         # this receives the vec_in message AND the receiver node
-        self.W_EV = nn.Sequential(
-            GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so),
-            GVP(vi=vo, vo=vo, si=so, so=so),
-            GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
+        self.W_EV = nn.Sequential(GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so), GVP(vi=vo, vo=vo, si=so, so=so),
+                                  GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
 
-        self.W_dh = nn.Sequential(
-            GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
-            GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
+        self.W_dh = nn.Sequential(GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
+                                  GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
 
     def forward(self, h_E, h_EV, mask_E=None, mask_attend=None):
         # Concatenate h_V_i to h_E_ij

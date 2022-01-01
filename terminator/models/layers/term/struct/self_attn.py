@@ -1,11 +1,12 @@
+import copy
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import numpy as np
-import copy
-
-from terminator.models.layers.s2s_modules import PositionWiseFeedForward, Normalize
+from terminator.models.layers.s2s_modules import (Normalize,
+                                                  PositionWiseFeedForward)
 
 
 class TERMAttention(nn.Module):
@@ -24,9 +25,7 @@ class TERMAttention(nn.Module):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
         mask_attn_dev = mask_attend.device
-        attend_logits = torch.where(
-            mask_attend > 0, attend_logits,
-            torch.tensor(negative_inf).to(mask_attn_dev))
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend.float() * attend
         return attend
@@ -41,20 +40,16 @@ class TERMAttention(nn.Module):
         assert num_hidden % n_heads == 0
 
         d = num_hidden // n_heads
-        Q = self.W_Q(query).view([n_batches, n_terms, n_aa, n_heads,
-                                  d]).transpose(2, 3)
-        K = self.W_K(key).view([n_batches, n_terms, n_aa, n_heads,
-                                d]).transpose(2, 3)
-        V = self.W_V(value).view([n_batches, n_terms, n_aa, n_heads,
-                                  d]).transpose(2, 3)
+        Q = self.W_Q(query).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2, 3)
+        K = self.W_K(key).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2, 3)
+        V = self.W_V(value).view([n_batches, n_terms, n_aa, n_heads, d]).transpose(2, 3)
 
         attend_logits = torch.matmul(Q, K.transpose(-2, -1)) / np.sqrt(d)
 
         if mask_attend is not None:
             # we need to reshape the src key mask for residue-residue attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads,
-                                                   -1).unsqueeze(-1).float()
+            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).float()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
@@ -85,8 +80,7 @@ class TERMTransformerLayer(nn.Module):
         """ Parallel computation of full transformer layer """
         # Self-attention
         if checkpoint:
-            dsrc = torch.utils.checkpoint.checkpoint(self.attention, src,
-                                                     mask_attend)
+            dsrc = torch.utils.checkpoint.checkpoint(self.attention, src, mask_attend)
         else:
             dsrc = self.attention(src, mask_attend=mask_attend)
         src = self.norm[0](src + self.dropout(dsrc))

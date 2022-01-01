@@ -1,7 +1,7 @@
-import os
 import argparse
 import glob
-import argparse
+import os
+
 from .search_utils import find_pdb_folder
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,26 +21,12 @@ if __name__ == '__main__':
             os.system(f'cp -r {filepath} {args.output_dir}')
             out_dir = os.path.join(args.output_dir, pdb_id)
             pdb_path = find_pdb_folder(pdb_id, args.pdb_root)
-            source_pdb_file = os.path.join(
-                pdb_path,
-                pdb_id.lower()[1:3],
-                f"{pdb_id}.pdb"
-            )
-            out_pdb_file = os.path.join(
-                out_dir,
-                f"{pdb_id}.pdb"
-            )
+            source_pdb_file = os.path.join(pdb_path, pdb_id.lower()[1:3], f"{pdb_id}.pdb")
+            out_pdb_file = os.path.join(out_dir, f"{pdb_id}.pdb")
             os.system(f'cp {source_pdb_file} {out_pdb_file}')
-            run_script_path = os.path.join(
-                out_dir,
-                f"fix_{pdb_id}.sh"
-            )
-            os.system(
-                (
-                    f"sed -e \"s|ID|{pdb_id}|g\" "
-                    f"-e \"s|OUTPUTDIR|{args.output_dir}|g\" "
-                    f"<{os.path.join(DIR, "fix_dTERMen.sh")} "
-                    f">{run_script_path}"
-                )
-            )
+            run_script_path = os.path.join(out_dir, f"fix_{pdb_id}.sh")
+            os.system((f"sed -e \"s|ID|{pdb_id}|g\" "
+                       f"-e \"s|OUTPUTDIR|{args.output_dir}|g\" "
+                       f"<{os.path.join(DIR, 'fix_dTERMen.sh')} "
+                       f">{run_script_path}"))
             os.system(f"cd {os.path.join(args.output_dir, pdb_id)} && sbatch fix_{pdb_id}.sh")

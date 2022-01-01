@@ -1,10 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
-import numpy as np
 
-from terminator.models.layers.s2s_modules import PositionWiseFeedForward, Normalize
+from terminator.models.layers.s2s_modules import (Normalize,
+                                                  PositionWiseFeedForward)
 
 
 class TERMMatchAttention(nn.Module):
@@ -23,9 +24,7 @@ class TERMMatchAttention(nn.Module):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
         mask_attn_dev = mask_attend.device
-        attend_logits = torch.where(
-            mask_attend > 0, attend_logits,
-            torch.tensor(negative_inf).to(mask_attn_dev))
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend.float() * attend
         return attend
@@ -46,20 +45,16 @@ class TERMMatchAttention(nn.Module):
         assert num_hidden % n_heads == 0
 
         d = num_hidden // n_heads
-        Q = self.W_Q(query).view(
-            [n_batches, sum_term_len, n_matches, n_heads, d]).transpose(2, 3)
-        K = self.W_K(key).view(
-            [n_batches, sum_term_len, n_matches, n_heads, d]).transpose(2, 3)
-        V = self.W_V(value).view(
-            [n_batches, sum_term_len, n_matches, n_heads, d]).transpose(2, 3)
+        Q = self.W_Q(query).view([n_batches, sum_term_len, n_matches, n_heads, d]).transpose(2, 3)
+        K = self.W_K(key).view([n_batches, sum_term_len, n_matches, n_heads, d]).transpose(2, 3)
+        V = self.W_V(value).view([n_batches, sum_term_len, n_matches, n_heads, d]).transpose(2, 3)
 
         attend_logits = torch.matmul(Q, K.transpose(-2, -1)) / np.sqrt(d)
 
         if mask_attend is not None:
             # we need to reshape the src key mask for residue-residue attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads,
-                                                   -1).unsqueeze(-1).float()
+            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).float()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t
@@ -70,8 +65,7 @@ class TERMMatchAttention(nn.Module):
             attend = F.softmax(attend_logits, -1)
 
         src_update = torch.matmul(attend, V).transpose(2, 3).contiguous()
-        src_update = src_update.view(
-            [n_batches, sum_term_len, n_matches, num_hidden])
+        src_update = src_update.view([n_batches, sum_term_len, n_matches, num_hidden])
         src_update = self.W_O(src_update)
         return src_update
 
@@ -87,17 +81,11 @@ class TERMMatchTransformerLayer(nn.Module):
         self.attention = TERMMatchAttention(hparams=self.hparams)
         self.dense = PositionWiseFeedForward(hdim, hdim * 4)
 
-    def forward(self,
-                src,
-                target,
-                src_mask=None,
-                mask_attend=None,
-                checkpoint=False):
+    def forward(self, src, target, src_mask=None, mask_attend=None, checkpoint=False):
         """ Parallel computation of full transformer layer """
         # Self-attention
         if checkpoint:
-            dsrc = torch.utils.checkpoint.checkpoint(self.attention, src,
-                                                     target, mask_attend)
+            dsrc = torch.utils.checkpoint.checkpoint(self.attention, src, target, mask_attend)
         else:
             dsrc = self.attention(src, target, mask_attend=mask_attend)
         src = self.norm[0](src + self.dropout(dsrc))
@@ -134,8 +122,7 @@ class TERMMatchTransformerEncoder(nn.Module):
         layer = TERMMatchTransformerLayer
 
         # Encoder layers
-        self.encoder_layers = nn.ModuleList(
-            [layer(hparams) for _ in range(num_encoder_layers)])
+        self.encoder_layers = nn.ModuleList([layer(hparams) for _ in range(num_encoder_layers)])
 
         self.W_out = nn.Linear(hidden_dim, hidden_dim, bias=True)
 
@@ -149,8 +136,7 @@ class TERMMatchTransformerEncoder(nn.Module):
         n_batches, sum_term_len, n_align = V.shape[:3]
 
         # embed each copy of the pool token with some information about the target ppoe
-        pool = self.pool_token.view([1, 1, self.hidden_dim
-                                     ]).expand(n_batches, sum_term_len, -1)
+        pool = self.pool_token.view([1, 1, self.hidden_dim]).expand(n_batches, sum_term_len, -1)
         pool = torch.cat([pool, target], dim=-1)
         pool = self.W_pool(pool)
         pool = pool.unsqueeze(-2)
@@ -162,10 +148,7 @@ class TERMMatchTransformerEncoder(nn.Module):
 
         # Encoder is unmasked self-attention
         for idx, layer in enumerate(self.encoder_layers):
-            h_V = layer(h_V,
-                        h_T,
-                        mask.unsqueeze(-1).float(),
-                        checkpoint=self.hparams['gradient_checkpointing'])
+            h_V = layer(h_V, h_T, mask.unsqueeze(-1).float(), checkpoint=self.hparams['gradient_checkpointing'])
 
         h_V = self.W_out(h_V)
         return h_V[:, :, 0, :]

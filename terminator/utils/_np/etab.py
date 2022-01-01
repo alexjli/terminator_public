@@ -1,5 +1,7 @@
 import numpy as np
+
 from terminator.utils.common import seq_to_ints
+
 
 def knnEtab_to_denseEtab(h_E, E_idx, pad=True):
     """
@@ -11,8 +13,9 @@ def knnEtab_to_denseEtab(h_E, E_idx, pad=True):
     neighbor_idx = np.broadcast_to(E_idx[..., np.newaxis, np.newaxis], (n_nodes, k, n_aa, n_aa))
     np.put_along_axis(collection, neighbor_idx, h_E, 1)
     if pad:
-        collection = np.pad(collection, ((0,0),(0,0),(0, 2), (0,2)))
+        collection = np.pad(collection, ((0, 0), (0, 0), (0, 2), (0, 2)))
     return collection
+
 
 def eval_seq_energy(etab, seq):
     """

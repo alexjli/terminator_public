@@ -1,15 +1,19 @@
-import os
 import argparse
 import glob
-import pandas as pd
+import os
 import traceback
+
+import pandas as pd
 
 alphabet = ['D', 'E', 'K', 'R', 'H', 'Q', 'N', 'S', 'T', 'P', 'G', 'A', 'V', 'I', 'L', 'M', 'C', 'F', 'W', 'Y', 'X']
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse all results.')
-    parser.add_argument('--output_dir', help='Output directory', default='test_run')
-    parser.add_argument('--dtermen_data', help="Root directory for dTERMen runs")
+    parser.add_argument('--output_dir',
+                        help='Output directory',
+                        default='test_run')
+    parser.add_argument('--dtermen_data',
+                        help="Root directory for dTERMen runs")
     args = parser.parse_args()
 
     output_path = os.path.join(args.output_dir, 'etabs')

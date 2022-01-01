@@ -1,10 +1,11 @@
-import glob
 import argparse
+import glob
 import os
 import random
 
 INPUT_DATA = '/pool001/users/vsundar/TERMinator/'
 MIN_PROT_LEN = 30
+
 
 def main(args):
     dataset_files = os.path.join(INPUT_DATA, args.dataset)
@@ -25,14 +26,14 @@ def main(args):
     if not os.path.isdir(out_folder):
         os.makedirs(out_folder)
 
-    len_fold = int(len(pdb_ids)/num_folds)
+    len_fold = int(len(pdb_ids) / num_folds)
     folds = []
     for i in range(num_folds):
         if i == num_folds - 1:
             endval = len(pdb_ids)
         else:
-            endval = (i+1)*len_fold
-        folds += [pdb_ids[int(i*len_fold):endval]]
+            endval = (i + 1) * len_fold
+        folds += [pdb_ids[int(i * len_fold):endval]]
         with open(os.path.join(out_folder, f'fold_{i}.in'), 'w') as f:
             for pdb_id in folds[i]:
                 f.write(pdb_id + '\n')
@@ -43,7 +44,7 @@ def main(args):
 
     for i in range(num_folds - 1):
         test_fold = i
-        val_fold = i-1
+        val_fold = i - 1
         if val_fold == -1:
             val_fold += num_folds - 1
         training_folds = list(set(range(num_folds - 1)) - set([test_fold, val_fold]))
@@ -59,10 +60,18 @@ def main(args):
             for pdb_id in folds[test_fold]:
                 f.write(pdb_id + '\n')
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Split Data for TERMinator')
-    parser.add_argument('--dataset', help = 'input folder .features files in proper directory structure. prefix is $ifsdata/', default = 'features_singlechain')
-    parser.add_argument('--folds', help = 'number of folds', default = '11', type = int)
-    parser.add_argument('--outfolder', help = 'folder to store fold splits in', default = 'fold_splits')
+    parser.add_argument('--dataset',
+                        help='input folder .features files in proper directory structure. prefix is $ifsdata/',
+                        default='features_singlechain')
+    parser.add_argument('--folds',
+                        help='number of folds',
+                        default='11',
+                        type=int)
+    parser.add_argument('--outfolder',
+                        help='folder to store fold splits in',
+                        default='fold_splits')
     args = parser.parse_args()
     main(args)

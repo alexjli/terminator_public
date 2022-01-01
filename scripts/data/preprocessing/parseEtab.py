@@ -1,14 +1,17 @@
-import numpy as np
-from terminator.utils.common import *
 import argparse
 import pickle
 
-"""
-Given an etab file, parse the corresponding Potts model parameters
-This assumes that full chain protein etabs are provided
-Will not work with etabs computed on partial chains
-"""
+import numpy as np
+
+from terminator.utils.common import aa_to_int
+
+
 def parseEtab(filename, save=True):
+    """
+    Given an etab file, parse the corresponding Potts model parameters
+    This assumes that full chain protein etabs are provided
+    Will not work with etabs computed on partial chains
+    """
 
     if filename.split('.')[-1] != 'etab':
         raise ValueError('Input file is not an etab file!')
@@ -25,7 +28,7 @@ def parseEtab(filename, save=True):
         # self energies
         if len(l) == 3:
             id = l[0]
-            resid = idx//20
+            resid = idx // 20
             id_to_resid[id] = resid
 
             residue = aa_to_int(l[1])
@@ -44,8 +47,10 @@ def parseEtab(filename, save=True):
             residue1 = aa_to_int(l[3])
             E = float(l[4])
 
-            pairE.append({'resid0': resid0, 'resid1': resid1,
-                          'residue0': residue0, 'residue1': residue1, 'E': E})
+            pairE.append({
+                'resid0': resid0, 'resid1': resid1,
+                'residue0': residue0, 'residue1': residue1,
+                'E': E})
         else:
             raise ValueError("Something doesn't look right at line %d: %s" % (idx, line))
 
@@ -113,8 +118,11 @@ def parseEtab(filename, save=True):
 
     return potts_dict, potts_selfE, potts
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Convert an etab into a numpy array of Potts model parameters')
-    parser.add_argument('etab', metavar='f', help = 'input etab file')
+    parser.add_argument('etab',
+                        metavar='f',
+                        help='input etab file')
     args = parser.parse_args()
     parseEtab(args.etab)

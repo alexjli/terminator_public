@@ -1,15 +1,17 @@
 import pickle
+
 import numpy as np
+
 from terminator.utils.common import aa_three_to_one
 
 
-def parseCoords(filename, save = True):
+def parseCoords(filename, save=True):
     chain_dict = {}
     with open(filename, 'r') as fp:
         for line in fp:
             data = line.strip()
             if data == 'TER' or data == 'END':
-                continue 
+                continue
             try:
                 element = data[13:16].strip()
                 residue = data[17:20].strip()
@@ -18,19 +20,17 @@ def parseCoords(filename, save = True):
                 x = data[30:38].strip()
                 y = data[38:46].strip()
                 z = data[46:54].strip()
-                coords = [float(coord) for coord in [x,y,z]]
-                #print(element, chain, coords)
+                coords = [float(coord) for coord in [x, y, z]]
+                # print(element, chain, coords)
             except Exception as e:
                 print(data)
                 raise e
 
             if chain not in chain_dict.keys():
-                chain_dict[chain] = {
-                    element: [] for element in ['N', 'CA', 'C', 'O']
-                }
+                chain_dict[chain] = {element: [] for element in ['N', 'CA', 'C', 'O']}
                 chain_dict[chain]["seq_dict"] = {}
 
-            # naively model terminal carboxylate as a single O atom 
+            # naively model terminal carboxylate as a single O atom
             # (i cant find the two oxygens so im just gonna use OXT)
             if element == 'OXT':
                 element = 'O'
@@ -45,7 +45,7 @@ def parseCoords(filename, save = True):
                 elif residue == 'TPO':  # convert TPO (phospho-thr) to THR
                     residue = 'THR'
                 elif residue == 'PTR':  # convert PTR (phospho-tyr) to TYR
-                    residue = 'TYR' 
+                    residue = 'TYR'
                 elif residue == 'CSO':  # convert CSO (hydroxy-cys) to CYS
                     residue = 'CYS'
                 elif residue == 'SEC':  # convert SEC (seleno-cys) to CYS
@@ -58,8 +58,8 @@ def parseCoords(filename, save = True):
         coords = [chain_dict[chain][element] for element in ['N', 'CA', 'C', 'O']]
         chain_tensors[chain] = np.stack(coords, 1)
         seq_dict = chain_dict[chain]["seq_dict"]
-        s = "".join([seq_dict[i] for i in seq_dict.keys()])
-        assert len([seq_dict[i] for i in seq_dict.keys()]) == chain_tensors[chain].shape[0], (s, chain_tensors[chain].shape, filename)
+        chain_seq = "".join([seq_dict[i] for i in seq_dict.keys()])
+        assert len(chain_seq) == chain_tensors[chain].shape[0], (chain_seq, chain_tensors[chain].shape, filename)
         seq += "".join([seq_dict[i] for i in seq_dict.keys()])
 
     if save:
@@ -71,7 +71,7 @@ def parseCoords(filename, save = True):
     return chain_tensors, seq
 
 
-def extractBackbone(filename, outpath, valid_elements = ['N', 'CA', 'C', 'O']):
+def extractBackbone(filename, outpath, valid_elements=['N', 'CA', 'C', 'O']):
     """
     Given a PDB structure, extract the protein backbone atoms and dump it in a redesigned PDB file
     """
@@ -93,16 +93,13 @@ def extractBackbone(filename, outpath, valid_elements = ['N', 'CA', 'C', 'O']):
             x = data[30:38].strip()
             y = data[38:46].strip()
             z = data[46:54].strip()
-            coords = [float(coord) for coord in [x,y,z]]
+            coords = [float(coord) for coord in [x, y, z]]
         except Exception as e:
             print(data)
             raise e
 
         if (chain, residx) not in struct_dict.keys():
-            struct_dict[(chain, residx)] = {
-                "elements": np.array([False for _ in range(5)]),
-                "line_numbers": []
-            }
+            struct_dict[(chain, residx)] = {"elements": np.array([False for _ in range(5)]), "line_numbers": []}
 
         if element in valid_elements:
             struct_dict[(chain, residx)]["elements"][valid_elements.index(element)] = True
@@ -111,14 +108,13 @@ def extractBackbone(filename, outpath, valid_elements = ['N', 'CA', 'C', 'O']):
             struct_dict[(chain, residx)]["elements"][-1] = True
             struct_dict[(chain, residx)]["oxt_num"] = line_num
 
-
     for struct_vals in struct_dict.values():
         elem_arr = struct_vals["elements"]
         if elem_arr[:4].all():
-            # if we have N, CA, C, O, we take those lines 
+            # if we have N, CA, C, O, we take those lines
             # and ignore OXT even if present
             valid_entry_lines += struct_vals["line_numbers"]
-        elif elem_arr[[0,1,2,4]].all() and not elem_arr[3]:
+        elif elem_arr[[0, 1, 2, 4]].all() and not elem_arr[3]:
             # if we have N, CA, C, OXT, but no O
             # we take OXT as O
             assert len(struct_vals["line_numbers"]) == 3, struct_vals["line_numbers"]
@@ -130,11 +126,10 @@ def extractBackbone(filename, outpath, valid_elements = ['N', 'CA', 'C', 'O']):
     with open(outpath, 'w') as fp:
         for idx in range(len(valid_entry_lines)):
             cur_line_num = valid_entry_lines[idx]
-            prev_line_num = valid_entry_lines[idx-1] if idx>0 else valid_entry_lines[0]
+            prev_line_num = valid_entry_lines[idx - 1] if idx > 0 else valid_entry_lines[0]
             cur_line = entry_lines[cur_line_num]
             prev_line = entry_lines[prev_line_num]
             if prev_line.strip() == 'TER' and cur_line.strip() == 'TER':
                 # prevent redundant TER if we filter out a whole section
                 continue
             fp.write(cur_line)
-

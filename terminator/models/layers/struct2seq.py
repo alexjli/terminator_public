@@ -1,15 +1,16 @@
 from __future__ import print_function
 
-import numpy as np
-from matplotlib import pyplot as plt
 import copy
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from matplotlib import pyplot as plt
 
-from .s2s_modules import *
 from .graph_features import S2SProteinFeatures as ProteinFeatures
+from .s2s_modules import MPNNLayer, TransformerLayer
+from .utils import cat_neighbors_nodes, gather_nodes
 
 
 class Struct2Seq(nn.Module):
@@ -153,29 +154,20 @@ class Struct2Seq(nn.Module):
         N_batch, N_nodes = X.size(0), X.size(1)
         log_probs = torch.zeros((N_batch, N_nodes, 20))
         h_S = torch.zeros_like(h_V)
-        h_V_stack = [h_V] + [
-            torch.zeros_like(h_V) for _ in range(len(self.decoder_layers))
-        ]
+        h_V_stack = [h_V] + [torch.zeros_like(h_V) for _ in range(len(self.decoder_layers))]
         for t in range(N_nodes):
             # Hidden layers
             E_idx_t = E_idx[:, t:t + 1, :]
             h_E_t = h_E[:, t:t + 1, :, :]
             h_ES_t = cat_neighbors_nodes(h_S, h_E_t, E_idx_t)
             # Stale relational features for future states
-            h_ESV_encoder_t = mask_fw[:, t:t + 1, :, :] * cat_neighbors_nodes(
-                h_V, h_ES_t, E_idx_t)
+            h_ESV_encoder_t = mask_fw[:, t:t + 1, :, :] * cat_neighbors_nodes(h_V, h_ES_t, E_idx_t)
             for l, layer in enumerate(self.decoder_layers):
                 # Updated relational features for future states
-                h_ESV_decoder_t = cat_neighbors_nodes(h_V_stack[l], h_ES_t,
-                                                      E_idx_t)
+                h_ESV_decoder_t = cat_neighbors_nodes(h_V_stack[l], h_ES_t, E_idx_t)
                 h_V_t = h_V_stack[l][:, t:t + 1, :]
-                h_ESV_t = mask_bw[:, t:t +
-                                  1, :, :] * h_ESV_decoder_t + h_ESV_encoder_t
-                h_V_stack[l + 1][:,
-                                 t, :] = layer(h_V_t,
-                                               h_ESV_t,
-                                               mask_V=mask[:,
-                                                           t:t + 1]).squeeze(1)
+                h_ESV_t = mask_bw[:, t:t + 1, :, :] * h_ESV_decoder_t + h_ESV_encoder_t
+                h_V_stack[l + 1][:, t, :] = layer(h_V_t, h_ESV_t, mask_V=mask[:, t:t + 1]).squeeze(1)
 
             # Sampling step
             h_V_t = h_V_stack[-1][:, t, :]
@@ -209,29 +201,20 @@ class Struct2Seq(nn.Module):
         log_probs = torch.zeros((N_batch, N_nodes, 20))
         h_S = torch.zeros_like(h_V)
         S = torch.zeros((N_batch, N_nodes), dtype=torch.int64)
-        h_V_stack = [h_V] + [
-            torch.zeros_like(h_V) for _ in range(len(self.decoder_layers))
-        ]
+        h_V_stack = [h_V] + [torch.zeros_like(h_V) for _ in range(len(self.decoder_layers))]
         for t in range(N_nodes):
             # Hidden layers
             E_idx_t = E_idx[:, t:t + 1, :]
             h_E_t = h_E[:, t:t + 1, :, :]
             h_ES_t = cat_neighbors_nodes(h_S, h_E_t, E_idx_t)
             # Stale relational features for future states
-            h_ESV_encoder_t = mask_fw[:, t:t + 1, :, :] * cat_neighbors_nodes(
-                h_V, h_ES_t, E_idx_t)
+            h_ESV_encoder_t = mask_fw[:, t:t + 1, :, :] * cat_neighbors_nodes(h_V, h_ES_t, E_idx_t)
             for l, layer in enumerate(self.decoder_layers):
                 # Updated relational features for future states
-                h_ESV_decoder_t = cat_neighbors_nodes(h_V_stack[l], h_ES_t,
-                                                      E_idx_t)
+                h_ESV_decoder_t = cat_neighbors_nodes(h_V_stack[l], h_ES_t, E_idx_t)
                 h_V_t = h_V_stack[l][:, t:t + 1, :]
-                h_ESV_t = mask_bw[:, t:t +
-                                  1, :, :] * h_ESV_decoder_t + h_ESV_encoder_t
-                h_V_stack[l + 1][:,
-                                 t, :] = layer(h_V_t,
-                                               h_ESV_t,
-                                               mask_V=mask[:,
-                                                           t:t + 1]).squeeze(1)
+                h_ESV_t = mask_bw[:, t:t + 1, :, :] * h_ESV_decoder_t + h_ESV_encoder_t
+                h_V_stack[l + 1][:, t, :] = layer(h_V_t, h_ESV_t, mask_V=mask[:, t:t + 1]).squeeze(1)
 
             # Sampling step
             h_V_t = h_V_stack[-1][:, t, :]

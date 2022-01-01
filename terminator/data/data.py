@@ -3,18 +3,19 @@
 This file contains dataset and dataloader classes
 to be used when interacting with TERMs.
 """
+import glob
+import multiprocessing as mp
+import os
+import pickle
+import random
+
 import numpy as np
 import torch
+from scipy.linalg import block_diag
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
-import pickle
-from scipy.linalg import block_diag
-import glob
-import random
-import os
 from tqdm import tqdm
-import multiprocessing as mp
 
 # pylint: disable=no-member
 
@@ -50,11 +51,7 @@ def load_file(in_folder, pdb_id, min_protein_len=30):
 
 
 class TERMDataset():
-    def __init__(self,
-                 in_folder,
-                 pdb_ids=None,
-                 min_protein_len=30,
-                 num_processes=32):
+    def __init__(self, in_folder, pdb_ids=None, min_protein_len=30, num_processes=32):
         self.dataset = []
 
         with mp.Pool(num_processes) as pool:
@@ -89,9 +86,7 @@ class TERMDataset():
                     progress.update(1)
 
                 # get pdb_ids
-                pdb_ids = [
-                    os.path.basename(path).split(".")[0] for path in filelist
-                ]
+                pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
 
                 res_list = [
                     pool.apply_async(load_file, (in_folder, id),
@@ -135,7 +130,7 @@ class TERMDataLoader(Sampler):
                  drop_last=False,
                  max_term_res=55000,
                  max_seq_tokens=0):
-        #self.dataset = dataset
+        # self.dataset = dataset
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
         if max_term_res > 0 and max_seq_tokens == 0:
@@ -143,9 +138,7 @@ class TERMDataLoader(Sampler):
         elif max_term_res == 0 and max_seq_tokens > 0:
             self.lengths = self.seq_lengths
         else:
-            raise Exception(
-                "One and only one of max_term_res and max_seq_tokens must be 0"
-            )
+            raise Exception("One and only one of max_term_res and max_seq_tokens must be 0")
         self.shuffle = shuffle
         self.sort_data = sort_data
         self.batch_shuffle = batch_shuffle
@@ -156,12 +149,10 @@ class TERMDataLoader(Sampler):
         self.semi_shuffle = semi_shuffle
         self.semi_shuffle_cluster_size = semi_shuffle_cluster_size
 
-        assert not (
-            shuffle and semi_shuffle
-        ), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        #assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
+        assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
+        # assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
         # an assert for myself but i'm not sure if this is provably true
-        #assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
+        # assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
         # initialize clusters
         self._cluster()
@@ -213,8 +204,7 @@ class TERMDataLoader(Sampler):
             total_data_len = 0
             for count, idx in enumerate(idx_list):
                 current_batch_lens.append(self.lengths[idx])
-                total_data_len = max(current_batch_lens) * len(
-                    current_batch_lens)
+                total_data_len = max(current_batch_lens) * len(current_batch_lens)
                 if count != 0 and total_data_len > cap_len:
                     clusters.append(batch)
                     batch = [idx]
@@ -247,8 +237,8 @@ class TERMDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
-        #sing_stats = [None]
-        #pair_stats = [None]
+        # sing_stats = [None]
+        # pair_stats = [None]
 
         for idx, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -264,8 +254,8 @@ class TERMDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
-            #sing_stats.append(convert(data['sing_stats']))
-            #pair_stats.append(convert(data['pair_stats']))
+            # sing_stats.append(convert(data['sing_stats']))
+            # pair_stats.append(convert(data['pair_stats']))
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -275,9 +265,7 @@ class TERMDataLoader(Sampler):
         ppoe = pad_sequence(ppoe, batch_first=True)
         focuses = pad_sequence(focuses, batch_first=True)
         contact_idxs = pad_sequence(contact_idxs, batch_first=True)
-        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens],
-                                    batch_first=True,
-                                    padding_value=1).bool()
+        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
         seqs = pad_sequence(seqs, batch_first=True)
 
         # we do some padding so that tensor reshaping during batchifyTERM works
@@ -311,8 +299,8 @@ class TERMDataLoader(Sampler):
         return {
             'msas': msas,
             'features': features.float(),
-            #'sing_stats':sing_stats,
-            #'pair_stats':pair_stats,
+            # 'sing_stats':sing_stats,
+            # 'pair_stats':pair_stats,
             'ppoe': ppoe.float(),
             'seq_lens': seq_lens,
             'focuses': focuses,
@@ -346,9 +334,7 @@ class TERMDataLoader(Sampler):
         # Build the batch
         for i, x in enumerate(batch):
             l = x.shape[0]
-            x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]],
-                           'constant',
-                           constant_values=(np.nan, ))
+            x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
             X[i, :, :, :] = x_pad
 
         # Mask
@@ -374,11 +360,7 @@ def read_lens(in_folder, id, min_protein_len=30):
 
 
 class LazyDataset(Dataset):
-    def __init__(self,
-                 in_folder,
-                 pdb_ids=None,
-                 min_protein_len=30,
-                 num_processes=32):
+    def __init__(self, in_folder, pdb_ids=None, min_protein_len=30, num_processes=32):
         self.dataset = []
 
         pool = mp.Pool(num_processes)
@@ -403,8 +385,7 @@ class LazyDataset(Dataset):
                 if data is not None:
                     id, total_term_length, seq_len = data
                     filename = f"{in_folder}/{id}/{id}.features"
-                    self.dataset.append((os.path.abspath(filename),
-                                         total_term_length, seq_len))
+                    self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
         else:
             print("Loading feature file paths")
 
@@ -415,9 +396,7 @@ class LazyDataset(Dataset):
                 progress.update(1)
 
             # get pdb_ids
-            pdb_ids = [
-                os.path.basename(path).split(".")[0] for path in filelist
-            ]
+            pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
 
             res_list = [
                 pool.apply_async(read_lens, (in_folder, id),
@@ -432,8 +411,7 @@ class LazyDataset(Dataset):
                 if data is not None:
                     id, total_term_length, seq_len = data
                     filename = f"{in_folder}/{id}/{id}.features"
-                    self.dataset.append((os.path.abspath(filename),
-                                         total_term_length, seq_len))
+                    self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
 
         self.shuffle_idx = np.arange(len(self.dataset))
 
@@ -468,16 +446,13 @@ class TERMLazyDataLoader(Sampler):
 
         self.dataset = dataset
         self.size = len(dataset)
-        self.filepaths, self.total_term_lengths, self.seq_lengths = zip(
-            *dataset)
+        self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
         if max_term_res > 0 and max_seq_tokens == 0:
             self.lengths = self.total_term_lengths
         elif max_term_res == 0 and max_seq_tokens > 0:
             self.lengths = self.seq_lengths
         else:
-            raise Exception(
-                "One and only one of max_term_res and max_seq_tokens must be 0"
-            )
+            raise Exception("One and only one of max_term_res and max_seq_tokens must be 0")
         self.shuffle = shuffle
         self.sort_data = sort_data
         self.batch_shuffle = batch_shuffle
@@ -491,12 +466,10 @@ class TERMLazyDataLoader(Sampler):
         assert term_dropout in ["keep_first", "all", False], f"term_dropout={term_dropout} is not a valid argument"
         self.term_dropout = term_dropout
 
-        assert not (
-            shuffle and semi_shuffle
-        ), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        #assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
+        assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
+        # assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
         # an assert for myself but i'm not sure if this is provably true
-        #assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
+        # assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
         # initialize clusters
         self._cluster()
@@ -548,8 +521,7 @@ class TERMLazyDataLoader(Sampler):
             total_data_len = 0
             for count, idx in enumerate(idx_list):
                 current_batch_lens.append(self.lengths[idx])
-                total_data_len = max(current_batch_lens) * len(
-                    current_batch_lens)
+                total_data_len = max(current_batch_lens) * len(current_batch_lens)
                 if count != 0 and total_data_len > cap_len:
                     clusters.append(batch)
                     batch = [idx]
@@ -592,8 +564,8 @@ class TERMLazyDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
-        #sing_stats = [None]
-        #pair_stats = [None]
+        # sing_stats = [None]
+        # pair_stats = [None]
 
         for idx, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -609,8 +581,8 @@ class TERMLazyDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
-            #sing_stats.append(convert(data['sing_stats']))
-            #pair_stats.append(convert(data['pair_stats']))
+            # sing_stats.append(convert(data['sing_stats']))
+            # pair_stats.append(convert(data['pair_stats']))
         """
         # detect if we have sing and pair stats
         if sing_stats[0] == None:
@@ -639,11 +611,9 @@ class TERMLazyDataLoader(Sampler):
             else:
                 sample_idx = torch.multinomial(weights, n_keep)
                 sample_idx = sample_idx.view([n_batch, n_terms, n_keep]).transpose(-1, -2)
-                sample_idx_features = sample_idx.unsqueeze(-1).expand(
-                    [n_batch, n_keep, n_terms, n_features]
-                )
+                sample_idx_features = sample_idx.unsqueeze(-1).expand([n_batch, n_keep, n_terms, n_features])
                 sample_idx_msas = sample_idx
-            
+
             if self.term_dropout == 'keep_first':
                 if n_keep == 0:
                     features = features[:, 0:1]
@@ -651,26 +621,17 @@ class TERMLazyDataLoader(Sampler):
                 else:
                     sample_features = torch.gather(features[:, 1:], 1, sample_idx_features)
                     sample_msas = torch.gather(msas[:, 1:], 1, sample_idx_msas)
-                    features = torch.cat([
-                        features[:, 0:1],
-                        sample_features
-                    ], dim=1)
-                    msas = torch.cat([
-                        msas[:, 0:1],
-                        sample_msas
-                    ], dim=1)
+                    features = torch.cat([features[:, 0:1], sample_features], dim=1)
+                    msas = torch.cat([msas[:, 0:1], sample_msas], dim=1)
             elif self.term_dropout == 'all':
                 features = torch.gather(features, 1, sample_idx_features)
                 msaa = torch.gather(msas, 1, sample_idx_msas)
-                
 
         # we can pad these using standard pad_sequence
         ppoe = pad_sequence(ppoe, batch_first=True)
         focuses = pad_sequence(focuses, batch_first=True)
         contact_idxs = pad_sequence(contact_idxs, batch_first=True)
-        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens],
-                                    batch_first=True,
-                                    padding_value=1).bool()
+        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
         seqs = pad_sequence(seqs, batch_first=True)
         """
         if sing_stats:
@@ -731,8 +692,8 @@ class TERMLazyDataLoader(Sampler):
         return {
             'msas': msas,
             'features': features.float(),
-            #'sing_stats':sing_stats,
-            #'pair_stats':pair_stats,
+            # 'sing_stats':sing_stats,
+            # 'pair_stats':pair_stats,
             'ppoe': ppoe.float(),
             'seq_lens': seq_lens,
             'focuses': focuses,
@@ -766,9 +727,7 @@ class TERMLazyDataLoader(Sampler):
         # Build the batch
         for i, x in enumerate(batch):
             l = x.shape[0]
-            x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]],
-                           'constant',
-                           constant_values=(np.nan, ))
+            x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
             X[i, :, :, :] = x_pad
 
         # Mask
@@ -793,19 +752,13 @@ class TERMLazyDistributedSampler(DistributedSampler):
                  drop_last=False,
                  batch_size=4,
                  max_total_data_lens=55000):
-        super.init(dataset,
-                   num_replicas,
-                   rank,
-                   shuffle=shuffle,
-                   seed=seed,
-                   drop_last=drop_last)
-        self.sampler = TERMLazyDataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            batch_shuffle=shuffle,
-            drop_last=drop_last,
-            max_total_data_lens=max_total_data_lens)
+        super.init(dataset, num_replicas, rank, shuffle=shuffle, seed=seed, drop_last=drop_last)
+        self.sampler = TERMLazyDataLoader(dataset,
+                                          batch_size=batch_size,
+                                          shuffle=shuffle,
+                                          batch_shuffle=shuffle,
+                                          drop_last=drop_last,
+                                          max_total_data_lens=max_total_data_lens)
         self.size = len(dataset)
         self.filepaths, self.lengths = zip(*dataset)
         self.batch_size = batch_size
@@ -830,15 +783,14 @@ class TERMLazyDistributedSampler(DistributedSampler):
             total_data_len = 0
             for count, idx in enumerate(sorted_idx):
                 current_batch_lens.append(self.lengths[idx])
-                total_data_len = max(current_batch_lens) * len(
-                    current_batch_lens)
+                total_data_len = max(current_batch_lens) * len(current_batch_lens)
                 if count != 0 and total_data_len > max_total_data_len:
                     clusters.append(batch)
                     batch = [idx]
                     current_batch_lens = [self.lengths[idx]]
                 else:
                     batch.append(idx)
-                    #current_batch_lens.append(self.lengths[idx])
+                    # current_batch_lens.append(self.lengths[idx])
 
         else:  # used fixed batch size
             for count, idx in enumerate(sorted_idx):

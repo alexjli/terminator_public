@@ -1,7 +1,7 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 from .utils import merge_duplicate_edges
 
@@ -112,12 +112,7 @@ class EdgeTransformerLayer(nn.Module):
 
 
 class NodeMPNNLayer(nn.Module):
-    def __init__(self,
-                 num_hidden,
-                 num_in,
-                 dropout=0.1,
-                 num_heads=None,
-                 scale=30):
+    def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
         super(NodeMPNNLayer, self).__init__()
         self.num_hidden = num_hidden
         self.num_in = num_in
@@ -156,12 +151,7 @@ class NodeMPNNLayer(nn.Module):
 
 
 class EdgeMPNNLayer(nn.Module):
-    def __init__(self,
-                 num_hidden,
-                 num_in,
-                 dropout=0.1,
-                 num_heads=None,
-                 scale=30):
+    def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
         super(EdgeMPNNLayer, self).__init__()
         self.num_hidden = num_hidden
         self.num_in = num_in
@@ -212,9 +202,7 @@ class NeighborAttention(nn.Module):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
         mask_attn_dev = mask_attend.device
-        attend_logits = torch.where(
-            mask_attend > 0, attend_logits,
-            torch.tensor(negative_inf).to(mask_attn_dev))
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend * attend
         return attend
@@ -239,8 +227,7 @@ class NeighborAttention(nn.Module):
         V = self.W_V(h_E).view([n_batch, n_nodes, n_neighbors, n_heads, d])
 
         # Attention with scaled inner product
-        attend_logits = torch.matmul(Q, K).view(
-            [n_batch, n_nodes, n_neighbors, n_heads]).transpose(-2, -1)
+        attend_logits = torch.matmul(Q, K).view([n_batch, n_nodes, n_neighbors, n_heads]).transpose(-2, -1)
         attend_logits = attend_logits / np.sqrt(d)
 
         if mask_attend is not None:
@@ -287,9 +274,7 @@ class NeighborAttention(nn.Module):
         V = self.W_V(E_t).view([n_batch, n_neighbors, n_heads, d])
 
         # Attention with scaled inner product
-        attend_logits = torch.matmul(Q,
-                                     K).view([n_batch, n_neighbors,
-                                              n_heads]).transpose(-2, -1)
+        attend_logits = torch.matmul(Q, K).view([n_batch, n_neighbors, n_heads]).transpose(-2, -1)
         attend_logits = attend_logits / np.sqrt(d)
 
         if mask_attend is not None:
@@ -321,9 +306,7 @@ class EdgeEndpointAttention(nn.Module):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
         mask_attn_dev = mask_attend.device
-        attend_logits = torch.where(
-            mask_attend > 0, attend_logits,
-            torch.tensor(negative_inf).to(mask_attn_dev))
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to(mask_attn_dev))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend.float() * attend
         return attend
@@ -345,12 +328,9 @@ class EdgeEndpointAttention(nn.Module):
         assert self.num_hidden % n_heads == 0
 
         d = self.num_hidden // n_heads
-        Q = self.W_Q(h_E).view([n_batch, n_nodes, k, n_heads,
-                                d]).transpose(2, 3)
-        K = self.W_K(h_EV).view([n_batch, n_nodes, k, n_heads,
-                                 d]).transpose(2, 3)
-        V = self.W_V(h_EV).view([n_batch, n_nodes, k, n_heads,
-                                 d]).transpose(2, 3)
+        Q = self.W_Q(h_E).view([n_batch, n_nodes, k, n_heads, d]).transpose(2, 3)
+        K = self.W_K(h_EV).view([n_batch, n_nodes, k, n_heads, d]).transpose(2, 3)
+        V = self.W_V(h_EV).view([n_batch, n_nodes, k, n_heads, d]).transpose(2, 3)
 
         # Attention with scaled inner product
         attend_logits = torch.matmul(Q, K.transpose(-2, -1)) / np.sqrt(d)
@@ -358,8 +338,7 @@ class EdgeEndpointAttention(nn.Module):
         if mask_attend is not None:
             # we need to reshape the src key mask for edge-edge attention
             # expand to num_heads
-            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads,
-                                                   -1).unsqueeze(-1).double()
+            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1).unsqueeze(-1).double()
             mask_t = mask.transpose(-2, -1)
             # perform outer product
             mask = mask @ mask_t

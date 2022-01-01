@@ -1,15 +1,9 @@
-import os
 import glob
+import os
 
 
 def find_pdb_path(pdb, root):
-    pattern = os.path.join(
-        root,
-        "*",
-        "PDB",
-        pdb[1:3].lower(),
-        f"{pdb}.pdb"
-    )
+    pattern = os.path.join(root, "*", "PDB", pdb[1:3].lower(), f"{pdb}.pdb")
     for pdb_path in glob.glob(pattern):
         if os.path.exists(pdb_path):
             return pdb_path

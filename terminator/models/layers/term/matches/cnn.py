@@ -9,10 +9,7 @@ from terminator.models.layers.utils import inf_nan_hook_fn
 
 
 def conv1xN(channels, N):
-    return nn.Conv2d(channels,
-                     channels,
-                     kernel_size=(1, N),
-                     padding=(0, N // 2))
+    return nn.Conv2d(channels, channels, kernel_size=(1, N), padding=(0, N // 2))
 
 
 class Conv1DResidual(nn.Module):
@@ -26,10 +23,10 @@ class Conv1DResidual(nn.Module):
         self.bn2 = nn.BatchNorm2d(hdim)
         self.conv2 = conv1xN(hdim, hparams['conv_filter'])
 
-        #self.bn1.register_forward_hook(inf_nan_hook_fn)
-        #self.conv1.register_forward_hook(inf_nan_hook_fn)
-        #self.bn2.register_forward_hook(inf_nan_hook_fn)
-        #self.conv2.register_forward_hook(inf_nan_hook_fn)
+        # self.bn1.register_forward_hook(inf_nan_hook_fn)
+        # self.conv1.register_forward_hook(inf_nan_hook_fn)
+        # self.bn2.register_forward_hook(inf_nan_hook_fn)
+        # self.conv2.register_forward_hook(inf_nan_hook_fn)
 
     def forward(self, X):
         identity = X
@@ -54,9 +51,7 @@ class Conv1DResNet(nn.Module):
         super(Conv1DResNet, self).__init__()
         self.hparams = hparams
 
-        blocks = [
-            self._make_layer(hparams) for _ in range(hparams['matches_blocks'])
-        ]
+        blocks = [self._make_layer(hparams) for _ in range(hparams['matches_blocks'])]
         self.resnet = nn.Sequential(*blocks)
 
     def _make_layer(self, hparams):
@@ -90,11 +85,11 @@ class Conv2DResidual(nn.Module):
     def __init__(self, hparams):
         super(Conv2DResidual, self).__init__()
 
-        self.bn1 = nn.BatchNorm2d(2)  #hparams['hidden_dim'])
+        self.bn1 = nn.BatchNorm2d(2)  # hparams['hidden_dim'])
         self.relu = nn.ReLU(inplace=True)
-        self.conv1 = conv3x3(2)  #hparams['hidden_dim'])
-        self.bn2 = nn.BatchNorm2d(2)  #hparams['hidden_dim'])
-        self.conv2 = conv3x3(2)  #hparams['hidden_dim'])
+        self.conv1 = conv3x3(2)  # hparams['hidden_dim'])
+        self.bn2 = nn.BatchNorm2d(2)  # hparams['hidden_dim'])
+        self.conv2 = conv3x3(2)  # hparams['hidden_dim'])
 
     def forward(self, X):
         identity = X
@@ -142,7 +137,6 @@ class Conv2DResNet(nn.Module):
             out = self.embed(flat)
             out = self.resnet(out)
             out = out.mean(dim=1)
-            out = out.view(num_batches, num_terms, term_len, term_len,
-                           hidden_dim, hidden_dim)
+            out = out.view(num_batches, num_terms, term_len, term_len, hidden_dim, hidden_dim)
 
         return out
