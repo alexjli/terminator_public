@@ -2,7 +2,7 @@ import argparse
 import glob
 import os
 
-from search_utils import find_pdb_path
+from .search_utils import find_pdb_path
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 assert DIR[0] == "/", "DIR should be an abspath"

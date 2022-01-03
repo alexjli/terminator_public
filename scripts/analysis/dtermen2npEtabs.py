@@ -7,8 +7,7 @@ import sys
 import numpy as np
 
 # Code from preprocessing folder
-sys.path.insert(0, '..')
-from preprocessing.parseEtab import parseEtab
+from ..data.preprocessing.parseEtab import parseEtab
 
 
 def parseEtabs(out_folder, in_list, num_cores=1):

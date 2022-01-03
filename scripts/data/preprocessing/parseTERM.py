@@ -4,7 +4,6 @@ import os
 import pickle
 
 import numpy as np
-from parseEtab import parseEtab
 from scipy.linalg import block_diag
 
 from terminator.utils.common import seq_to_ints
@@ -13,12 +12,11 @@ HEAD_LEN = len('* TERM ')
 
 
 def parseTERMdata(filename):
-    '''
-    Function that parses all relavent data from TERM data dumps
+    """Function that parses all relavent data from TERM data dumps
 
     Returns the sequence numerically encoded, the selection,
     full sequence ppoe, and all TERMs found
-    '''
+    """
     fp = open(filename, 'r')
 
     # parse initial PDB parameters
@@ -58,7 +56,7 @@ def parseTERMdata(filename):
     # parse TERMs from rest of file
     terms = []
     while current_line != '':
-        term, current_line = parseTERM(fp, current_line)
+        term, current_line = _parseTERM(fp, current_line)
         terms.append(term)
 
     fp.close()
@@ -71,7 +69,7 @@ def parseTERMdata(filename):
     return output
 
 
-def parseTERM(fp, lastline):
+def _parseTERM(fp, lastline):
     term_dict = {}
     # idx: index of TERM
     term_dict['idx'] = int(lastline.strip().split(' ')[-1])
@@ -131,20 +129,3 @@ def contact_idx(focus):
         first_chain = focus[:breakpoint]
         second_chain = focus[breakpoint:]
         return contact_idx(first_chain) + contact_idx(second_chain)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        'Convert a dTERMen output .dat file and .etab into a pickle file with data in a python-friendly format')
-    parser.add_argument('dat',
-                        metavar='f',
-                        help='input .etab/.dat file basename')
-    parser.add_argument('--out',
-                        dest='out',
-                        help='output path (no file extension)')
-    parser.add_argument('--cutoff',
-                        dest='cutoff',
-                        help='max number of MSAs per TERM',
-                        default=1000)
-    args = parser.parse_args()
-    dumpTrainingTensors(args.dat, out_path=args.out, cutoff=args.cutoff)

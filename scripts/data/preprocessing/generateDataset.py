@@ -10,7 +10,7 @@ import time
 import traceback
 
 import numpy as np
-from packageTensors import dumpCoordsTensors, dumpTrainingTensors
+from .packageTensors import dumpCoordsTensors, dumpTrainingTensors
 
 
 # when subprocesses fail you usually don't get an error...

@@ -3,9 +3,9 @@ import os
 import pickle
 
 import numpy as np
-from parseCoords import parseCoords
-from parseEtab import parseEtab
-from parseTERM import parseTERMdata
+from .parseCoords import parseCoords
+from .parseEtab import parseEtab
+from .parseTERM import parseTERMdata
 from scipy.linalg import block_diag
 from scipy.special import softmax
 
