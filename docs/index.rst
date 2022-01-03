@@ -11,6 +11,7 @@ Welcome to terminator's documentation!
    :caption: Contents:
 
    getting_started
+   scripts
    api
 
 
