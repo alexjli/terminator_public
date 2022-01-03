@@ -1,23 +1,31 @@
-import numpy as np
+"""TERMinator models"""
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
 
-from terminator.utils.common import int_to_aa
 from terminator.utils.loop_utils import nlcpl as _nlcpl
-from terminator.utils.loop_utils import nlpl as _nlpl
 
 from .layers.condense import CondenseMSA, MultiChainCondenseMSA_g
 from .layers.energies.gvp import GVPPairEnergies
 from .layers.energies.s2s import (AblatedPairEnergies,
-                                  MultiChainPairEnergies_g, PairEnergies,
+                                  AblatedPairEnergies_g,
+                                  MultiChainPairEnergies_g,
+                                  PairEnergies,
                                   PairEnergiesFullGraph)
+# pylint: disable=no-member
 
 
 class TERMinator(nn.Module):
+    """Barebone TERMinator model for single-chain proteins"""
     def __init__(self, hparams, device='cuda:0'):
-        super(TERMinator, self).__init__()
+        """
+        Args
+        ----
+        hparams : dict
+            Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+        device : str
+            Device to place model on
+        """
+        super().__init__()
         self.dev = device
         self.hparams = hparams
         self.bot = CondenseMSA(hparams=self.hparams, device=self.dev)
@@ -36,20 +44,101 @@ class TERMinator(nn.Module):
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
-    def update_prior(self, aa_nrgs, alpha=0.1):
-        avg_nrgs = aa_nrgs.mean(dim=1).mean(dim=0).view(1, 1, 20)
-        self.prior = self.prior * (1 - alpha) + avg_nrgs * alpha
-        self.prior = self.prior.detach()
-
     def forward(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, sequence, max_seq_len,
                 ppoe):
+        """ Compute the negative composite psuedolikelihood of sequences given featurized structures
+
+        Args
+        ----
+        msas : torch.LongTensor
+            Integer encoding of sequence matches. Shape: n_batch x n_term_res x n_matches
+        features : torch.FloatTensor
+            Featurization of match structural data. Shape: n_batch x n_term_res x n_matches x n_features(=9 by default)
+        seq_lens : int np.ndarray
+            1D Array of batched sequence lengths. Shape: n_batch
+        focuses : torch.LongTensor
+            Indices for TERM residues matches. Shape: n_batch x n_term_res
+        term_lens : int np.ndarray
+            2D Array of batched TERM lengths. Shape: n_batch x n_terms
+        src_key_mask : torch.ByteTensor
+            Mask for TERM residue positions padding. Shape: n_batch x n_term_res
+        X : torch.FloatTensor
+            Raw coordinates of protein backbones. Shape: n_batch x n_res
+        x_mask : torch.ByteTensor
+            Mask for X. Shape: n_batch x n_res
+        sequence : torch.LongTensor
+            Integer encoding of ground truth native sequences. Shape: n_batch x n_res
+        max_seq_len : int
+            Max length of protein in the batch.
+        ppoe : torch.FloatTensor
+            Featurization of target protein structural data. Shape: n_batch x n_res x n_features(=9 by default)
+
+        Returns
+        -------
+        nlcpl : torch.FloatTensor
+            Negative composite psuedolikelihood of sequences given the produced Potts model.
+            Shape: 1
+        avg_prob : torch.FloatTensor
+            Mean probability of pairs of native residues across every edge in the kNN graph
+            given the Potts model. Averaged across all edges across all proteins in the batch.
+            Shape: 1
+        counter : torch.FloatTensor
+            Total number of edges in the batch.
+            Shape: 1
+        """
         etab, E_idx = self.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len,
                                  ppoe)
         nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
         return nlcpl, avg_prob, counter
 
     def potts(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe):
-        ''' compute the \'potts model parameters\' for the structure '''
+        """Compute the Potts model parameters for the structure
+
+        Args
+        ----
+        msas : torch.LongTensor
+            Integer encoding of sequence matches.
+            Shape: n_batch x n_term_res x n_matches
+        features : torch.FloatTensor
+            Featurization of match structural data.
+            Shape: n_batch x n_term_res x n_matches x n_features(=9 by default)
+        seq_lens : int np.ndarray
+            1D Array of batched sequence lengths.
+            Shape: n_batch
+        focuses : torch.LongTensor
+            Indices for TERM residues matches.
+            Shape: n_batch x n_term_res
+        term_lens : int np.ndarray
+            2D Array of batched TERM lengths.
+            Shape: n_batch x n_terms
+        src_key_mask : torch.ByteTensor
+            Mask for TERM residue positions padding.
+            Shape: n_batch x n_term_res
+        X : torch.FloatTensor
+            Raw coordinates of protein backbones.
+            Shape: n_batch x n_res
+        x_mask : torch.ByteTensor
+            Mask for X.
+            Shape: n_batch x n_res
+        max_seq_len : int
+            Max length of protein in the batch
+        ppoe : torch.FloatTensor
+            Featurization of target protein structural data.
+            Shape: n_batch x n_res x n_features(=9 by default)
+
+        Returns
+        -------
+        etab : torch.FloatTensor
+            Dense kNN representation of the energy table, with :code:`E_idx`
+            denotating which energies correspond to which edge.
+            Shape: n_batch x n_res x k(=30 by default) x :code:`hparams['energies_output_dim']` (=400 by default)
+        E_idx : torch.LongTensor
+            Indices representing edges in the kNN graph.
+            Given node `res_idx`, the set of edges centered around that node are
+            given by :code:`E_idx[b_idx][res_idx]`, with the `i`-th closest node given by
+            :code:`E_idx[b_idx][res_idx][i]`.
+            Shape: n_batch x n_res x k(=30 by default)
+        """
         if self.hparams['use_terms']:
             condense = self.bot(msas, features, seq_lens, focuses, term_lens, src_key_mask, max_seq_len, ppoe)
             etab, E_idx = self.top(X, x_mask, V_embed=condense)
@@ -57,34 +146,19 @@ class TERMinator(nn.Module):
             etab, E_idx = self.top(X, x_mask)
         return etab, E_idx
 
-    def _get_self_etab(self, etab):
-        ''' extract self nrgs from etab '''
-        self_etab = etab[:, :, 0]
-        n_batch, L = self_etab.shape[:2]
-        self_etab = self_etab.unsqueeze(-1).view(n_batch, L, 20, 20)
-        self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-        return self_nrgs
-
-    def _percent(self, pred_seqs, true_seqs, x_mask):
-        ''' with the predicted seq and actual seq, find the percent identity '''
-        is_same = (pred_seqs == true_seqs)
-        lens = torch.sum(x_mask, dim=-1)
-        is_same *= x_mask.bool()
-        num_same = torch.sum(is_same.float(), dim=-1)
-        percent_same = num_same / lens
-        return percent_same
-
-    def _int_to_aa(self, int_seqs):
-        ''' Convert int sequence sto its corresponding amino acid identities '''
-        vec_i2a = np.vectorize(int_to_aa)
-        char_seqs = vec_i2a(int_seqs).tolist()
-        char_seqs = [''.join([aa for aa in seq]) for seq in char_seqs]
-        return char_seqs
-
 
 class MultiChainTERMinator_gcnkt(TERMinator):
+    """TERMinator model for multichain proteins that utilizes contact indices"""
     def __init__(self, hparams, device='cuda:0'):
-        super(MultiChainTERMinator_gcnkt, self).__init__(hparams, device)
+        """
+        Args
+        ----
+        hparams : dict
+            Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+        device : str
+            Device to place model on
+        """
+        super().__init__(hparams, device)
         self.dev = device
         self.hparams = hparams
         self.bot = MultiChainCondenseMSA_g(hparams, device=self.dev)
@@ -109,7 +183,53 @@ class MultiChainTERMinator_gcnkt(TERMinator):
                 nn.init.xavier_uniform_(p)
 
     def forward(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, sequence, max_seq_len,
-                ppoe, chain_lens, contact_idx):
+                ppoe, chain_idx, contact_idx):
+        """ Compute the negative composite psuedolikelihood of sequences given featurized structures
+
+        Args
+        ----
+        msas : torch.LongTensor
+            Integer encoding of sequence matches. Shape: n_batch x n_term_res x n_matches
+        features : torch.FloatTensor
+            Featurization of match structural data. Shape: n_batch x n_term_res x n_matches x n_features(=9 by default)
+        seq_lens : int np.ndarray
+            1D Array of batched sequence lengths. Shape: n_batch
+        focuses : torch.LongTensor
+            Indices for TERM residues matches. Shape: n_batch x n_term_res
+        term_lens : int np.ndarray
+            2D Array of batched TERM lengths. Shape: n_batch x n_terms
+        src_key_mask : torch.ByteTensor
+            Mask for TERM residue positions padding. Shape: n_batch x n_term_res
+        X : torch.FloatTensor
+            Raw coordinates of protein backbones. Shape: n_batch x n_res
+        x_mask : torch.ByteTensor
+            Mask for X. Shape: n_batch x n_res
+        sequence : torch.LongTensor
+            Integer encoding of ground truth native sequences. Shape: n_batch x n_res
+        max_seq_len : int
+            Max length of protein in the batch.
+        ppoe : torch.FloatTensor
+            Featurization of target protein structural data. Shape: n_batch x n_res x n_features(=9 by default)
+        chain_idx : torch.LongTensor
+            Integers indices that designate ever residue to a chain.
+            Shape: n_batch x n_res
+        contact_idx : torch.LongTensor
+            Integers representing contact indices across all TERM residues.
+            Shape: n_batch x n_term_res
+
+        Returns
+        -------
+        nlcpl : torch.FloatTensor
+            Negative composite psuedolikelihood of sequences given the produced Potts model.
+            Shape: 1
+        avg_prob : torch.FloatTensor
+            Mean probability of pairs of native residues across every edge in the kNN graph
+            given the Potts model. Averaged across all edges across all proteins in the batch.
+            Shape: 1
+        counter : torch.FloatTensor
+            Total number of edges in the batch.
+            Shape: 1
+        """
         etab, E_idx = self.potts(msas,
                                  features,
                                  seq_lens,
@@ -120,18 +240,59 @@ class MultiChainTERMinator_gcnkt(TERMinator):
                                  x_mask,
                                  max_seq_len,
                                  ppoe,
-                                 chain_lens,
+                                 chain_idx,
                                  contact_idx=contact_idx)
-        if torch.isnan(etab).any() or torch.isnan(E_idx).any():
-            raise RuntimeError("nan found in potts model")
         nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
-        if torch.isnan(nlcpl).any() or torch.isnan(avg_prob).any():
-            raise RuntimeError("nan when computing nlcpl")
         return nlcpl, avg_prob, counter
 
     def potts(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe,
               chain_idx, contact_idx):
-        ''' compute the \'potts model parameters\' for the structure '''
+        """Compute the Potts model parameters for the structure
+
+        Args
+        ----
+        msas : torch.LongTensor
+            Integer encoding of sequence matches. Shape: n_batch x n_term_res x n_matches
+        features : torch.FloatTensor
+            Featurization of match structural data. Shape: n_batch x n_term_res x n_matches x n_features(=9 by default)
+        seq_lens : int np.ndarray
+            1D Array of batched sequence lengths. Shape: n_batch
+        focuses : torch.LongTensor
+            Indices for TERM residues matches. Shape: n_batch x n_term_res
+        term_lens : int np.ndarray
+            2D Array of batched TERM lengths. Shape: n_batch x n_terms
+        src_key_mask : torch.ByteTensor
+            Mask for TERM residue positions padding. Shape: n_batch x n_term_res
+        X : torch.FloatTensor
+            Raw coordinates of protein backbones. Shape: n_batch x n_res
+        x_mask : torch.ByteTensor
+            Mask for X. Shape: n_batch x n_res
+        sequence : torch.LongTensor
+            Integer encoding of ground truth native sequences. Shape: n_batch x n_res
+        max_seq_len : int
+            Max length of protein in the batch.
+        ppoe : torch.FloatTensor
+            Featurization of target protein structural data. Shape: n_batch x n_res x n_features(=9 by default)
+        chain_idx : torch.LongTensor
+            Integers indices that designate ever residue to a chain.
+            Shape: n_batch x n_res
+        contact_idx : torch.LongTensor
+            Integers representing contact indices across all TERM residues.
+            Shape: n_batch x n_term_res
+
+        Returns
+        -------
+        etab : torch.FloatTensor
+            Dense kNN representation of the energy table, with :code:`E_idx`
+            denotating which energies correspond to which edge.
+            Shape: n_batch x n_res x k(=30 by default) x :code:`hparams['energies_output_dim']` (=400 by default)
+        E_idx : torch.LongTensor
+            Indices representing edges in the kNN graph.
+            Given node `res_idx`, the set of edges centered around that node are
+            given by :code:`E_idx[b_idx][res_idx]`, with the `i`-th closest node given by
+            :code:`E_idx[b_idx][res_idx][i]`.
+            Shape: n_batch x n_res x k(=30 by default)
+        """
         if self.hparams['use_terms']:
             node_embeddings, edge_embeddings = self.bot(msas,
                                                         features,
