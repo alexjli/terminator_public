@@ -4,8 +4,15 @@ dependencies:
     # Base depends
   - python
   - pip
-
-
+  - pytorch
+  - numpy
+  - pandas
+  - pytest
+  - scipy
+  - tensorboard
+  - tqdm
+  - seaborn
+  - matplotlib
 
     # Pip-only installs
   #- pip:
