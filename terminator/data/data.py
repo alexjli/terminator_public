@@ -237,8 +237,6 @@ class TERMDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
-        # sing_stats = [None]
-        # pair_stats = [None]
 
         for idx, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -254,8 +252,6 @@ class TERMDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
-            # sing_stats.append(convert(data['sing_stats']))
-            # pair_stats.append(convert(data['pair_stats']))
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -299,8 +295,6 @@ class TERMDataLoader(Sampler):
         return {
             'msas': msas,
             'features': features.float(),
-            # 'sing_stats':sing_stats,
-            # 'pair_stats':pair_stats,
             'ppoe': ppoe.float(),
             'seq_lens': seq_lens,
             'focuses': focuses,
@@ -564,8 +558,6 @@ class TERMLazyDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
-        # sing_stats = [None]
-        # pair_stats = [None]
 
         for idx, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -581,15 +573,6 @@ class TERMLazyDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
-            # sing_stats.append(convert(data['sing_stats']))
-            # pair_stats.append(convert(data['pair_stats']))
-        """
-        # detect if we have sing and pair stats
-        if sing_stats[0] == None:
-            sing_stats = None
-        if pair_stats[0] == None:
-            pair_stats == None
-        """
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -633,10 +616,6 @@ class TERMLazyDataLoader(Sampler):
         contact_idxs = pad_sequence(contact_idxs, batch_first=True)
         src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
         seqs = pad_sequence(seqs, batch_first=True)
-        """
-        if sing_stats:
-            sing_stats = pad_sequence(sing_stats, batch_first = True)
-        """
 
         # we do some padding so that tensor reshaping during batchifyTERM works
         max_aa = focuses.size(-1)
@@ -665,35 +644,10 @@ class TERMLazyDataLoader(Sampler):
                 arrs.append(torch.ones(l) * i)
             chain_idx.append(torch.cat(arrs, dim=-1))
         chain_idx = pad_sequence(chain_idx, batch_first=True)
-        """
-        # process pair stats if present
-        if pair_stats:
-            # need to be a little fancier for pair_stats
-            max_term_len = max(term_lens[0]) # technically not the best way but will still work
-            num_features = pair_stats[0].shape[-1]
-            num_batch = len(pair_stats)
-            pair_stats_padded = torch.zeros([num_batch,
-                                             max_all_term_lens,
-                                             max_term_len,
-                                             max_term_len,
-                                             num_features,
-                                             num_features])
-            for idx, cov_mat in enumerate(pair_stats):
-                num_terms = cov_mat.shape[0]
-                pair_stats_padded[idx,
-                                 :num_terms,
-                                 :max_term_len,
-                                 :max_term_len,
-                                 :num_features,
-                                 :num_features] = cov_mat
-            pair_stats = pair_stats_padded
-        """
 
         return {
             'msas': msas,
             'features': features.float(),
-            # 'sing_stats':sing_stats,
-            # 'pair_stats':pair_stats,
             'ppoe': ppoe.float(),
             'seq_lens': seq_lens,
             'focuses': focuses,

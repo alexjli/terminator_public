@@ -19,8 +19,6 @@ def generateDatasetParallel(in_folder,
                             cutoff=50,
                             num_cores=1,
                             update=True,
-                            stats=False,
-                            weight_fn="neg",
                             coords_only=False,
                             dummy_terms=None):
     print('num cores', num_cores)
@@ -38,8 +36,6 @@ def generateDatasetParallel(in_folder,
 
     process_func = functools.partial(dataGen,
                                      cutoff=cutoff,
-                                     stats=stats,
-                                     weight_fn=weight_fn,
                                      coords_only=coords_only,
                                      dummy_terms=dummy_terms)
 
@@ -74,7 +70,7 @@ def raise_error(error):
 
 
 # inner loop we wanna parallize
-def dataGen(file, folder, out_folder, cutoff, stats, weight_fn, coords_only, dummy_terms):
+def dataGen(file, folder, out_folder, cutoff, coords_only, dummy_terms):
     name = file[:-len(".red.pdb")]
     out_file = os.path.join(out_folder, name)
     print('out file', out_file)
@@ -85,8 +81,6 @@ def dataGen(file, folder, out_folder, cutoff, stats, weight_fn, coords_only, dum
             dumpTrainingTensors(name,
                                 out_path=out_file,
                                 cutoff=cutoff,
-                                stats=stats,
-                                weight_fn=weight_fn,
                                 coords_only=coords_only,
                                 dummy_terms=dummy_terms)
     except Exception as e:
