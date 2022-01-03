@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
 from .graph_features import S2SProteinFeatures as ProteinFeatures
-from .s2s_modules import MPNNLayer, TransformerLayer
+from .s2s_modules import NodeMPNNLayer, TransformerLayer
 from .utils import cat_neighbors_nodes, gather_nodes
 
 
@@ -48,7 +48,7 @@ class Struct2Seq(nn.Module):
         self.W_v = nn.Linear(node_features, hidden_dim, bias=True)
         self.W_e = nn.Linear(edge_features, hidden_dim, bias=True)
         self.W_s = nn.Embedding(vocab, hidden_dim)
-        layer = TransformerLayer if not use_mpnn else MPNNLayer
+        layer = TransformerLayer if not use_mpnn else NodeMPNNLayer
 
         # Encoder layers
         self.encoder_layers = nn.ModuleList([
