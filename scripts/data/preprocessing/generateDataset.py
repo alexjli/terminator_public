@@ -1,3 +1,42 @@
+"""Generate feature files for TERMinator.
+
+Usage:
+    .. code-block::
+
+        python generateDataset.py <input_folder> <output_folder> \\
+            --cutoff <matches_cutoff> \\
+            -n <num_processes> \\
+            [-u] \\ # update existing files
+            [--coords_only] \\
+            --dummy_terms [None, 'replace', 'include']
+
+    :code:`<input_folder>` should be structured as :code:`<input_folder>/<pdb_id>/<pdb_id>.<ext>`.
+    For full feature generation, :code:`ext` must include :code:`.dat` and :code:`.red.pdb`, while
+    if running using :code:`--coords_only` only :code:`.red.pdb` is required.
+    If you use :code:`scripts/data/preprocessing/cleanStructs.py`, this structure is automatically built.
+
+    :code:`<output_folder>` will be structured as :code:`<input_folder>/<pdb_id>/<pdb_id>.<ext>`,
+    where :code:`<ext>` includes :code:`.features`, which specifies protein and TERM features, and
+    :code:`.length`, which contains two integerss. The first integer specifies the number of TERM residues
+    in the protein, while the second integer specifies the sequence length of the protein.
+
+    :code:`--cutoff <matches_cutoff>` restricts the number of matches featurized to the top :code:`<matches_cutoff>`,
+    ranked by increasing RMSD.
+
+    :code:`[-u]` is an optional flag which, if specified, forces rewriting of existing feature files.
+
+    :code:`--coords_only` is an option flag which, if specified, generated only backbone-derived features.
+    Running this mode does not require prior TERM mining, but does require you clean the backbone using
+    :code:`scripts/data/preprocessing/cleanStructs.py`.
+
+    :code:`--dummy_terms` allows specifying how dummy TERMs are incorperated into features. Dummy TERMs are
+    constructs where there is one TERM match with a degenerate X sequence and structural features derived from
+    the target structure, By default, it is set to :code:`None`, or no dummy TERMs. If set to :code:`'replace'`,
+    only the dummy TERM is included. If set to :code:`'include'`, the first match is set to the dummy TERM match
+    and the remaining TERMs are those parsed from the :code:`.dat` file.
+
+See :code:`python generateDataset.py --help` for more info.
+"""
 import argparse
 import functools
 import glob
@@ -21,6 +60,27 @@ def generateDatasetParallel(in_folder,
                             update=True,
                             coords_only=False,
                             dummy_terms=None):
+    """Parallelize :code:`dataGen` over a list of files.
+
+    Args
+    ----
+    in_folder : str
+        Path to input directory in proper structure
+    out_folder : str
+        Path to the output folder
+    cutoff : int
+        Max number of TERMs to featurize
+    num_cores : int
+        Number of processes to parallelize with
+    update : bool
+        Whether or not to overwrite existing files
+    coords_only : bool
+        Whether to use only backbone-derived features
+    dummy_terms : str or None
+        Method by which to incorperate dummy TERMs. Options include :code:`'replace'`,
+        which means replacing TERM features with those derived from a dummy TERM, or
+        :code:`'include'`, which includes the dummy TERM into the mined TERM matches.
+    """
     print('num cores', num_cores)
     print(('warning! it seems that if subprocesses fail right now you don\'t get an error message. '
            'be wary of this if the number of files you\'re getting seems off'))
@@ -58,19 +118,37 @@ def generateDatasetParallel(in_folder,
                     continue
 
             res = pool.apply_async(process_func,
-                                   args=(file, folder, out_folder),
-                                   error_callback=raise_error)
+                                   args=(file, out_folder),
+                                   error_callback=_raise_error)
 
     pool.close()
     pool.join()
 
 
-def raise_error(error):
+def _raise_error(error):
+    """Wrapper for error handling without crashing"""
     traceback.print_exception(Exception, error, None)
 
 
 # inner loop we wanna parallize
-def dataGen(file, folder, out_folder, cutoff, coords_only, dummy_terms):
+def dataGen(file, out_folder, cutoff, coords_only, dummy_terms):
+    """Wrapper function for parallelization which deals with paths and other args.
+
+    Args
+    ----
+    file : str
+        The .red.pdb file for the protein to featurize.
+    out_folder : str
+        Path to the output folder
+    cutoff : int
+        Max number of TERMs to featurize
+    coords_only : bool
+        Whether to use only backbone-derived features
+    dummy_terms : str or None
+        Method by which to incorperate dummy TERMs. Options include :code:`'replace'`,
+        which means replacing TERM features with those derived from a dummy TERM, or
+        :code:`'include'`, which includes the dummy TERM into the mined TERM matches.
+    """
     name = file[:-len(".red.pdb")]
     out_file = os.path.join(out_folder, name)
     print('out file', out_file)
@@ -92,10 +170,8 @@ if __name__ == '__main__':
     # idek how to do real parallelism but this should fix the bug of stalling when processes crash
     mp.set_start_method("spawn")  # i should use context managers but low priority change
     parser = argparse.ArgumentParser('Generate features data files from dTERMen .dat files')
-    parser.add_argument(
-        'in_folder',
-        help='input folder containing .dat files in proper directory structure',
-    )
+    parser.add_argument('in_folder',
+                        help='input folder containing .dat files in proper directory structure')
     parser.add_argument('out_folder',
                         help='folder where features will be placed')
     parser.add_argument('--cutoff',
@@ -111,14 +187,6 @@ if __name__ == '__main__':
     parser.add_argument('-u',
                         dest='update',
                         help='if added, update existing files. else, files that already exist will not be overwritten',
-                        default=False,
-                        action='store_true')
-    parser.add_argument('--weight_fn',
-                        help='weighting function for rmsd to use when generating statistics',
-                        default='neg')
-    parser.add_argument('-s',
-                        dest='stats',
-                        help='if added, compute singleton and pair stats as features',
                         default=False,
                         action='store_true')
     parser.add_argument('--coords_only',

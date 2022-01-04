@@ -1,3 +1,15 @@
+"""Convert .pdb files into protein backbone .red.pdb files.
+
+Usage:
+    :code:`python cleanStructs.py <pdb_paths_file> <output_folder> -n <num_processes>`
+
+    :code:`<pdb_paths_file>` should be a file of paths to .pdb files, with one path per line
+
+    :code:`<output_folder>` will be where the outputted .red.pdb files are dumped, and will
+    be structured as :code:`<output_folder>/<pdb_id>/<pdb_id>.red.pdb`
+
+See :code:`python cleanStructs.py --help` for more info.
+"""
 import argparse
 import glob
 import json
@@ -11,10 +23,17 @@ import traceback
 import numpy as np
 
 
-def extractBackbone(filename, outpath, valid_elements=['N', 'CA', 'C', 'O']):
+def extractBackbone(filename, outpath):
+    """Given a PDB structure, extract the protein backbone atoms and dump it in a redesigned PDB file.
+
+    Args
+    ----
+    filename : str
+        Input .pdb file
+    outpath : str
+        Prefix to place the output file (.red.pdb will be appended)
     """
-    Given a PDB structure, extract the protein backbone atoms and dump it in a redesigned PDB file
-    """
+    valid_elements = ['N', 'CA', 'C', 'O']
     struct_dict = {}
     valid_entry_lines = []
     with open(filename, 'r') as fp:
@@ -78,12 +97,22 @@ def extractBackbone(filename, outpath, valid_elements=['N', 'CA', 'C', 'O']):
             fp.write(cur_line)
 
 
-def raise_error(error):
+def _raise_error(error):
+    """Wrapper for error handling without crashing"""
     traceback.print_exception(Exception, error, None)
 
 
 # inner loop we wanna parallize
 def dataGen(in_path, out_folder):
+    """Wrapper for :code:`extractBackbone` for path manipuation and error catching.
+
+    Args
+    ----
+    in_path : str
+        input .pdb to :code:`extractBackbone`
+    out_folder : str
+        output directory to dump .red.pdb files into
+    """
     name = os.path.basename(in_path)[:-len(".pdb")]
     data_folder = os.path.join(out_folder, name)
     if not os.path.isdir(data_folder):
@@ -100,6 +129,15 @@ def dataGen(in_path, out_folder):
 
 # when subprocesses fail you usually don't get an error...
 def generateCoordsDir(in_list, out_folder, num_cores=1):
+    """Parallelize :code:`dataGen` over a list of files.
+
+    Args
+    ----
+    in_list : list of paths
+        List of input paths to :code:`dataGen`.
+    out_folder : str
+        Path to the output folder
+    """
     print('num cores', num_cores)
     print(('warning! it seems that if subprocesses fail right now you don\'t get an error message. '
            'be wary of this if the number of files you\'re getting seems off'))
@@ -113,7 +151,7 @@ def generateCoordsDir(in_list, out_folder, num_cores=1):
     pool = mp.Pool(num_cores, maxtasksperchild=10)
     for in_file in in_list:
         in_file = os.path.abspath(in_file)
-        res = pool.apply_async(dataGen, args=(in_file, out_folder), error_callback=raise_error)
+        res = pool.apply_async(dataGen, args=(in_file, out_folder), error_callback=_raise_error)
 
     pool.close()
     pool.join()
@@ -125,9 +163,10 @@ if __name__ == '__main__':
     mp.set_start_method("spawn")  # i should use context managers but low priority change
     parser = argparse.ArgumentParser('Extract backbone from a list of PDB files')
     parser.add_argument('in_list_path',
-                        help='file that contains paths to PDB files to clean')
+                        help='file that contains paths to PDB files to clean, with one path per line.')
     parser.add_argument('out_folder',
-                        help='folder where cleaned .red.pdb files will be placed')
+                        help=('folder where cleaned .red.pdb files will be placed. '
+                              'folder organization is <out_folder>/<pdb_id>/<pdb_id>.red.pdb'))
     parser.add_argument('-n',
                         dest='num_cores',
                         help='number of cores to use',

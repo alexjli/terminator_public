@@ -1,3 +1,4 @@
+"""Functions that generate features from dTERMen files :code:`.dat` and :code:`.red.pdb`"""
 import glob
 import os
 import pickle
@@ -21,6 +22,31 @@ def dumpTrainingTensors(in_path,
                         save=True,
                         coords_only=False,
                         dummy_terms=None):
+    """Generate features from dTERMen :code:`.dat` and :code:`.red.pdb`, and
+    dump the output into a file if requested.
+
+    Args
+    ----
+    in_path : str
+        Prefix to :code:`.dat` and :code:`.red.pdb` files
+    out_path : str or None
+        Prefix to the output :code:`.features` and :code:`.length`. Can be None if :code:`save=False`.
+    cutoff : int, default=1000
+        Max number of TERMs to featurize
+    save : bool, default=True
+        Whether or not to save the training tensors
+    coords_only : bool, default=False
+        Whether to use only backbone-derived features
+    dummy_terms : str or None
+        Method by which to incorperate dummy TERMs. Options include :code:`'replace'`,
+        which means replacing TERM features with those derived from a dummy TERM, or
+        :code:`'include'`, which includes the dummy TERM into the mined TERM matches.
+
+    Returns
+    -------
+    dict
+        Dictionary of features for TERMinator
+    """
     if dummy_terms is not None:
         assert dummy_terms in ['replace', 'include'], f"dummy_terms={dummy_terms} is an invalid argument"
 
@@ -29,7 +55,7 @@ def dumpTrainingTensors(in_path,
 
     coords, _ = parseCoords(in_path + '.red.pdb', save=False)
     data = parseTERMdata(in_path + '.dat')
-    etab, self_etab, _ = parseEtab(in_path + '.etab', save=False)
+    # etab, self_etab, _ = parseEtab(in_path + '.etab', save=False)
 
     selection = data['selection']
 
@@ -195,8 +221,7 @@ def dumpTrainingTensors(in_path,
         }
 
     if save:
-        if not out_path:
-            out_path = ''
+        assert out_path, "out_path required if save=True"
 
         with open(out_path + '.features', 'wb') as fp:
             pickle.dump(output, fp)
@@ -208,12 +233,25 @@ def dumpTrainingTensors(in_path,
     return output
 
 
-def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
+def dumpCoordsTensors(in_path, out_path=None, save=True):
+    """Create a feature file based only on the coordinate information,
+    placing dummy arrays for all TERM based items.
+
+    Args
+    ----
+    in_path : str
+        Prefix to :code:`.red.pdb` file
+    out_path : str or None
+        Prefix to the output :code:`.features` and :code:`.length`. Can be None if :code:`save=False`.
+    save : bool, default=True
+        Whether or not to save the training tensors
+
+    Returns
+    -------
+    dict
+        Dictionary of features for TERMinator
     """
-    Create a feature file based only on the coordinate information,
-    placing dummy arrays for all TERM based items
-    """
-    in_file = in_path + ('.red.pdb' if red_pdb else '.pdb')
+    in_file = in_path + '.red.pdb'
     coords, seq = parseCoords(in_file + '.red.pdb', save=False)
 
     if len(coords) == 1:
@@ -244,6 +282,7 @@ def dumpCoordsTensors(in_path, out_path, red_pdb=True, save=True):
     }
 
     if save:
+        assert out_path, "out_path required if save=True"
         with open(out_path + '.features', 'wb') as fp:
             pickle.dump(output, fp)
         with open(out_path + '.length', 'w') as fp:

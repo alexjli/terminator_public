@@ -1,3 +1,12 @@
+"""Convert dTERMen .etab files to numpy arrays of Potts model parameters.
+
+Usage:
+    :code:`python dtermen2npEtabs.py <etab_paths_file> <output_folder> <num_processes>`
+
+    :code:`<etab_paths_file>` should be a file of paths to .pdb files, with one path per line
+
+See :code:`python dtermen2npEtabs.py --help` for more info.
+"""
 import argparse
 import glob
 import multiprocessing as mp
@@ -11,6 +20,15 @@ from ..data.preprocessing.parseEtab import parseEtab
 
 
 def parseEtabs(out_folder, in_list, num_cores=1):
+    """Parallelize :code:`dataGen` over a list of files.
+
+    Args
+    ----
+    in_list : list of paths
+        List of input paths to :code:`dataGen`.
+    out_folder : str
+        Path to the output folder
+    """
     print('num cores', num_cores)
     print(('warning! it seems that if subprocesses fail right now you don\'t get an error message. '
            'be wary of this if the number of files you\'re getting seems off'))
@@ -19,18 +37,28 @@ def parseEtabs(out_folder, in_list, num_cores=1):
     pool = mp.Pool(num_cores, maxtasksperchild=10)
 
     for filepath in in_list:
-        res = pool.apply_async(dataGen, args=(filepath, out_folder), error_callback=raise_error)
+        res = pool.apply_async(dataGen, args=(filepath, out_folder), error_callback=_raise_error)
 
     pool.close()
     pool.join()
 
 
-def raise_error(error):
+def _raise_error(error):
+    """Wrapper for error handling without crashing"""
     traceback.print_exception(Exception, error, None)
 
 
 # inner loop we wanna parallize
 def dataGen(filepath, out_folder):
+    """Wrapper for :code:`parseEtab` for path manipuation and error catching.
+
+    Args
+    ----
+    in_path : str
+        input .etab to :code:`parseEtab`
+    out_folder : str
+        output directory to dump .etab.npy files into
+    """
     name = filepath.split('/')[-1]
     out_file = os.path.join(out_folder, name)
     print('out file', out_file)
@@ -44,8 +72,9 @@ def dataGen(filepath, out_folder):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse dTERMen etabs and dump numpy versions')
+    parser.add_argument('in_list',
+                        help='file containing etab paths, with one etab path per line')
     parser.add_argument('out_folder', help='folder where numpy etabs will be placed')
-    parser.add_argument('in_list', help='file containing etab paths', default=None)
     parser.add_argument('num_cores', help='number of proceses to use', type=int, default=1)
     args = parser.parse_args()
 
