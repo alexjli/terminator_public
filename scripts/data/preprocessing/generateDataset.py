@@ -49,7 +49,10 @@ import time
 import traceback
 
 import numpy as np
-from .packageTensors import dumpCoordsTensors, dumpTrainingTensors
+
+# for autosummary import purposes
+sys.path.insert(0, os.path.dirname(__file__))
+from packageTensors import dumpCoordsTensors, dumpTrainingTensors
 
 
 # when subprocesses fail you usually don't get an error...

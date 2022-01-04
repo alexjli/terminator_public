@@ -2,15 +2,20 @@
 import glob
 import os
 import pickle
+import sys
 
 import numpy as np
-from .parseCoords import parseCoords
-from .parseEtab import parseEtab
-from .parseTERM import parseTERMdata
 from scipy.linalg import block_diag
 from scipy.special import softmax
 
 from terminator.utils.common import seq_to_ints
+
+# for autosummary import purposes
+sys.path.insert(0, os.path.dirname(__file__))
+from parseCoords import parseCoords
+from parseEtab import parseEtab
+from parseTERM import parseTERMdata
+
 
 NUM_AA = 21  # including X
 ZERO = 1e-10  # 0 is used for padding

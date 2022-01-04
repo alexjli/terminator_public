@@ -9,10 +9,13 @@ import traceback
 from shutil import copyfile
 
 import numpy as np
-from .search_utils import find_dtermen_folder
 from tqdm import tqdm
 
 from terminator.utils.common import AA_to_int, int_to_AA
+
+# for autosummary import purposes
+sys.path.insert(0, os.path.dirname(__file__))
+from search_utils import find_dtermen_folder
 
 
 # print to stderr

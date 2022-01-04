@@ -16,7 +16,9 @@ import sys
 import numpy as np
 
 # Code from preprocessing folder
-from ..data.preprocessing.parseEtab import parseEtab
+up_one_dir = os.path.dirname(os.path.dirname(__file__))
+sys.path.insert(0, up_one_dir)
+from data.preprocessing.parseEtab import parseEtab
 
 
 def parseEtabs(out_folder, in_list, num_cores=1):
