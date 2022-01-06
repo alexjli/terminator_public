@@ -3,6 +3,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from scipy.linalg import block_diag
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.checkpoint import checkpoint
@@ -14,7 +15,7 @@ from .term.struct.s2s import (S2STERMTransformerEncoder,
                               TERMGraphTransformerEncoder,
                               TERMGraphTransformerEncoder_cnkt)
 from .term.struct.self_attn import TERMTransformer, TERMTransformerLayer
-from .utils import aggregate_edges, cat_term_edge_endpoints, process_nan
+from .utils import aggregate_edges, batchify, BatchifyTERM, cat_term_edge_endpoints, process_nan
 
 NUM_AA = 21
 NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
@@ -68,6 +69,7 @@ class ResidueFeatures(nn.Module):
 
 
 # from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+# TODO: fix this to handle negative numbers
 class FocusEncoding(nn.Module):
     def __init__(self, hparams):
         super(FocusEncoding, self).__init__()

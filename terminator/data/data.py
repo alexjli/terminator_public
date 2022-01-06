@@ -182,7 +182,7 @@ class TERMDataLoader(Sampler):
             When :code:`batch_size=None, max_term_res>0, max_seq_tokens=None`,
             batch by fitting as many datapoints as possible with the total number of
             TERM residues included below `max_term_res`.
-            Calibrated using :code:`nn.DataParallel` two V100 GPUs.
+            Calibrated using :code:`nn.DataParallel` on two V100 GPUs.
         max_seq_tokens : int or None, default=None
             When :code:`batch_size=None, max_term_res=None, max_seq_tokens>0`,
             batch by fitting as many datapoints as possible with the total number of
@@ -448,7 +448,7 @@ def read_lens(in_folder, pdb_id, min_protein_len=30):
         seq_len = int(fp.readline().strip())
         if seq_len < min_protein_len:
             return None
-    return id, total_term_length, seq_len
+    return pdb_id, total_term_length, seq_len
 
 
 class LazyDataset(Dataset):
@@ -580,7 +580,7 @@ class TERMLazyDataLoader(Sampler):
             When :code:`batch_size=None, max_term_res>0, max_seq_tokens=None`,
             batch by fitting as many datapoints as possible with the total number of
             TERM residues included below `max_term_res`.
-            Calibrated using :code:`nn.DataParallel` two V100 GPUs.
+            Calibrated using :code:`nn.DataParallel` on two V100 GPUs.
         max_seq_tokens : int or None, default=None
             When :code:`batch_size=None, max_term_res=None, max_seq_tokens>0`,
             batch by fitting as many datapoints as possible with the total number of
