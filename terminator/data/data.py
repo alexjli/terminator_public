@@ -190,12 +190,13 @@ class TERMDataLoader(Sampler):
         """
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
-        if max_term_res > 0 and max_seq_tokens is None:
-            self.lengths = self.total_term_lengths
-        elif max_term_res is None and max_seq_tokens > 0:
+        assert not (max_term_res is None and max_seq_tokens is None), "Exactly one of max_term_res and max_seq_tokens must be None"
+        if max_term_res is None and max_seq_tokens > 0:
             self.lengths = self.seq_lengths
+        elif max_term_res > 0 and max_seq_tokens is None:
+            self.lengths = self.total_term_lengths
         else:
-            raise Exception("Exactly one of max_term_res and max_seq_tokens must be None")
+            raise ValueError("Exactly one of max_term_res and max_seq_tokens must be None")
         self.shuffle = shuffle
         self.sort_data = sort_data
         self.batch_shuffle = batch_shuffle
@@ -250,10 +251,10 @@ class TERMDataLoader(Sampler):
         # if batch_size is None, fit as many proteins we can into a batch
         # without overloading the GPU
         if self.batch_size is None:
-            if self.max_term_res > 0 and self.max_seq_tokens is None:
-                cap_len = self.max_term_res
-            elif self.max_term_res is None and self.max_seq_tokens > 0:
+            if self.max_term_res is None and self.max_seq_tokens > 0:
                 cap_len = self.max_seq_tokens
+            elif self.max_term_res > 0 and self.max_seq_tokens is None:
+                cap_len = self.max_term_res
 
             current_batch_lens = []
             total_data_len = 0
@@ -598,10 +599,11 @@ class TERMLazyDataLoader(Sampler):
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
-        if max_term_res > 0 and max_seq_tokens is None:
-            self.lengths = self.total_term_lengths
-        elif max_term_res is None and max_seq_tokens > 0:
+        assert not (max_term_res is None and max_seq_tokens is None), "Exactly one of max_term_res and max_seq_tokens must be None"
+        if max_term_res is None and max_seq_tokens > 0:
             self.lengths = self.seq_lengths
+        elif max_term_res > 0 and max_seq_tokens is None:
+            self.lengths = self.total_term_lengths
         else:
             raise Exception("Exactly one of max_term_res and max_seq_tokens must be None")
         self.shuffle = shuffle
@@ -664,10 +666,10 @@ class TERMLazyDataLoader(Sampler):
         # if batch_size is None, fit as many proteins we can into a batch
         # without overloading the GPU
         if self.batch_size is None:
-            if self.max_term_res > 0 and self.max_seq_tokens is None:
-                cap_len = self.max_term_res
-            elif self.max_term_res is None and self.max_seq_tokens > 0:
+            if self.max_term_res is None and self.max_seq_tokens > 0:
                 cap_len = self.max_seq_tokens
+            elif self.max_term_res > 0 and self.max_seq_tokens is None:
+                cap_len = self.max_term_res
 
             current_batch_lens = []
             total_data_len = 0
