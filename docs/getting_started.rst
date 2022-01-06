@@ -27,8 +27,8 @@ To generate feature files from this folder, use
 .. code-block::
 
   python scripts/data/preprocessing/generateDataset.py \
-      <input_data_folder> \
-      <output_features_folder> \
+      --in_folder <input_data_folder> \
+      --out_folder <output_features_folder> \
       -n <num_cores> \
       <-u if you want to overwrite existing feature files>
 
@@ -42,8 +42,8 @@ To generate feature files from your raw data, use
 .. code-block::
 
   python cleanStructs.py \
-      <pdb_paths_file> \
-      <output_folder> \
+      --in_list_path <pdb_paths_file> \
+      --out_folder <output_folder> \
       -n <num_processes>
 
 which will clean the PDB files listed in :code:`<pdb_paths_file>`. Be sure that <pdb_paths_file> is a file containing a list of PDB paths,
