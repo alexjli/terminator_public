@@ -1,3 +1,24 @@
+"""Perform inference with a trained TERMinator model.
+
+The resulting evaluated proteins will be dumped in :code:`<output_dir>` via
+a pickle file :code:`net.out`.
+
+Usage:
+    .. code-block::
+
+        python eval.py \\
+            --dataset <dataset_dir> \\
+            --model_dir <trained_model_dir> \\
+            --output_dir <output_dir> \\
+            [--subset <data_subset_file>] \\
+            [--dev <device>]
+
+    If :code:`subset` is not provided, the entire dataset :code:`dataset` will
+    be evaluated.
+
+See :code:`python eval.py --help` for more info.
+"""
+
 import argparse
 import copy
 import json
@@ -22,14 +43,17 @@ from terminator.utils.loop_utils import run_epoch
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Eval TERMinator Psuedoperplexity')
     parser.add_argument('--dataset',
-                        help='input folder .features files in proper directory structure')
+                        help='input folder .features files in proper directory structure',
+                        required=True)
+    parser.add_argument('--model_dir',
+                        help='trained model folder',
+                        required=True)
+    parser.add_argument('--output_dir',
+                        help='where to dump net.out',
+                        required=True)
     parser.add_argument('--subset',
                         help=('file specifiying subset of dataset to evaluate. '
                               'if none provided, the whole dataset folder will be evaluated'))
-    parser.add_argument('--output_dir',
-                        help='where to dump net.out')
-    parser.add_argument('--model_dir',
-                        help='trained model folder')
     parser.add_argument('--dev',
                         help='device to train on',
                         default='cuda:0')

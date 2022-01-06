@@ -1,3 +1,4 @@
+""" Functions to parse :code:`.etab` files."""
 import argparse
 import pickle
 
@@ -7,10 +8,38 @@ from terminator.utils.common import aa_to_int
 
 
 def parseEtab(filename, save=True):
-    """
-    Given an etab file, parse the corresponding Potts model parameters
-    This assumes that full chain protein etabs are provided
-    Will not work with etabs computed on partial chains
+    """Given an etab file, parse the corresponding Potts model parameters.
+
+    This assumes that full chain protein etabs are provided, so it is not designed to
+    work with etabs computed on partial chains.
+
+    Args
+    ====
+    filename : str
+        path to :code:`.etab` file
+    save ; bool, default=True
+        whether or not to save the outputs to a file
+
+    Returns
+    =======
+    potts_dict : dict
+        Sparse representation of etab that maps pairs of
+        (residue1_id : int, residue2_id : int) to 22 x 22 matrices representing
+        pair energies. Self energies are incorperated into the diagonals of
+        self-interaction matricies, with key (residue_id, residue_id). The dimension is 22 because
+        0 is used as a padding index and 21 is used to represent X for unknown residues.
+    potts_selfE : np.ndarray
+        Numpy array specifying self energies.
+        Shape: all_chains_length x 22.
+    potts : np.ndarray
+        Dense representation of potts model mapping pairs of residue ids
+        (the first two dimensions) to 22 x 22 matricies representing pair
+        energies. Self energies are incorperated into the diagonals of
+        self-interactions matricies. Edges are also duplicated e.g. interaction energies
+        between residues 1 and 2 can be found at both :code`potts[1][2]`
+        and :code:`potts[2][1]`.
+        Shape: all_chains_length x all_chains_length x 22 x 22
+
     """
 
     if filename.split('.')[-1] != 'etab':

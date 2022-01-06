@@ -1,3 +1,17 @@
+"""Submit a batch array job on SLURM to run multiple batched dTERMen jobs.
+
+Usage:
+    .. code-block::
+
+        python batch_arr_dTERMen.py \\
+            --output_dir <dir_containing_etabs_folder> \\
+            --pdb_root <pdb_root> \\
+            --dtermen_data <dtermen_data_root> \\
+            [--batch_size <batch_size>]
+
+See :code:`python batch_arr_dTERMen.py --help` for more info.
+"""
+
 import argparse
 import glob
 import os
@@ -15,11 +29,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Run dTERMen for testing.')
     parser.add_argument('--output_dir',
                         help='Output directory',
-                        default='test_run')
+                        required=True)
     parser.add_argument("--pdb_root",
-                        help="The root for all raw data PDB databases")
+                        help="The root for all raw data PDB databases",
+                        required=True)
     parser.add_argument('--dtermen_data',
-                        help="Root directory for dTERMen runs")
+                        help="Root directory for dTERMen runs",
+                        required=True)
     parser.add_argument('--batch_size',
                         help='number of dTERMen runs to run per node',
                         default=5,

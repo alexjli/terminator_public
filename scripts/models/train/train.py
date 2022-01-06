@@ -1,3 +1,29 @@
+"""Train TERMinator model.
+
+Usage:
+    .. code-block::
+
+        python train.py \\
+            --dataset <dataset_dir> \\
+            --hparams <hparams_file> \\
+            --run_dir <run_dir> \\
+            [--train <train_split_file>] \\
+            [--validation <val_split_file>] \\
+            [--test <test_split_file>] \\
+            [--out_dir <out_dir>] \\
+            [--dev <device>] \\
+            [--epochs <num_epochs>]
+            [--lazy]
+
+    If :code:`--out_dir <out_dir>` is not set, :code:`net.out` will be dumped
+    into :code:`<run_dir>`.
+
+    For any of the split files, if the option is not provided, :code:`train.py` will
+    look for them within :code:`<dataset_dir>`.
+
+See :code:`python train.py --help` for more info.
+"""
+
 import argparse
 import copy
 import json
@@ -11,8 +37,6 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.optim as optim
-from .default_hparams import DEFAULT_HPARAMS
-from .noam_opt import get_std_opt
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -21,6 +45,11 @@ from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset,
                                   TERMLazyDataLoader)
 from terminator.models.TERMinator import MultiChainTERMinator_gcnkt
 from terminator.utils.loop_utils import run_epoch
+
+# for autosummary import purposes
+sys.path.insert(0, os.path.dirname(__file__))
+from default_hparams import DEFAULT_HPARAMS
+from noam_opt import get_std_opt
 
 try:
     import horovod.torch as hvd
@@ -59,15 +88,15 @@ def main(args):
 
     # set up dataloaders
     train_ids = []
-    with open(os.path.join(args.dataset, args.train), 'r') as f:
+    with open(args.train, 'r') as f:
         for line in f:
             train_ids += [line[:-1]]
     validation_ids = []
-    with open(os.path.join(args.dataset, args.validation), 'r') as f:
+    with open(args.validation, 'r') as f:
         for line in f:
             validation_ids += [line[:-1]]
     test_ids = []
-    with open(os.path.join(args.dataset, args.test), 'r') as f:
+    with open(args.test, 'r') as f:
         for line in f:
             test_ids += [line[:-1]]
     if args.lazy:
@@ -238,33 +267,39 @@ if __name__ == '__main__':
     parser.add_argument('--dataset',
                         help='input folder .features files in proper directory structure.',
                         required=True)
-    parser.add_argument('--dev',
-                        help='device to train on',
-                        default='cuda:0')
-    parser.add_argument('--train',
-                        help='file with training dataset',
-                        default='train.in')
-    parser.add_argument('--validation',
-                        help='file with validation dataset',
-                        default='validation.in')
-    parser.add_argument('--test',
-                        help='file with test dataset',
-                        default='test.in')
+    parser.add_argument('--hparams',
+                        help='hparams file path',
+                        required=True)
     parser.add_argument('--run_dir',
                         help='path to place folder to store model files',
                         required=True)
+    parser.add_argument('--train',
+                        help='file with training dataset split')
+    parser.add_argument('--validation',
+                        help='file with validation dataset split')
+    parser.add_argument('--test',
+                        help='file with test dataset split')
     parser.add_argument('--out_dir',
-                        help='path to place test set eval results (e.g. net.out)')
+                        help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
+    parser.add_argument('--dev',
+                        help='device to train on',
+                        default='cuda:0')
     parser.add_argument('--epochs',
                         help='number of epochs to train for',
                         default=100,
                         type=int)
-    parser.add_argument('--hparams',
-                        help='hparams file path',
-                        required=True)
     parser.add_argument('--lazy',
                         help="use lazy data loading",
                         type=bool,
                         default=True)
     args = parser.parse_args()
+
+    # by default, if no splits are provided, read the splits from the dataset folder
+    if args.train is None:
+        args.train = os.path.join(args.dataset, 'train.in')
+    if args.validation is None:
+        args.validation = os.path.join(args.dataset, 'validation.in')
+    if args.test is None:
+        args.test = os.path.join(args.dataset, 'test.in')
+
     main(args)

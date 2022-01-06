@@ -1,7 +1,12 @@
 """Convert .pdb files into protein backbone .red.pdb files.
 
 Usage:
-    :code:`python cleanStructs.py <pdb_paths_file> <output_folder> -n <num_processes>`
+    .. code-block::
+
+        python cleanStructs.py \\
+            --in_list_path <pdb_paths_file> \\
+            --out_folder <output_folder> \\
+            [-n <num_processes>]
 
     :code:`<pdb_paths_file>` should be a file of paths to .pdb files, with one path per line
 
@@ -162,11 +167,13 @@ if __name__ == '__main__':
     # idek how to do real parallelism but this should fix the bug of stalling when processes crash
     mp.set_start_method("spawn")  # i should use context managers but low priority change
     parser = argparse.ArgumentParser('Extract backbone from a list of PDB files')
-    parser.add_argument('in_list_path',
-                        help='file that contains paths to PDB files to clean, with one path per line.')
-    parser.add_argument('out_folder',
+    parser.add_argument('--in_list_path',
+                        help='file that contains paths to PDB files to clean, with one path per line.',
+                        required=True)
+    parser.add_argument('--out_folder',
                         help=('folder where cleaned .red.pdb files will be placed. '
-                              'folder organization is <out_folder>/<pdb_id>/<pdb_id>.red.pdb'))
+                              'folder organization is <out_folder>/<pdb_id>/<pdb_id>.red.pdb'),
+                        required=True)
     parser.add_argument('-n',
                         dest='num_cores',
                         help='number of cores to use',

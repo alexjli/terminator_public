@@ -12,4 +12,8 @@ source ${CONDA_ROOT}/etc/profile.d/conda.sh
 conda activate terminator
 ulimit -s unlimited
 
-python train.py --dataset=DATASET --run_dir=OUTPUTDIR --hparams=HPARAMS
+python train.py \
+  --dataset=DATASET \
+  --hparams=HPARAMS \
+  --run_dir=OUTPUTDIR \
+  

@@ -3,25 +3,29 @@
 Usage:
     .. code-block::
 
-        python generateDataset.py <input_folder> <output_folder> \\
-            --cutoff <matches_cutoff> \\
-            -n <num_processes> \\
+        python generateDataset.py \\
+            --in_folder <input_folder> \\
+            --out_folder <output_folder> \\
+            [--cutoff <matches_cutoff>] \\
+            [-n <num_processes>] \\
             [-u] \\ # update existing files
             [--coords_only] \\
-            --dummy_terms [None, 'replace', 'include']
+            [--dummy_terms [None, 'replace', 'include']]
 
-    :code:`<input_folder>` should be structured as :code:`<input_folder>/<pdb_id>/<pdb_id>.<ext>`.
+    :code:`--in_folder <input_folder>` should be structured as :code:`<input_folder>/<pdb_id>/<pdb_id>.<ext>`.
     For full feature generation, :code:`ext` must include :code:`.dat` and :code:`.red.pdb`, while
     if running using :code:`--coords_only` only :code:`.red.pdb` is required.
     If you use :code:`scripts/data/preprocessing/cleanStructs.py`, this structure is automatically built.
 
-    :code:`<output_folder>` will be structured as :code:`<input_folder>/<pdb_id>/<pdb_id>.<ext>`,
+    :code:`--out_folder <output_folder>` will be structured as :code:`<input_folder>/<pdb_id>/<pdb_id>.<ext>`,
     where :code:`<ext>` includes :code:`.features`, which specifies protein and TERM features, and
     :code:`.length`, which contains two integerss. The first integer specifies the number of TERM residues
     in the protein, while the second integer specifies the sequence length of the protein.
 
     :code:`--cutoff <matches_cutoff>` restricts the number of matches featurized to the top :code:`<matches_cutoff>`,
-    ranked by increasing RMSD.
+    ranked by increasing RMSD. Defaults to 50.
+
+    :code:`-n <num_processes>` specifies how many processes to use while processing. Defaults to 1.
 
     :code:`[-u]` is an optional flag which, if specified, forces rewriting of existing feature files.
 
@@ -173,10 +177,12 @@ if __name__ == '__main__':
     # idek how to do real parallelism but this should fix the bug of stalling when processes crash
     mp.set_start_method("spawn")  # i should use context managers but low priority change
     parser = argparse.ArgumentParser('Generate features data files from dTERMen .dat files')
-    parser.add_argument('in_folder',
-                        help='input folder containing .dat files in proper directory structure')
-    parser.add_argument('out_folder',
-                        help='folder where features will be placed')
+    parser.add_argument('--in_folder',
+                        help='input folder containing .dat files in proper directory structure',
+                        required=True)
+    parser.add_argument('--out_folder',
+                        help='folder where features will be placed',
+                        required=True)
     parser.add_argument('--cutoff',
                         dest='cutoff',
                         help='max number of match entries per TERM',

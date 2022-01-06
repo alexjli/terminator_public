@@ -1,3 +1,4 @@
+"""Patch dTERMen runs with errors."""
 import argparse
 import glob
 import os

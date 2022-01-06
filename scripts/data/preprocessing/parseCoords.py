@@ -1,3 +1,4 @@
+"""Functions to parse :code:`.red.pdb` files"""
 import pickle
 
 import numpy as np
@@ -6,6 +7,25 @@ from terminator.utils.common import aa_three_to_one
 
 
 def parseCoords(filename, save=True):
+    """ Parse coordinates from :code:`.red.pdb` files, and dump in
+    files if specified.
+
+    Args
+    ====
+    filename : str
+        path to :code:`.red.pdb` file
+
+    save : bool, default=True
+        whether or not to dump the results
+
+    Returns
+    =======
+    chain_tensors : dict
+        Dictionary mapping chain IDs to arrays of atomic coordinates.
+
+    seq : str
+        Sequence of all chains concatenated.
+    """
     chain_dict = {}
     with open(filename, 'r') as fp:
         for line in fp:

@@ -1,3 +1,14 @@
+"""Parse the results of all dTERMen runs ran in a directory and create a summary csv.
+
+Usage:
+    .. code-block::
+
+        python summarize_results.py \\
+            --output_dir <folder_containing_dTERMen_runs> \\
+            --dtermen_data <dtermen_data_root>
+
+See :code:`python summarize_results.py --help` for more info.
+"""
 import argparse
 import glob
 import os
@@ -11,9 +22,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse all results.')
     parser.add_argument('--output_dir',
                         help='Output directory',
-                        default='test_run')
+                        required=True)
     parser.add_argument('--dtermen_data',
-                        help="Root directory for dTERMen runs")
+                        help="Root directory for dTERMen runs",
+                        required=True)
     args = parser.parse_args()
 
     output_path = os.path.join(args.output_dir, 'etabs')

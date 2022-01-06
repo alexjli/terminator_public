@@ -1,3 +1,16 @@
+"""Parse output of TERMinator into :code:`.etab` files for use in MST.
+
+Usage:
+    .. code-block::
+
+        python to_etab.py \\
+            --output_dir <folder_with_net.out> \\
+            --dtermen_data <dtermen_data_root> \\
+            --num_cores <num_processes> \\
+            [-u]
+
+See :code:`python to_etab.py --help` for more info.
+"""
 import argparse
 import json
 import multiprocessing as mp
@@ -20,10 +33,12 @@ from search_utils import find_dtermen_folder
 
 # print to stderr
 def eprint(*args, **kwargs):
+    """Print to stderr rather than stdout"""
     print(*args, file=sys.stderr, **kwargs)
 
 
-def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
+def _to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
+    """Wrapper for _to_etab_file that does error handling"""
     try:
         return to_etab_file(etab_matrix, E_idx, idx_dict, out_path)
     except Exception as e:
@@ -35,6 +50,26 @@ def to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
 
 # should work for multi-chain proteins now
 def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
+    """Write an :code:`.etab` file based on the fed in matrix and other indexing factors.
+
+    Args
+    ====
+    etab_matrix : np.ndarray
+        Etab outputted by TERMinator
+    E_idx : np.ndarray
+        Indexing matrix associated with :code:`etab_matrix`
+    idx_dict : dict
+        Index conversion dictionary outputted by :code:`get_idx_dict`
+    out_path : str
+        Path to write the etab to
+
+    Returns
+    =======
+    bool
+        Whether or not the parsing occured without errors
+    out_path : str
+        The output path fed in
+    """
     out_file = open(out_path, 'w')
 
     # etab matrix: l x k x 20 x 20
@@ -99,6 +134,23 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
 
 
 def get_idx_dict(pdb, chain_filter=None):
+    """From a :code:`.red.pdb` file, generate a dictionary mapping indices used within TERMinator
+    to indices used by the :code:`.red.pdb` file.
+
+    Args
+    ====
+    pdb : str
+        path to :code:`.red.pdb` file
+    chain_filter : list of str or None
+        only parse chains from :code:`chain_filter`. If :code:`None`, parse
+        all chains
+
+    Returns
+    =======
+    idx_dict : dict
+        Dictionary mapping indices used within TERMinator
+        to indices used by the :code:`.red.pdb` file.
+    """
     idx_dict = {}
     with open(pdb, 'r') as fp:
         current_idx = 0
@@ -121,7 +173,7 @@ def get_idx_dict(pdb, chain_filter=None):
                 raise e
 
             if chain_filter:
-                if chain != chain_filter:
+                if chain not in chain_filter:
                     continue
 
             if (chain, residx) not in idx_dict.values():
@@ -135,12 +187,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Generate etabs')
     parser.add_argument('--output_dir',
                         help='output directory',
-                        default='test_run')
+                        required=True)
+    parser.add_argument("--dtermen_data",
+                        help="Root directory for all dTERMen runs",
+                        required=True)
     parser.add_argument('--num_cores',
                         help='number of processes for parallelization',
                         default=1)
-    parser.add_argument("--dtermen_data",
-                        help="Root directory for all dTERMen runs")
     parser.add_argument('-u',
                         dest='update',
                         help='flag for force updating etabs',
@@ -179,15 +232,17 @@ if __name__ == '__main__':
             continue
 
         def check_worked(res):
+            """Update progress bar per iteration"""
             worked, out_path = res
             pbar.update()
             if not worked:
                 not_worked.append(out_path)
 
         def raise_error(error):
+            """Propogate error upwards"""
             raise error
 
-        res = pool.apply_async(to_etab_file_wrapper,
+        res = pool.apply_async(_to_etab_file_wrapper,
                                args=(etab, E_idx, idx_dict, out_path),
                                callback=check_worked,
                                error_callback=raise_error)

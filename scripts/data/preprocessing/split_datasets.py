@@ -1,3 +1,4 @@
+"""Split dataset into multiple training folds"""
 import argparse
 import glob
 import os

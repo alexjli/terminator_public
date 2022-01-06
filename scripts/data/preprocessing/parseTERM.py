@@ -1,3 +1,4 @@
+"""Functions to parse TERM data from :code:`.dat` files"""
 import argparse
 import json
 import os
@@ -12,10 +13,22 @@ HEAD_LEN = len('* TERM ')
 
 
 def parseTERMdata(filename):
-    """Function that parses all relavent data from TERM data dumps
+    """Function that parses all relavent data from TERM data dumps.
 
     Returns the sequence numerically encoded, the selection,
-    full sequence ppoe, and all TERMs found
+    full sequence ppoe, and all TERMs found.
+
+    Args
+    ====
+    filename : str
+        path to :code:`.dat` file
+
+    Returns
+    ======
+    output : dict
+        Dictionary containing information about the dTERMen run e.g. sequence,
+        structural information, and chain lengths, as well as a list of
+        all data mined from TERM matches.
     """
     fp = open(filename, 'r')
 
@@ -70,6 +83,23 @@ def parseTERMdata(filename):
 
 
 def _parseTERM(fp, lastline):
+    """Helper function that parses a singluar TERM within the :code:`.dat` file.
+
+    Args
+    ====
+    fp : open file pointer
+        file which currently points to the beginning of a TERM
+    lastline : str
+        the contents of the last line that the previous fp pointed to
+
+    Returns
+    =======
+    term_dict : dict
+        Dictionary containing TERM match information, such as sequences, RMSD, and
+        structural information such as torsion angles and environment values.
+    current_line : str
+        The last line read from fp.
+    """
     term_dict = {}
     # idx: index of TERM
     term_dict['idx'] = int(lastline.strip().split(' ')[-1])
@@ -106,10 +136,21 @@ def _parseTERM(fp, lastline):
 
 
 def contact_idx(focus):
-    """
-    Assign an index based on how close you are to the central element used to create the TERM
-    We set 0 to the central element, increment as you go N->C, decrement as you go C->N
+    """Assign an index per TERM residue based on how close you are to the central element used to create the TERM.
+
+    We set 0 to the central element, increment as you go N->C, decrement as you go C->N.
     Central element is middle residue for a first order TERM, central contact for second order TERM
+
+    Args
+    ====
+    focus : list of int
+        List of ints representing global indices (e.g. within the protein)
+        for residues in a TERM.
+
+    Returns
+    =======
+    list of int
+        Context indices derived from the focus
     """
     l = len(focus)
     # if all residues are consecutive, first order TERM

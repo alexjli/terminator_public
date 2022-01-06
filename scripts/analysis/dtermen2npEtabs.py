@@ -1,7 +1,12 @@
 """Convert dTERMen .etab files to numpy arrays of Potts model parameters.
 
 Usage:
-    :code:`python dtermen2npEtabs.py <etab_paths_file> <output_folder> <num_processes>`
+    .. code-block::
+
+        python dtermen2npEtabs.py \\
+            --in_list_path <etab_paths_file> \\
+            --out_folder <output_folder> \\
+            -n <num_processes>
 
     :code:`<etab_paths_file>` should be a file of paths to .pdb files, with one path per line
 
@@ -74,13 +79,20 @@ def dataGen(filepath, out_folder):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse dTERMen etabs and dump numpy versions')
-    parser.add_argument('in_list',
-                        help='file containing etab paths, with one etab path per line')
-    parser.add_argument('out_folder', help='folder where numpy etabs will be placed')
-    parser.add_argument('num_cores', help='number of proceses to use', type=int, default=1)
+    parser.add_argument('--in_list_path',
+                        help='file containing etab paths, with one etab path per line',
+                        required=True)
+    parser.add_argument('--out_folder',
+                        help='folder where numpy etabs will be placed',
+                        required=True)
+    parser.add_argument('-n',
+                        dest='num_cores',
+                        help='number of proceses to use',
+                        type=int,
+                        default=1)
     args = parser.parse_args()
 
-    with open(args.in_list) as fp:
+    with open(args.in_list_path) as fp:
         in_list = [l.strip() for l in fp]
 
     parseEtabs(args.out_folder, in_list, num_cores=args.num_cores)
