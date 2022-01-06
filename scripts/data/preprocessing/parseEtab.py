@@ -4,7 +4,7 @@ import pickle
 
 import numpy as np
 
-from terminator.utils.common import aa_to_int
+from terminator.utils.common import AA_to_int
 
 
 def parseEtab(filename, save=True):
@@ -60,7 +60,7 @@ def parseEtab(filename, save=True):
             resid = idx // 20
             id_to_resid[id] = resid
 
-            residue = aa_to_int(l[1])
+            residue = AA_to_int(l[1])
             E = float(l[2])
 
             selfE.append({'resid': resid, 'residue': residue, 'E': E})
@@ -72,8 +72,8 @@ def parseEtab(filename, save=True):
             resid0 = id_to_resid[id0]
             resid1 = id_to_resid[id1]
 
-            residue0 = aa_to_int(l[2])
-            residue1 = aa_to_int(l[3])
+            residue0 = AA_to_int(l[2])
+            residue1 = AA_to_int(l[3])
             E = float(l[4])
 
             pairE.append({

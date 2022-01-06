@@ -58,9 +58,24 @@ def load_file(in_folder, pdb_id, min_protein_len=30):
 
 
 class TERMDataset():
-    """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure"""
+    """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure.
+
+    Attributes
+    ----
+    dataset : list
+        list of tuples containing features, TERM length, and sequence length
+    shuffle_idx : list
+        array of indices for the dataset, for shuffling
+    """
     def __init__(self, in_folder, pdb_ids=None, min_protein_len=30, num_processes=32):
         """
+        Initializes current TERM dataset by reading in feature files.
+
+        Reads in all feature files from the given directory, using multiprocessing
+        with the provided number of processes. Stores the features, the TERM length,
+        and the sequence length as a tuple representing the data. Can read from PDB ids or
+        file paths directly. Uses the given protein length as a cutoff.
+
         Args
         ----
         in_folder : str
@@ -125,13 +140,29 @@ class TERMDataset():
             self.shuffle_idx = np.arange(len(self.dataset))
 
     def shuffle(self):
-        """Shuffle the current dataset"""
+        """Shuffle the current dataset."""
         np.random.shuffle(self.shuffle_idx)
 
     def __len__(self):
+        """Returns length of the given dataset."""
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        """Extract a given item with provided index.
+
+        Args
+        ----
+        idx : int
+            Index of item to return.
+        Returns
+        ----
+        data : dict
+            Data from TERM file (as dict)
+        total_term_len : int
+            Sum of lengths of all TERMs
+        seq_len : int
+            Length of protein sequence
+        """
         data_idx = self.shuffle_idx[idx]
         if isinstance(data_idx, list):
             return [self.dataset[i] for i in data_idx]
@@ -190,7 +221,8 @@ class TERMDataLoader(Sampler):
         """
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
-        assert not (max_term_res is None and max_seq_tokens is None), "Exactly one of max_term_res and max_seq_tokens must be None"
+        assert not (max_term_res is None
+                    and max_seq_tokens is None), "Exactly one of max_term_res and max_seq_tokens must be None"
         if max_term_res is None and max_seq_tokens > 0:
             self.lengths = self.seq_lengths
         elif max_term_res > 0 and max_seq_tokens is None:
@@ -599,7 +631,8 @@ class TERMLazyDataLoader(Sampler):
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
-        assert not (max_term_res is None and max_seq_tokens is None), "Exactly one of max_term_res and max_seq_tokens must be None"
+        assert not (max_term_res is None
+                    and max_seq_tokens is None), "Exactly one of max_term_res and max_seq_tokens must be None"
         if max_term_res is None and max_seq_tokens > 0:
             self.lengths = self.seq_lengths
         elif max_term_res > 0 and max_seq_tokens is None:
