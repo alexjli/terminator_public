@@ -94,6 +94,12 @@ if __name__ == '__main__':
         hparams['num_pair_stats'] = 0
     if "contact_idx" not in hparams.keys():
         hparams['contact_idx'] = False
+    if "fe_dropout" not in hparams.keys():
+        hparams['fe_dropout'] = 0.1
+    if "fe_max_len" not in hparams.keys():
+        hparams['fe_max_len'] = 1000
+    if "cie_dropout" not in hparams.keys():
+        hparams['cie_dropout'] = 0.1
 
     terminator = MultiChainTERMinator_gcnkt(hparams=hparams, device=dev)
     terminator = nn.DataParallel(terminator)

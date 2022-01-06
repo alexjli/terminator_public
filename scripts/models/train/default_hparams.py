@@ -86,11 +86,8 @@ Parameters
     contact_idx : bool, default=True
         Whether or not to include contact indices in computation
 
-    fe_dropout : float, default=0.1
+    cie_dropout : float, default=0.1
         Dropout rate for sinusoidal encoding of contact index
-
-    fe_max_len : int, default=1000
-        Max integer that can be sinusoidally encoded
 
     transformer_dropout : float, default=0.1
         Dropout rate for Transformers used in the TERM Information Condensor
@@ -213,8 +210,7 @@ DEFAULT_HPARAMS = {
     'matches_num_heads': 4,  #
     'k_neighbors': 30,  #
     'contact_idx': True,  #
-    'fe_dropout': 0.1,  #
-    'fe_max_len': 1000,  #
+    'cie_dropout': 0.1,  #
     'transformer_dropout': 0.1,  #
     'term_use_mpnn': True,  #
     'energies_protein_features': 'full',  #

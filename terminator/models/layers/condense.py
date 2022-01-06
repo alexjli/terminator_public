@@ -69,28 +69,26 @@ class ResidueFeatures(nn.Module):
 
 
 # from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-# TODO: fix this to handle negative numbers
-class FocusEncoding(nn.Module):
+class ContactIndexEncoding(nn.Module):
     def __init__(self, hparams):
-        super(FocusEncoding, self).__init__()
+        super().__init__()
         self.hparams = hparams
-        self.dropout = nn.Dropout(p=hparams['fe_dropout'])
+        self.dropout = nn.Dropout(p=hparams['cie_dropout'])
         self.hidden_dim = hparams['term_hidden_dim']
         hdim = self.hidden_dim
 
-        pe = torch.zeros(hparams['fe_max_len'], hdim)
-        position = torch.arange(0, hparams['fe_max_len'], dtype=torch.double).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, hdim, 2).double() * (-math.log(10000.0) / hdim))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
-
     def forward(self, focuses, mask=None):
-        fe = self.pe[focuses, :]
+        dev = focuses.device
+        hdim = self.hidden_dim
+        cie = torch.zeros(list(focuses.shape) + [hdim]).to(dev)
+        position = focuses.unsqueeze(-1)
+        div_term = torch.exp(torch.arange(0, hdim, 2).double() * (-math.log(10000.0) / hdim)).to(dev)
+        cie[:, :, 0::2] = torch.sin(position * div_term)
+        cie[:, :, 1::2] = torch.cos(position * div_term)
         if mask is not None:
-            fe = fe * mask.unsqueeze(-1).float()
+            cie = cie * mask.unsqueeze(-1).float()
 
-        return self.dropout(fe)
+        return self.dropout(cie)
 
 
 def covariation_features(matches, term_lens, rmsds, mask, eps=1e-8):
@@ -182,15 +180,12 @@ class EdgeFeatures(nn.Module):
         return self.W(cov_features)
 
 
-# TODO: differential positional encodings
-
-
 class CondenseMSA(nn.Module):
     def __init__(self, hparams, device='cuda:0', track_nans=True):
         super(CondenseMSA, self).__init__()
         self.hparams = hparams
         self.embedding = ResidueFeatures(hparams=self.hparams)
-        self.fe = FocusEncoding(hparams=self.hparams)
+        self.cie = ContactIndexEncoding(hparams=self.hparams)
         if hparams['matches'] == 'resnet':
             self.matches = Conv1DResNet(hparams=self.hparams)
         elif hparams['matches'] == 'transformer':
@@ -269,7 +264,7 @@ class CondenseMSA(nn.Module):
         if self.hparams['matches_linear']:
             batched_flat_terms = condensed_matches
         else:
-            batched_flat_terms = self.fe(condensed_matches, focuses, mask=~src_key_mask)
+            batched_flat_terms = self.cie(condensed_matches, focuses, mask=~src_key_mask)
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(batched_flat_terms, term_lens)
         # also reshape the mask
@@ -316,7 +311,7 @@ class MultiChainCondenseMSA(nn.Module):
         super(MultiChainCondenseMSA, self).__init__()
         self.hparams = hparams
         self.embedding = ResidueFeatures(hparams=self.hparams)
-        self.fe = FocusEncoding(hparams=self.hparams)
+        self.cie = ContactIndexEncoding(hparams=self.hparams)
         if hparams['matches'] == 'resnet':
             self.matches = Conv1DResNet(hparams=self.hparams)
         elif hparams['matches'] == 'transformer':
@@ -386,7 +381,7 @@ class MultiChainCondenseMSA(nn.Module):
         if self.hparams['matches_linear']:
             batched_flat_terms = condensed_matches
         else:
-            batched_flat_terms = self.fe(condensed_matches, focuses, mask=~src_key_mask)
+            batched_flat_terms = self.cie(condensed_matches, focuses, mask=~src_key_mask)
         # reshape batched flat terms into batches of terms
         batchify_terms = self.batchify(batched_flat_terms, term_lens)
         # also reshape the mask
@@ -472,7 +467,7 @@ class MultiChainCondenseMSA_g(nn.Module):
         self.batchify = BatchifyTERM()
         self.term_features = TERMProteinFeatures(edge_features=h_dim, node_features=h_dim)
         if hparams['contact_idx']:
-            self.fe = FocusEncoding(hparams=self.hparams)
+            self.cie = ContactIndexEncoding(hparams=self.hparams)
 
         # project target ppoe to hidden dim
         self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, h_dim)
@@ -624,7 +619,7 @@ class MultiChainCondenseMSA_g(nn.Module):
                 raise RuntimeError("nan in term cov feature gen")
 
         if self.hparams['contact_idx']:
-            contact_idx = self.fe(contact_idx, ~src_key_mask)
+            contact_idx = self.cie(contact_idx, ~src_key_mask)
             contact_idx = self.batchify(contact_idx, term_lens)
             if not self.hparams['term_mpnn_linear']:
                 # big transform
