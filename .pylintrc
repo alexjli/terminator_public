@@ -315,6 +315,8 @@ good-names=i,
            fp,
            X,
            Y,
+           B,
+           l
 
 # Good variable names regexes, separated by a comma. If names match any regex,
 # they will always be accepted

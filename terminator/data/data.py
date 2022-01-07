@@ -11,7 +11,6 @@ import random
 
 import numpy as np
 import torch
-from scipy.linalg import block_diag
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
@@ -146,7 +145,13 @@ class TERMDataset():
         np.random.shuffle(self.shuffle_idx)
 
     def __len__(self):
-        """Returns length of the given dataset."""
+        """Returns length of the given dataset.
+
+        Returns
+        -------
+        int
+            length of dataset
+        """
         return len(self.dataset)
 
     def __getitem__(self, idx):
@@ -425,7 +430,7 @@ class TERMDataLoader(Sampler):
         ppoe = []
         contact_idxs = []
 
-        for idx, data in enumerate(batch):
+        for _, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
             features.append(convert(data['features']).transpose(0, 1))
             msas.append(convert(data['msas']).transpose(0, 1))
@@ -496,15 +501,24 @@ class TERMDataLoader(Sampler):
         }
 
     def __len__(self):
+        """Returns length of dataset, i.e. number of batches.
+
+        Returns
+        -------
+        int
+            length of dataset.
+        """
         return len(self.clusters)
 
     def __iter__(self):
+        """Allows iteration over dataset."""
         if self.shuffle or self.semi_shuffle:
             self._cluster()
             np.random.shuffle(self.clusters)
         for batch in self.clusters:
             yield batch
 
+    # pylint: disable=no-self-use
     def _featurize(self, batch, device):
         """ Pack and pad coords in batch into torch tensors
 
@@ -527,13 +541,13 @@ class TERMDataLoader(Sampler):
         """
         B = len(batch)
         lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
-        L_max = max(lengths)
-        X = np.zeros([B, L_max, 4, 3])
+        l_max = max(lengths)
+        X = np.zeros([B, l_max, 4, 3])
 
         # Build the batch
         for i, x in enumerate(batch):
             l = x.shape[0]
-            x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
+            x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
             X[i, :, :, :] = x_pad
 
         # Mask
@@ -550,6 +564,7 @@ class TERMDataLoader(Sampler):
 # needs to be outside of object for pickling reasons (?)
 def read_lens(in_folder, pdb_id, min_protein_len=30):
     """ Reads the lengths specified in the proper .length file and return them.
+
     If the read sequence length is less than :code:`min_protein_len`, instead return None.
 
     Args
@@ -560,9 +575,18 @@ def read_lens(in_folder, pdb_id, min_protein_len=30):
         PDB ID to load.
     min_protein_len : int
         minimum cutoff for loading TERM file.
+    Returns
+    -------
+    pdb_id : str
+        PDB ID that was loaded
+    total_term_length : int
+        number of TERMS in file
+    seq_len : int
+        sequence length of file, or None if sequence length is less than :code:`min_protein_len`
     """
     path = f"{in_folder}/{pdb_id}/{pdb_id}.length"
-    with open(path) as fp:
+    # pylint: disable=unspecified-encoding
+    with open(path, 'rt') as fp:
         total_term_length = int(fp.readline().strip())
         seq_len = int(fp.readline().strip())
         if seq_len < min_protein_len:
@@ -571,9 +595,26 @@ def read_lens(in_folder, pdb_id, min_protein_len=30):
 
 
 class LazyDataset(Dataset):
-    """TERM Dataset that loads the paths to feature files into a Pytorch Dataset-like structure"""
+    """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure.
+
+    Unlike TERMDataset, this just loads feature filenames, not actual features.
+
+    Attributes
+    ----
+    dataset : list
+        list of tuples containing feature filenames, TERM length, and sequence length
+    shuffle_idx : list
+        array of indices for the dataset, for shuffling
+    """
     def __init__(self, in_folder, pdb_ids=None, min_protein_len=30, num_processes=32):
         """
+        Initializes current TERM dataset by reading in feature files.
+
+        Reads in all feature files from the given directory, using multiprocessing
+        with the provided number of processes. Stores the feature filenames, the TERM length,
+        and the sequence length as a tuple representing the data. Can read from PDB ids or
+        file paths directly. Uses the given protein length as a cutoff.
+
         Args
         ----
         in_folder : str
@@ -587,55 +628,57 @@ class LazyDataset(Dataset):
         """
         self.dataset = []
 
-        pool = mp.Pool(num_processes)
+        with mp.Pool(num_processes) as pool:
 
-        if pdb_ids:
-            print("Loading feature file paths")
-            progress = tqdm(total=len(pdb_ids))
+            if pdb_ids:
+                print("Loading feature file paths")
+                progress = tqdm(total=len(pdb_ids))
 
-            def update_progress(res):
-                progress.update(1)
+                def update_progress(res):
+                    del res
+                    progress.update(1)
 
-            res_list = [
-                pool.apply_async(read_lens, (in_folder, id),
-                                 kwds={"min_protein_len": min_protein_len},
-                                 callback=update_progress) for id in pdb_ids
-            ]
-            pool.close()
-            pool.join()
-            progress.close()
-            for res in res_list:
-                data = res.get()
-                if data is not None:
-                    id, total_term_length, seq_len = data
-                    filename = f"{in_folder}/{id}/{id}.features"
-                    self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
-        else:
-            print("Loading feature file paths")
+                res_list = [
+                    pool.apply_async(read_lens, (in_folder, pdb_id),
+                                     kwds={"min_protein_len": min_protein_len},
+                                     callback=update_progress) for pdb_id in pdb_ids
+                ]
+                pool.close()
+                pool.join()
+                progress.close()
+                for res in res_list:
+                    data = res.get()
+                    if data is not None:
+                        pdb_id, total_term_length, seq_len = data
+                        filename = f"{in_folder}/{pdb_id}/{pdb_id}.features"
+                        self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
+            else:
+                print("Loading feature file paths")
 
-            filelist = list(glob.glob('{}/*/*.features'.format(in_folder)))
-            progress = tqdm(total=len(filelist))
+                filelist = list(glob.glob(f'{in_folder}/*/*.features'))
+                progress = tqdm(total=len(filelist))
 
-            def update_progress(res):
-                progress.update(1)
+                def update_progress(res):
+                    del res
+                    progress.update(1)
 
-            # get pdb_ids
-            pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
+                # get pdb_ids
+                pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
 
-            res_list = [
-                pool.apply_async(read_lens, (in_folder, id),
-                                 kwds={"min_protein_len": min_protein_len},
-                                 callback=update_progress) for id in pdb_ids
-            ]
-            pool.close()
-            pool.join()
-            progress.close()
-            for res in res_list:
-                data = res.get()
-                if data is not None:
-                    id, total_term_length, seq_len = data
-                    filename = f"{in_folder}/{id}/{id}.features"
-                    self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
+                res_list = [
+                    pool.apply_async(read_lens, (in_folder, pdb_id),
+                                     kwds={"min_protein_len": min_protein_len},
+                                     callback=update_progress) for pdb_id in pdb_ids
+                ]
+                pool.close()
+                pool.join()
+                progress.close()
+                for res in res_list:
+                    data = res.get()
+                    if data is not None:
+                        pdb_id, total_term_length, seq_len = data
+                        filename = f"{in_folder}/{pdb_id}/{pdb_id}.features"
+                        self.dataset.append((os.path.abspath(filename), total_term_length, seq_len))
 
         self.shuffle_idx = np.arange(len(self.dataset))
 
@@ -644,18 +687,86 @@ class LazyDataset(Dataset):
         np.random.shuffle(self.shuffle_idx)
 
     def __len__(self):
+        """Returns length of the given dataset.
+
+        Returns
+        -------
+        int
+            length of dataset
+        """
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        """Extract a given item with provided index.
+
+        Args
+        ----
+        idx : int
+            Index of item to return.
+        Returns
+        ----
+        data : dict
+            Data from TERM file (as dict)
+        total_term_len : int
+            Sum of lengths of all TERMs
+        seq_len : int
+            Length of protein sequence
+        """
         data_idx = self.shuffle_idx[idx]
         if isinstance(data_idx, list):
             return [self.dataset[i] for i in data_idx]
-        else:
-            return self.dataset[data_idx]
+        return self.dataset[data_idx]
 
 
 class TERMLazyDataLoader(Sampler):
-    """BatchSampler/Dataloader helper class for TERM data using LazyDataset"""
+    """BatchSampler/Dataloader helper class for TERM data using LazyDataset.
+
+    Attributes
+    ----------
+    dataset : LazyDataset
+        Dataset to batch.
+    size : int
+        Length of dataset
+    batch_size : int or None, default=4
+        Size of batches created. If variable sized batches are desired, set to None.
+    sort_data : bool, default=False
+        Create deterministic batches by sorting the data according to the
+        specified length metric and creating batches from the sorted data.
+        Incompatible with :code:`shuffle=True` and :code:`semi_shuffle=True`.
+    shuffle : bool, default=True
+        Shuffle the data completely before creating batches.
+        Incompatible with :code:`sort_data=True` and :code:`semi_shuffle=True`.
+    semi_shuffle : bool, default=False
+        Sort the data according to the specified length metric,
+        then partition the data into :code:`semi_shuffle_cluster_size`-sized partitions.
+        Within each partition perform a complete shuffle. The upside is that
+        batching with similar lengths reduces padding making for more efficient computation,
+        but the downside is that it does a less complete shuffle.
+    semi_shuffle_cluster_size : int, default=500
+        Size of partition to use when :code:`semi_shuffle=True`.
+    batch_shuffle : bool, default=True
+        If set to :code:`True`, shuffle samples within a batch.
+    drop_last : bool, default=False
+        If set to :code:`True`, drop the last samples if they don't form a complete batch.
+    max_term_res : int or None, default=55000
+        When :code:`batch_size=None, max_term_res>0, max_seq_tokens=None`,
+        batch by fitting as many datapoints as possible with the total number of
+        TERM residues included below `max_term_res`.
+        Calibrated using :code:`nn.DataParallel` on two V100 GPUs.
+    max_seq_tokens : int or None, default=None
+        When :code:`batch_size=None, max_term_res=None, max_seq_tokens>0`,
+        batch by fitting as many datapoints as possible with the total number of
+        sequence residues included below `max_seq_tokens`.
+    term_matches_cutoff : int or None, default=None
+        Use the top :code:`term_matches_cutoff` TERM matches for featurization.
+        If :code:`None`, apply no cutoff.
+    term_dropout : str or None, default=None
+        Let `t` be the number of TERM matches in the given datapoint.
+        Select a random int `n` from 1 to `t`, and take a random subset `n`
+        of the given TERM matches to keep. If :code:`term_dropout='keep_first'`,
+        keep the first match and choose `n-1` from the rest.
+        If :code:`term_dropout='all'`, choose `n` matches from all matches.
+    """
     def __init__(self,
                  dataset,
                  batch_size=4,
@@ -670,6 +781,11 @@ class TERMLazyDataLoader(Sampler):
                  term_matches_cutoff=None,
                  term_dropout=None):
         """
+        Reads in and processes a given dataset.
+
+        Given the provided dataset, load all the data. Then cluster the data using
+        the provided method, either shuffled or sorted and then shuffled.
+
         Args
         ----
         dataset : LazyDataset
@@ -739,7 +855,6 @@ class TERMLazyDataLoader(Sampler):
         self.term_dropout = term_dropout
 
         assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        # assert not (batch_size is None and (max_term_res <= 0)), "max_term_res>0 required when using variable size batches"
         # an assert for myself but i'm not sure if this is provably true
         # assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
@@ -747,8 +862,16 @@ class TERMLazyDataLoader(Sampler):
         self._cluster()
 
     def _cluster(self):
-        """ Shuffle data and make clusters of indices corresponding to
-        batches of data. """
+        """ Shuffle data and make clusters of indices corresponding to batches of data.
+
+        This method speeds up training by sorting data points with similar TERM lengths
+        together, if :code:`sort_data` or :code:`semi_shuffle` are on. Under `sort_data`,
+        the data is sorted by length. Under `semi_shuffle`, the data is broken up
+        into clusters based on length and shuffled within the clusters. Otherwise,
+        it is randomly shuffled. Data is then loaded into batches based on the number
+        of proteins that will fit into the GPU without overloading it, based on
+        :code:`max_term_res` or :code:`max_seq_tokens`.
+        """
 
         # if we sort data, use sorted indexes instead
         if self.sort_data:
@@ -815,8 +938,10 @@ class TERMLazyDataLoader(Sampler):
         self.clusters = clusters
 
     def _package(self, b_idx):
-        """ Given a set of indices to datapoints within :code:`self.dataset`,
-            package the corresponding datapoints into the proper tensors.
+        """Package the given datapoints into tensors based on provided indices.
+
+        Tensors are extracted from the data and padded. Coordinates are featurized
+        and the length of TERMs and chain IDs are added to the data.
 
         Args
         ----
@@ -826,7 +951,31 @@ class TERMLazyDataLoader(Sampler):
         Returns
         -------
         dict
-            Collection of batched features required for running TERMinator
+            Collection of batched features required for running TERMinator. This contains:
+
+            - :code:`msas` - the multiple sequence alignment
+
+            - :code:`features` - the TERM features
+
+            - :code:`ppoe` - ???
+
+            - :code:`seq_lens` - the lengths of the sequences
+
+            - :code:`focuses` - ???
+
+            - :code:`contact_idxs` - contact indices
+
+            - :code:`src_key_mask` - ???
+
+            - :code:`X` - coordinates
+
+            - :code:`x_mask` - ???
+
+            - :code:`seqs` - the sequences
+
+            - :code:`ids` - the PDB id??
+
+            - :code:`chain_idx` - the chain IDs
         """
         if self.batch_shuffle:
             b_idx_copy = b_idx[:]
@@ -850,7 +999,7 @@ class TERMLazyDataLoader(Sampler):
         ppoe = []
         contact_idxs = []
 
-        for idx, data in enumerate(batch):
+        for data in batch:
             # have to transpose these two because then we can use pad_sequence for padding
             features.append(convert(data['features']).transpose(0, 1))
             msas.append(convert(data['msas']).transpose(0, 1))
@@ -899,7 +1048,7 @@ class TERMLazyDataLoader(Sampler):
                     msas = torch.cat([msas[:, 0:1], sample_msas], dim=1)
             elif self.term_dropout == 'all':
                 features = torch.gather(features, 1, sample_idx_features)
-                msaa = torch.gather(msas, 1, sample_idx_msas)
+                msas = torch.gather(msas, 1, sample_idx_msas)
 
         # we can pad these using standard pad_sequence
         ppoe = pad_sequence(ppoe, batch_first=True)
@@ -909,6 +1058,7 @@ class TERMLazyDataLoader(Sampler):
         seqs = pad_sequence(seqs, batch_first=True)
 
         # we do some padding so that tensor reshaping during batchifyTERM works
+        # TODO(alex): explain this
         max_aa = focuses.size(-1)
         for lens in term_lens:
             max_term_len = max(lens)
@@ -922,7 +1072,7 @@ class TERMLazyDataLoader(Sampler):
         # pad with -1 so we can store term_lens in a tensor
         seq_lens = torch.tensor(seq_lens)
         max_all_term_lens = max([len(term) for term in term_lens])
-        for i in range(len(term_lens)):
+        for i, _ in enumerate(term_lens):
             term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
         term_lens = torch.tensor(term_lens)
 
@@ -930,9 +1080,8 @@ class TERMLazyDataLoader(Sampler):
         chain_idx = []
         for c_lens in chain_lens:
             arrs = []
-            for i in range(len(c_lens)):
-                l = c_lens[i]
-                arrs.append(torch.ones(l) * i)
+            for i, c_len in enumerate(c_lens):
+                arrs.append(torch.ones(c_len) * i)
             chain_idx.append(torch.cat(arrs, dim=-1))
         chain_idx = pad_sequence(chain_idx, batch_first=True)
 
@@ -953,16 +1102,25 @@ class TERMLazyDataLoader(Sampler):
         }
 
     def __len__(self):
+        """Returns length of dataset, i.e. number of batches.
+
+        Returns
+        -------
+        int
+            length of dataset.
+        """
         return len(self.clusters)
 
     def __iter__(self):
+        """Allows iteration over dataset."""
         if self.shuffle or self.semi_shuffle:
             self._cluster()
             np.random.shuffle(self.clusters)
         for batch in self.clusters:
             yield batch
 
-    def _featurize(self, batch, device, shuffle_fraction=0.):
+    # pylint: disable=no-self-use
+    def _featurize(self, batch, device):
         """ Pack and pad coords in batch into torch tensors
 
         Args
@@ -984,13 +1142,13 @@ class TERMLazyDataLoader(Sampler):
         """
         B = len(batch)
         lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
-        L_max = max(lengths)
-        X = np.zeros([B, L_max, 4, 3])
+        l_max = max(lengths)
+        X = np.zeros([B, l_max, 4, 3])
 
         # Build the batch
         for i, x in enumerate(batch):
             l = x.shape[0]
-            x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
+            x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
             X[i, :, :, :] = x_pad
 
         # Mask
@@ -1005,6 +1163,23 @@ class TERMLazyDataLoader(Sampler):
 
 
 class TERMLazyDistributedSampler(DistributedSampler):
+    """Sampler for TERMLazyDataloader designed for distributed learning.
+
+    Attributes
+    ----------
+    sampler : TERMLazyDataLoader
+        DataLoader wrapped in this class for use when loading data.
+    size : int
+        Length of dataset
+    filepaths : list
+        Length of files in dataset
+    lengths : list
+        Length of TERM lengths in dataset
+    batch_size : int or None, default=4
+        Size of batches created. If variable sized batches are desired, set to None.
+    clusters : list
+        List of clusters to use as batches.
+    """
     def __init__(self,
                  dataset,
                  num_replicas,
@@ -1015,13 +1190,43 @@ class TERMLazyDistributedSampler(DistributedSampler):
                  drop_last=False,
                  batch_size=4,
                  max_total_data_lens=55000):
-        super.init(dataset, num_replicas, rank, shuffle=shuffle, seed=seed, drop_last=drop_last)
+        """Initializes wrapper LazyDataLoader and selects datapoints based on replica number.
+
+        Given the provided dataset, the sampler starts with the :code:`rank` index and skips
+        by :code:`num_replicas`. It then processes those datapoints as the LazyDataLoader would,
+        by clustering them into batches of similar size and storing the clusters.
+
+        Args
+        ----
+        dataset : LazyDataset
+            Dataset to batch.
+        num_replicas : int
+            Number of replicas.
+        rank : int
+            Rank of this replica, should be between :code:`0` and :code:`num_replicas - 1`.
+        batch_size : int or None, default=4
+            Size of batches created. If variable sized batches are desired, set to None.
+        shuffle : bool, default=False
+            Shuffle the data completely before creating batches.
+        batch_shuffle : bool, default=True
+            If set to :code:`True`, shuffle samples within a batch.
+        seed : int, default=0
+            Random seed used to shuffle the sampler if :code:`shuffle = True`.
+        drop_last : bool, default=False
+            If set to :code:`True`, drop the last samples if they don't form a complete batch.
+        max_total_data_lens: int or None, default=55000
+            When :code:`batch_size=None`,
+            batch by fitting as many datapoints as possible with the total number of
+            TERM residues included below `max_term_res`.
+            Calibrated using :code:`nn.DataParallel` on two V100 GPUs.
+        """
+        super().__init__(dataset, num_replicas, rank, shuffle=shuffle, seed=seed, drop_last=drop_last)
         self.sampler = TERMLazyDataLoader(dataset,
                                           batch_size=batch_size,
                                           shuffle=shuffle,
-                                          batch_shuffle=shuffle,
+                                          batch_shuffle=batch_shuffle,
                                           drop_last=drop_last,
-                                          max_total_data_lens=max_total_data_lens)
+                                          max_term_res=max_total_data_lens)
         self.size = len(dataset)
         self.filepaths, self.lengths = zip(*dataset)
         self.batch_size = batch_size
@@ -1029,10 +1234,10 @@ class TERMLazyDistributedSampler(DistributedSampler):
 
         indices = list(range(len(self.filepaths)))
         if not self.drop_last:
-            indices += indices[:(self.total_size - len(indices))]
+            indices += indices[:(self.size - len(indices))]
         else:
-            indices = indices[:self.total_size]
-        indices = indices[self.rank:self.total_size:self.num_replicas]
+            indices = indices[:self.size]
+        indices = indices[self.rank:self.size:self.num_replicas]
         self.filepaths = self.filepaths[indices]
         self.lengths = self.lengths[indices]
 
@@ -1041,13 +1246,13 @@ class TERMLazyDistributedSampler(DistributedSampler):
 
         # if batch_size is None, fit as many proteins we can into a batch
         # without overloading the GPU
-        if max_total_data_len > 0 and batch_size is None:
+        if max_total_data_lens > 0 and batch_size is None:
             current_batch_lens = []
             total_data_len = 0
             for count, idx in enumerate(sorted_idx):
                 current_batch_lens.append(self.lengths[idx])
                 total_data_len = max(current_batch_lens) * len(current_batch_lens)
-                if count != 0 and total_data_len > max_total_data_len:
+                if count != 0 and total_data_len > max_total_data_lens:
                     clusters.append(batch)
                     batch = [idx]
                     current_batch_lens = [self.lengths[idx]]
@@ -1068,9 +1273,11 @@ class TERMLazyDistributedSampler(DistributedSampler):
         self.clusters = clusters
 
     def _package(self, b_idx):
-        self.sample._package(b_idx)
+        # pylint: disable=protected-access
+        self.sampler._package(b_idx)
 
     def __iter__(self):
+        """Iterate through batches."""
         if self.shuffle:
             rng = np.random.RandomState(seed=self.seed + self.epoch)
             rng.shuffle(self.clusters)
