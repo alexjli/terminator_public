@@ -17,7 +17,7 @@ from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
-# pylint: disable=no-member
+# pylint: disable=no-member, not-callable
 
 
 def convert(tensor):
@@ -96,6 +96,7 @@ class TERMDataset():
                 progress = tqdm(total=len(pdb_ids))
 
                 def update_progress(res):
+                    del res
                     progress.update(1)
 
                 res_list = [
@@ -114,10 +115,11 @@ class TERMDataset():
             else:
                 print("Loading feature file paths")
 
-                filelist = list(glob.glob('{}/*/*.features'.format(in_folder)))
+                filelist = list(glob.glob(f'{in_folder}/*/*.features'))
                 progress = tqdm(total=len(filelist))
 
                 def update_progress(res):
+                    del res
                     progress.update(1)
 
                 # get pdb_ids
@@ -166,12 +168,56 @@ class TERMDataset():
         data_idx = self.shuffle_idx[idx]
         if isinstance(data_idx, list):
             return [self.dataset[i] for i in data_idx]
-        else:
-            return self.dataset[data_idx]
+        return self.dataset[data_idx]
 
 
 class TERMDataLoader(Sampler):
-    """BatchSampler/Dataloader helper class for TERM data using TERMDataset"""
+    """BatchSampler/Dataloader helper class for TERM data using TERMDataset.
+
+    Attributes
+    ----
+    size: int
+        Length of the dataset
+    dataset: List
+        List of features from TERM dataset
+    total_term_lengths: List
+        List of TERM lengths from the given dataset
+    seq_lengths: List
+        List of sequence lengths from the given dataset
+    lengths: List
+        TERM lengths or sequence lengths, depending on
+        whether :code:`max_term_res` or :code:`max_seq_tokens` is set.
+    batch_size : int or None, default=4
+        Size of batches created. If variable sized batches are desired, set to None.
+    sort_data : bool, default=False
+        Create deterministic batches by sorting the data according to the
+        specified length metric and creating batches from the sorted data.
+        Incompatible with :code:`shuffle=True` and :code:`semi_shuffle=True`.
+    shuffle : bool, default=True
+        Shuffle the data completely before creating batches.
+        Incompatible with :code:`sort_data=True` and :code:`semi_shuffle=True`.
+    semi_shuffle : bool, default=False
+        Sort the data according to the specified length metric,
+        then partition the data into :code:`semi_shuffle_cluster_size`-sized partitions.
+        Within each partition perform a complete shuffle. The upside is that
+        batching with similar lengths reduces padding making for more efficient computation,
+        but the downside is that it does a less complete shuffle.
+    semi_shuffle_cluster_size : int, default=500
+        Size of partition to use when :code:`semi_shuffle=True`.
+    batch_shuffle : bool, default=True
+        If set to :code:`True`, shuffle samples within a batch.
+    drop_last : bool, default=False
+        If set to :code:`True`, drop the last samples if they don't form a complete batch.
+    max_term_res : int or None, default=55000
+        When :code:`batch_size=None, max_term_res>0, max_seq_tokens=None`,
+        batch by fitting as many datapoints as possible with the total number of
+        TERM residues included below `max_term_res`.
+        Calibrated using :code:`nn.DataParallel` on two V100 GPUs.
+    max_seq_tokens : int or None, default=None
+        When :code:`batch_size=None, max_term_res=None, max_seq_tokens>0`,
+        batch by fitting as many datapoints as possible with the total number of
+        sequence residues included below `max_seq_tokens`.
+    """
     def __init__(self,
                  dataset,
                  batch_size=4,
@@ -184,6 +230,11 @@ class TERMDataLoader(Sampler):
                  max_term_res=55000,
                  max_seq_tokens=None):
         """
+        Reads in and processes a given dataset.
+
+        Given the provided dataset, load all the data. Then cluster the data using
+        the provided method, either shuffled or sorted and then shuffled.
+
         Args
         ----
         dataset : TERMDataset
@@ -217,7 +268,8 @@ class TERMDataLoader(Sampler):
         max_seq_tokens : int or None, default=None
             When :code:`batch_size=None, max_term_res=None, max_seq_tokens>0`,
             batch by fitting as many datapoints as possible with the total number of
-            sequence residues included below `max_seq_tokens`.
+            sequence residues included below `max_seq_tokens`. Exactly one of :code:`max_term_res`
+            and :code:`max_seq_tokens` must be None.
         """
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
@@ -245,8 +297,16 @@ class TERMDataLoader(Sampler):
         self._cluster()
 
     def _cluster(self):
-        """ Shuffle data and make clusters of indices corresponding to
-        batches of data. """
+        """ Shuffle data and make clusters of indices corresponding to batches of data.
+
+        This method speeds up training by sorting data points with similar TERM lengths
+        together, if :code:`sort_data` or :code:`semi_shuffle` are on. Under `sort_data`,
+        the data is sorted by length. Under `semi_shuffle`, the data is broken up
+        into clusters based on length and shuffled within the clusters. Otherwise,
+        it is randomly shuffled. Data is then loaded into batches based on the number
+        of proteins that will fit into the GPU without overloading it, based on
+        :code:`max_term_res` or :code:`max_seq_tokens`.
+        """
 
         # if we sort data, use sorted indexes instead
         if self.sort_data:
@@ -313,8 +373,10 @@ class TERMDataLoader(Sampler):
         self.clusters = clusters
 
     def _package(self, b_idx):
-        """ Given a set of indices to datapoints within :code:`self.dataset`,
-            package the corresponding datapoints into the proper tensors.
+        """Package the given datapoints into tensors based on provided indices.
+
+        Tensors are extracted from the data and padded. Coordinates are featurized
+        and the length of TERMs and chain IDs are added to the data.
 
         Args
         ----
@@ -324,7 +386,31 @@ class TERMDataLoader(Sampler):
         Returns
         -------
         dict
-            Collection of batched features required for running TERMinator
+            Collection of batched features required for running TERMinator. This contains:
+
+            - :code:`msas` - the multiple sequence alignment
+
+            - :code:`features` - the TERM features
+
+            - :code:`ppoe` - ???
+
+            - :code:`seq_lens` - the lengths of the sequences
+
+            - :code:`focuses` - ???
+
+            - :code:`contact_idxs` - contact indices
+
+            - :code:`src_key_mask` - ???
+
+            - :code:`X` - coordinates
+
+            - :code:`x_mask` - ???
+
+            - :code:`seqs` - the sequences
+
+            - :code:`ids` - the PDB id??
+
+            - :code:`chain_idx` - the chain IDs
         """
         # wrap up all the tensors with proper padding and masks
 
@@ -366,6 +452,7 @@ class TERMDataLoader(Sampler):
         seqs = pad_sequence(seqs, batch_first=True)
 
         # we do some padding so that tensor reshaping during batchifyTERM works
+        # TODO(alex): explain this since I have no idea what's going on
         max_aa = focuses.size(-1)
         for lens in term_lens:
             max_term_len = max(lens)
@@ -379,7 +466,7 @@ class TERMDataLoader(Sampler):
         # pad with -1 so we can store term_lens in a tensor
         seq_lens = torch.tensor(seq_lens)
         max_all_term_lens = max([len(term) for term in term_lens])
-        for i in range(len(term_lens)):
+        for i, _ in enumerate(term_lens):
             term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
         term_lens = torch.tensor(term_lens)
 
@@ -387,9 +474,8 @@ class TERMDataLoader(Sampler):
         chain_idx = []
         for c_lens in chain_lens:
             arrs = []
-            for i in range(len(c_lens)):
-                l = c_lens[i]
-                arrs.append(torch.ones(l) * i)
+            for i, chain_len in enumerate(c_lens):
+                arrs.append(torch.ones(chain_len) * i)
             chain_idx.append(torch.cat(arrs, dim=-1))
         chain_idx = pad_sequence(chain_idx, batch_first=True)
 

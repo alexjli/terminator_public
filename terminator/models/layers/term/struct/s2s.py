@@ -5,8 +5,7 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
 # TODO: imports
-from terminator.models.layers.s2s_modules import (Normalize,
-                                                  PositionWiseFeedForward)
+from terminator.models.layers.s2s_modules import (Normalize, PositionWiseFeedForward)
 from terminator.models.layers.utils import *
 
 

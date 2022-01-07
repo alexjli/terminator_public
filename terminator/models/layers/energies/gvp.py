@@ -10,8 +10,7 @@ from matplotlib import pyplot as plt
 
 from ..graph_features import GVPProteinFeatures
 from ..gvp import GVP, GVPEdgeLayer, GVPNodeLayer
-from ..utils import (cat_gvp_edge_endpoints, gather_edges, gather_nodes,
-                     merge_duplicate_pairE)
+from ..utils import (cat_gvp_edge_endpoints, gather_edges, gather_nodes, merge_duplicate_pairE)
 
 
 class GVPPairEnergies(nn.Module):

@@ -8,18 +8,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
-from terminator.models.layers.graph_features import (MultiChainProteinFeatures,
-                                                     S2SProteinFeatures)
-from terminator.models.layers.s2s_modules import (EdgeMPNNLayer,
-                                                  EdgeTransformerLayer,
-                                                  NodeMPNNLayer,
-                                                  TransformerLayer)
+from terminator.models.layers.graph_features import (MultiChainProteinFeatures, S2SProteinFeatures)
+from terminator.models.layers.s2s_modules import (EdgeMPNNLayer, EdgeTransformerLayer, NodeMPNNLayer, TransformerLayer)
 from terminator.models.layers.struct2seq import Struct2Seq
-from terminator.models.layers.utils import (cat_edge_endpoints,
-                                            cat_neighbors_nodes, gather_edges,
-                                            gather_nodes,
-                                            merge_duplicate_edges,
-                                            merge_duplicate_pairE)
+from terminator.models.layers.utils import (cat_edge_endpoints, cat_neighbors_nodes, gather_edges, gather_nodes,
+                                            merge_duplicate_edges, merge_duplicate_pairE)
 
 
 class PairEnergies(nn.Module):

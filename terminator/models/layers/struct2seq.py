@@ -51,17 +51,13 @@ class Struct2Seq(nn.Module):
         layer = TransformerLayer if not use_mpnn else NodeMPNNLayer
 
         # Encoder layers
-        self.encoder_layers = nn.ModuleList([
-            layer(hidden_dim, hidden_dim * 2, dropout=dropout)
-            for _ in range(num_encoder_layers)
-        ])
+        self.encoder_layers = nn.ModuleList(
+            [layer(hidden_dim, hidden_dim * 2, dropout=dropout) for _ in range(num_encoder_layers)])
 
         # Decoder layers
         self.forward_attention_decoder = forward_attention_decoder
-        self.decoder_layers = nn.ModuleList([
-            layer(hidden_dim, hidden_dim * 3, dropout=dropout)
-            for _ in range(num_decoder_layers)
-        ])
+        self.decoder_layers = nn.ModuleList(
+            [layer(hidden_dim, hidden_dim * 3, dropout=dropout) for _ in range(num_decoder_layers)])
         self.W_out = nn.Linear(hidden_dim, num_letters, bias=True)
 
         # Initialization

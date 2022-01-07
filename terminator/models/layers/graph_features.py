@@ -5,7 +5,6 @@ import torch.nn.functional as F
 
 from .gvp import GVP
 from .utils import gather_edges, gather_nodes, gather_term_nodes
-
 """
     struct2seq features
     adapted from https://github.com/jingraham/neurips19-graph-protein-design
@@ -139,6 +138,7 @@ class S2SProteinFeatures(nn.Module):
         """
         def _R(i, j):
             return R[:, :, :, i, j]
+
         # Simple Wikipedia version
         # en.wikipedia.org/wiki/Rotation_matrix#Quaternion
         # For other options see math.stackexchange.com/questions/2074316/calculating-rotation-axis-from-rotation-matrix
@@ -521,6 +521,7 @@ class TERMProteinFeatures(S2SProteinFeatures):
         """
         def _R(i, j):
             return R[:, :, :, :, i, j]
+
         # Simple Wikipedia version
         # en.wikipedia.org/wiki/Rotation_matrix#Quaternion
         # For other options see math.stackexchange.com/questions/2074316/calculating-rotation-axis-from-rotation-matrix

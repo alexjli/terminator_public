@@ -209,7 +209,7 @@ indent-string='    '
 max-line-length=200
 
 # Maximum number of lines in a module.
-max-module-lines=1000
+max-module-lines=10000
 
 # Allow the body of a class to be on the same line as the declaration if body
 # contains single statement.
@@ -312,7 +312,9 @@ good-names=i,
            f,
            x,
            y,
-           fp
+           fp,
+           X,
+           Y,
 
 # Good variable names regexes, separated by a comma. If names match any regex,
 # they will always be accepted

@@ -6,10 +6,7 @@ from terminator.utils.loop_utils import nlcpl as _nlcpl
 
 from .layers.condense import CondenseMSA, MultiChainCondenseMSA_g
 from .layers.energies.gvp import GVPPairEnergies
-from .layers.energies.s2s import (AblatedPairEnergies,
-                                  AblatedPairEnergies_g,
-                                  MultiChainPairEnergies_g,
-                                  PairEnergies,
+from .layers.energies.s2s import (AblatedPairEnergies, AblatedPairEnergies_g, MultiChainPairEnergies_g, PairEnergies,
                                   PairEnergiesFullGraph)
 # pylint: disable=no-member
 
