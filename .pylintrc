@@ -316,7 +316,11 @@ good-names=i,
            X,
            Y,
            B,
-           l
+           l,
+           TERMinator,
+           E_idx,
+           MultiChainTERMinator_gcnkt,
+           p
 
 # Good variable names regexes, separated by a comma. If names match any regex,
 # they will always be accepted

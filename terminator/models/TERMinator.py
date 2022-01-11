@@ -1,6 +1,6 @@
 """TERMinator models"""
 import torch
-import torch.nn as nn
+from torch import nn
 
 from terminator.utils.loop_utils import nlcpl as _nlcpl
 
@@ -8,13 +8,29 @@ from .layers.condense import CondenseMSA, MultiChainCondenseMSA_g
 from .layers.energies.gvp import GVPPairEnergies
 from .layers.energies.s2s import (AblatedPairEnergies, AblatedPairEnergies_g, MultiChainPairEnergies_g, PairEnergies,
                                   PairEnergiesFullGraph)
-# pylint: disable=no-member
+# pylint: disable=no-member, not-callable, arguments-differ
 
 
 class TERMinator(nn.Module):
-    """Barebone TERMinator model for single-chain proteins"""
+    """Barebone TERMinator model for single-chain proteins.
+
+    Attributes
+    ----------
+    dev: str
+        Device representing where the model is held
+    hparams: dict
+        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+    bot: CondenseMSA
+        TERM information condenser network
+    top: PairEnergies (or appropriate variant thereof)
+        GNN Potts Model Encoder network"""
     def __init__(self, hparams, device='cuda:0'):
         """
+        Initializes TERMinator according to given parameters.
+
+        Also prints out the hidden dimensionality of the TERM information condenser
+        and that of the GNN Potts Model Encoder.
+
         Args
         ----
         hparams : dict
@@ -37,13 +53,18 @@ class TERMinator(nn.Module):
         else:
             self.top = PairEnergies(hparams=self.hparams).to(self.dev)
 
-        print(self.bot.hparams['term_hidden_dim'], self.top.hparams['energies_hidden_dim'])
+        print(
+            f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}'
+        )
 
         self.prior = torch.zeros(20).view(1, 1, 20).to(self.dev)
 
     def forward(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, sequence, max_seq_len,
                 ppoe):
-        """ Compute the negative composite psuedolikelihood of sequences given featurized structures
+        """ Compute the negative composite psuedolikelihood of sequences given featurized structures.
+
+        See :code:`terminator.utils.loop_utils` for a description of the negative composite
+        psuedolikelihood computation.
 
         Args
         ----
@@ -89,7 +110,9 @@ class TERMinator(nn.Module):
         return nlcpl, avg_prob, counter
 
     def potts(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe):
-        """Compute the Potts model parameters for the structure
+        """Compute the Potts model parameters for the structure.
+
+        Runs the full TERMinator network for prediction.
 
         Args
         ----
@@ -145,9 +168,23 @@ class TERMinator(nn.Module):
 
 
 class MultiChainTERMinator_gcnkt(TERMinator):
-    """TERMinator model for multichain proteins that utilizes contact indices"""
+    """TERMinator model for multichain proteins that utilizes contact indices
+
+    Attributes
+    ----------
+    dev: str
+        Device representing where the model is held
+    hparams: dict
+        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+    bot: MultiChainCondenseMSA_g
+        TERM information condenser network
+    top: PairEnergies (or appropriate variant thereof)
+        GNN Potts Model Encoder network
+    """
     def __init__(self, hparams, device='cuda:0'):
         """
+        Initializes TERMinator according to given parameters.
+
         Args
         ----
         hparams : dict
@@ -182,6 +219,9 @@ class MultiChainTERMinator_gcnkt(TERMinator):
     def forward(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, sequence, max_seq_len,
                 ppoe, chain_idx, contact_idx):
         """ Compute the negative composite psuedolikelihood of sequences given featurized structures
+
+        See :code:`terminator.utils.loop_utils` for a description of the negative composite
+        psuedolikelihood computation.
 
         Args
         ----
@@ -245,6 +285,8 @@ class MultiChainTERMinator_gcnkt(TERMinator):
     def potts(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe,
               chain_idx, contact_idx):
         """Compute the Potts model parameters for the structure
+
+        Runs the full TERMinator network for prediction.
 
         Args
         ----

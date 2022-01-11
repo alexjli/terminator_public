@@ -14,7 +14,7 @@ Parameters
                 perform no processing
 
     term_hidden_dim : int, default=32
-        Hidden dimensionality for TERM Information Condensor
+        Hidden dimensionality for TERM Information Condenser
         (e.g. net1, self.bot, or CondenseMSA variant)
 
     enrgies_hidden_dim : int, default=32
