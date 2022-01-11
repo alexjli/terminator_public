@@ -43,7 +43,7 @@ from tqdm import tqdm
 
 from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset,
                                   TERMLazyDataLoader)
-from terminator.models.TERMinator import MultiChainTERMinator_gcnkt
+from terminator.models.TERMinator import TERMinator
 from terminator.utils.loop_utils import run_epoch
 
 # for autosummary import purposes
@@ -151,7 +151,7 @@ def main(args):
                                  collate_fn=test_batch_sampler._package,
                                  **kwargs)
 
-    terminator = MultiChainTERMinator_gcnkt(hparams=hparams, device=dev)
+    terminator = TERMinator(hparams=hparams, device=dev)
     print(terminator)
     print("hparams", terminator.hparams)
 

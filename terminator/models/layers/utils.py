@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 
-from .gvp import vs_concat
 """
     batchify functions
 """
@@ -160,54 +159,6 @@ def cat_term_edge_endpoints(h_edges, h_nodes, E_idx):
 
     # output features [B, T, N, K, 3C]
     h_nn = torch.cat([h_i, h_j, e_ij], -1)
-    return h_nn
-
-
-""" gvp cat functions """
-
-
-def cat_gvp_neighbors_nodes(h_nodes, h_neighbors, E_idx, nv_nodes, nv_neighbors):
-    h_nodes = gather_nodes(h_nodes, E_idx)
-    return vs_concat(h_neighbors, h_nodes, nv_neighbors, nv_nodes)
-
-
-def cat_gvp_edge_endpoints(h_edges, h_nodes, E_idx, n_node, n_edge):
-    # Neighbor indices E_idx [B,N,K]
-    # Edge features h_edges [B,N,N,C]
-    # Node features h_nodes [B,N,C]
-    n_batches, n_nodes, k = E_idx.shape
-
-    h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).contiguous()
-    h_j_idx = E_idx
-
-    h_i = gather_nodes(h_nodes, h_i_idx)
-    h_j = gather_nodes(h_nodes, h_j_idx)
-
-    # e_ij = gather_edges(h_edges, E_idx)
-    e_ij = h_edges
-
-    # output features [B, N, K, 3C]
-    h_nn = vs_concat(vs_concat(h_i, h_j, n_node, n_node), e_ij, n_node * 2, n_edge)
-    return h_nn
-
-
-def cat_gvp_term_edge_endpoints(h_edges, h_nodes, E_idx, n_node, n_edge):
-    # Neighbor indices E_idx [B,T,N,K]
-    # Edge features h_edges [B,T,N,N,C]
-    # Node features h_nodes [B,T,N,C]
-    n_batches, n_terms, n_nodes, k = E_idx.shape
-
-    h_i_idx = E_idx[:, :, :, 0].unsqueeze(-1).expand(-1, -1, -1, k).contiguous()
-    h_j_idx = E_idx
-
-    h_i = gather_term_nodes(h_nodes, h_i_idx)
-    h_j = gather_term_nodes(h_nodes, h_j_idx)
-
-    # e_ij = gather_edges(h_edges, E_idx)
-    e_ij = h_edges
-
-    # output features [B, N, K, 3C]
-    h_nn = vs_concat(vs_concat(h_i, h_j, n_node, n_node), e_ij, n_node * 2, n_edge)
     return h_nn
 
 
