@@ -212,7 +212,5 @@ if __name__ == '__main__':
                             cutoff=args.cutoff,
                             num_cores=args.num_cores,
                             update=args.update,
-                            stats=args.stats,
-                            weight_fn=args.weight_fn,
                             coords_only=args.coords_only,
                             dummy_terms=args.dummy_terms)

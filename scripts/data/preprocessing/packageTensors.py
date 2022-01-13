@@ -257,7 +257,7 @@ def dumpCoordsTensors(in_path, out_path=None, save=True):
         Dictionary of features for TERMinator
     """
     in_file = in_path + '.red.pdb'
-    coords, seq = parseCoords(in_file + '.red.pdb', save=False)
+    coords, seq = parseCoords(in_file, save=False)
 
     if len(coords) == 1:
         chain = next(iter(coords.keys()))
