@@ -1,6 +1,6 @@
 """TERMinator models"""
 import torch
-import torch.nn as nn
+from torch import nn
 
 from terminator.utils.loop_utils import nlcpl as _nlcpl
 
@@ -9,13 +9,27 @@ from .layers.energies.gvp import GVPPairEnergies
 from .layers.energies.s2s import (AblatedPairEnergies_g, 
                                   MultiChainPairEnergies_g,
                                   PairEnergiesFullGraph)
-# pylint: disable=no-member
+# pylint: disable=no-member, not-callable, arguments-differ
 
 
 class TERMinator(nn.Module):
-    """TERMinator model for multichain proteins that utilizes contact indices"""
+    """TERMinator model for multichain proteins
+
+    Attributes
+    ----------
+    dev: str
+        Device representing where the model is held
+    hparams: dict
+        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+    bot: CondenseTERM
+        TERM information condenser network
+    top: PairEnergies (or appropriate variant thereof)
+        GNN Potts Model Encoder network
+    """
     def __init__(self, hparams, device='cuda:0'):
         """
+        Initializes TERMinator according to given parameters.
+
         Args
         ----
         hparams : dict
@@ -42,6 +56,10 @@ class TERMinator(nn.Module):
         else:
             self.top = MultiChainPairEnergies_g(hparams).to(self.dev)
 
+        print(
+            f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}'
+        )
+
         # Initialization
         for p in self.parameters():
             if p.dim() > 1:
@@ -49,6 +67,8 @@ class TERMinator(nn.Module):
 
     def forward(self, data, max_seq_len):
         """Compute the Potts model parameters for the structure
+
+        Runs the full TERMinator network for prediction.
 
         Args
         ----

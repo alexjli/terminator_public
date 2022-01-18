@@ -11,6 +11,7 @@ CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
 conda activate terminator
 ulimit -s unlimited
+ulimit -n 10000
 
 python train.py \
   --dataset=DATASET \

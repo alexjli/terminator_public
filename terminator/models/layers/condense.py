@@ -214,14 +214,9 @@ class CondenseTERM(nn.Module):
 
         if hparams['contact_idx']:
             self.encoder = TERMGraphTransformerEncoder_cnkt(hparams=self.hparams)
+            self.cie = ContactIndexEncoding(hparams=self.hparams)
         else:
             self.encoder = TERMGraphTransformerEncoder(hparams=self.hparams)
-        if hparams['contact_idx']:
-            self.cie = ContactIndexEncoding(hparams=self.hparams)
-
-        # use TERM residue stats of all matches to enrich output of matches transformer
-        if self.num_sing_stats:
-            self.W_sing = nn.Linear(self.num_sing_stats + h_dim, h_dim)
 
         # to linearize TERM transformer
         if hparams['term_mpnn_linear']:
