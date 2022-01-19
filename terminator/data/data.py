@@ -4,6 +4,7 @@ This file contains dataset and dataloader classes
 to be used when interacting with TERMs.
 """
 import glob
+import math
 import multiprocessing as mp
 import os
 import pickle
@@ -11,12 +12,41 @@ import random
 
 import numpy as np
 import torch
+import torch_cluster
+import torch_geometric
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
+from torch_geometric.data import Data
 from tqdm import tqdm
 
 # pylint: disable=no-member, not-callable
+
+
+def _normalize(tensor, dim=-1):
+    '''
+    Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.
+    '''
+    return torch.nan_to_num(
+        torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
+
+
+def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
+    '''
+    From https://github.com/jingraham/neurips19-graph-protein-design
+    
+    Returns an RBF embedding of `torch.Tensor` `D` along a new axis=-1.
+    That is, if `D` has shape [...dims], then the returned tensor will have
+    shape [...dims, D_count].
+    '''
+    D_mu = torch.linspace(D_min, D_max, D_count, device=device)
+    D_mu = D_mu.view([1, -1])
+    D_sigma = (D_max - D_min) / D_count
+    D_expand = torch.unsqueeze(D, -1)
+
+    RBF = torch.exp(-((D_expand - D_mu) / D_sigma) ** 2)
+    return RBF
 
 
 def convert(tensor):
@@ -429,6 +459,7 @@ class TERMDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
+        gvp_data = []
 
         for _, data in enumerate(batch):
             # have to transpose these two because then we can use pad_sequence for padding
@@ -444,6 +475,21 @@ class TERMDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
+
+            chain_idx = []
+            for i, c_len in enumerate(data['chain_lens']):
+                chain_idx.append(torch.ones(c_len) * i)
+            chain_idx = torch.cat(chain_idx, dim=0)
+            gvp_data.append(
+                self._jing_featurize(
+                    {
+                        'name': data['pdb'],
+                        'coords': data['coords'],
+                        'seq': data['sequence'],
+                        'chain_idx': chain_idx
+                    }
+                )
+            )
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -466,7 +512,7 @@ class TERMDataLoader(Sampler):
             lens.append(diff % max_term_len)
 
         # featurize coordinates same way as ingraham et al
-        X, x_mask, _ = self._featurize(coords, 'cpu')
+        X, x_mask, _ = self._ingraham_featurize(coords, 'cpu')
 
         # pad with -1 so we can store term_lens in a tensor
         seq_lens = torch.tensor(seq_lens)
@@ -497,7 +543,8 @@ class TERMDataLoader(Sampler):
             'x_mask': x_mask,
             'seqs': seqs,
             'ids': ids,
-            'chain_idx': chain_idx
+            'chain_idx': chain_idx,
+            'gvp_data': gvp_data
         }
 
     def __len__(self):
@@ -519,8 +566,9 @@ class TERMDataLoader(Sampler):
             yield batch
 
     # pylint: disable=no-self-use
-    def _featurize(self, batch, device):
+    def _ingraham_featurize(self, batch, device):
         """ Pack and pad coords in batch into torch tensors
+        as done in https://github.com/jingraham/neurips19-graph-protein-design
 
         Args
         ----
@@ -559,6 +607,194 @@ class TERMDataLoader(Sampler):
         X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
         mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
         return X, mask, lengths
+
+    def _jing_featurize(self, protein, dev='cpu'):
+        """ Featurize individual proteins for use in torch_geometric Data objects,
+        as done in https://github.com/drorlab/gvp-pytorch
+        
+        Args
+        ----
+        protein : dict 
+            Dictionary of protein features
+            
+            - :code:`name` - PDB ID of the protein
+            - :code:`coords` - list of dicts specifying backbone atom coordinates
+            in the format of that outputted by :code:`parseCoords.py`
+            - :code:`seq` - protein sequence
+            - :code:`chain_idx` - an integer per residue such that each unique integer represents a unique chain
+
+        Returns
+        -------
+        torch_geometric.data.Data
+            Data object containing
+            - :code:`x` - CA atomic coordinates
+            - :code:`seq` - sequence of protein
+            - :code:`name` - PDB ID of protein 
+            - :code:`node_s` - Node scalar features 
+            - :code:`node_v` - Node vector features 
+            - :code:`edge_s` - Edge scalar features 
+            - :code:`edge_v` - Edge vector features 
+            - :code:`edge_index` - Sparse representation of edge
+            - :code:`mask` - Residue mask specifying residues with incomplete coordinate sets
+        """
+        name = protein['name']
+        with torch.no_grad():
+            coords = torch.as_tensor(protein['coords'], 
+                                     device=dev, dtype=torch.float32)   
+            seq = torch.as_tensor(protein['seq'],
+                                  device=dev, dtype=torch.long)
+            
+            mask = torch.isfinite(coords.sum(dim=(1,2)))
+            coords[~mask] = np.inf
+            
+            X_ca = coords[:, 1]
+            edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True) # TODO: make param
+            
+            pos_embeddings = self._positional_embeddings(edge_index)
+            # generate mask for interchain interactions
+            pos_chain = (protein['chain_idx'][edge_index.view(-1)]).view(2, -1)
+            pos_mask = (pos_chain[0] != pos_chain[1])
+            # zero out all interchain positional embeddings
+            pos_embeddings = pos_mask.unsqueeze(-1) * pos_embeddings
+
+            E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]
+            rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev) # TODO: make param
+            
+            dihedrals = self._dihedrals(coords)                     
+            orientations = self._orientations(X_ca)
+            sidechains = self._sidechains(coords)
+            
+            node_s = dihedrals
+            node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2)
+            edge_s = torch.cat([rbf, pos_embeddings], dim=-1)
+            edge_v = _normalize(E_vectors).unsqueeze(-2)
+            
+            node_s, node_v, edge_s, edge_v = map(torch.nan_to_num,
+                    (node_s, node_v, edge_s, edge_v))
+            
+        data = torch_geometric.data.Data(x=X_ca, seq=seq, name=name,
+                                         node_s=node_s, node_v=node_v,
+                                         edge_s=edge_s, edge_v=edge_v,
+                                         edge_index=edge_index, mask=mask)
+        return data
+                                
+    def _dihedrals(self, X, eps=1e-7):
+        """ Compute dihedral angles between residues given atomic backbone coordinates
+
+        Args
+        ----
+        X : torch.FloatTensor
+            Tensor specifying atomic backbone coordinates
+            Shape: num_res x 4 x 3
+
+        Returns
+        -------
+        D_features : torch.FloatTensor
+            Dihedral angles, lifted to the 3-torus
+            Shape: num_res x 7
+        """
+        # From https://github.com/jingraham/neurips19-graph-protein-design
+        
+        X = torch.reshape(X[:, :3], [3*X.shape[0], 3])
+        dX = X[1:] - X[:-1]
+        U = _normalize(dX, dim=-1)
+        u_2 = U[:-2]
+        u_1 = U[1:-1]
+        u_0 = U[2:]
+
+        # Backbone normals
+        n_2 = _normalize(torch.cross(u_2, u_1), dim=-1)
+        n_1 = _normalize(torch.cross(u_1, u_0), dim=-1)
+
+        # Angle between normals
+        cosD = torch.sum(n_2 * n_1, -1)
+        cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
+        D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
+
+        # This scheme will remove phi[0], psi[-1], omega[-1]
+        D = F.pad(D, [1, 2]) 
+        D = torch.reshape(D, [-1, 3])
+        # Lift angle representations to the circle
+        D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
+        return D_features
+    
+    
+    def _positional_embeddings(self, edge_index, 
+                               num_embeddings=16,
+                               dev='cpu'):
+        """ Sinusoidally encode sequence distances for edges.
+
+        Args
+        ----
+        edge_index : torch.LongTensor
+            Edge indices for sparse representation of protein graph
+            Shape: 2 x num_edges
+        num_embeddings : int or None, default=128
+            Dimensionality of sinusoidal embedding.
+        
+        Returns
+        -------
+        E : torch.FloatTensor
+            Sinusoidal encoding of sequence distances
+            Shape: num_edges x num_embeddings
+
+        """
+        # From https://github.com/jingraham/neurips19-graph-protein-design
+        num_embeddings = num_embeddings
+        d = edge_index[0] - edge_index[1]
+     
+        frequency = torch.exp(
+            torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev)
+            * -(np.log(10000.0) / num_embeddings)
+        )
+        angles = d.unsqueeze(-1) * frequency
+        E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
+        return E
+
+    def _orientations(self, X_ca):
+        """ Compute forward and backward vectors per residue.
+
+        Args
+        ----
+        X_ca : torch.FloatTensor
+            Tensor specifying atomic backbone coordinates for CA atoms.
+            Shape: num_res x 3
+
+        Returns
+        -------
+        torch.FloatTensor
+            Pairs of forward, backward vectors per residue.
+            Shape: num_res x 2 x 3
+        """
+        # From https://github.com/drorlab/gvp-pytorch
+        forward = _normalize(X_ca[1:] - X_ca[:-1])
+        backward = _normalize(X_ca[:-1] - X_ca[1:])
+        forward = F.pad(forward, [0, 0, 0, 1])
+        backward = F.pad(backward, [0, 0, 1, 0])
+        return torch.cat([forward.unsqueeze(-2), backward.unsqueeze(-2)], -2)
+
+    def _sidechains(self, X):
+        """ Compute vectors pointing in the approximate direction of the sidechain.
+
+        Args
+        ----
+        X : torch.FloatTensor
+            Tensor specifying atomic backbone coordinates.
+            Shape: num_res x 4 x 3
+        
+        Returns
+        -------
+        vec : torch.FloatTensor
+            Sidechain vectors.
+            Shape: num_res x 3
+        """
+        # From https://github.com/drorlab/gvp-pytorch
+        n, origin, c = X[:, 0], X[:, 1], X[:, 2]
+        c, n = _normalize(c - origin), _normalize(n - origin)
+        bisector = _normalize(c + n)
+        perp = _normalize(torch.cross(c, n))
+        vec = -bisector * math.sqrt(1 / 3) - perp * math.sqrt(2 / 3)
+        return vec
 
 
 # needs to be outside of object for pickling reasons (?)
@@ -998,6 +1234,7 @@ class TERMLazyDataLoader(Sampler):
         chain_lens = []
         ppoe = []
         contact_idxs = []
+        gvp_data = []
 
         for data in batch:
             # have to transpose these two because then we can use pad_sequence for padding
@@ -1013,6 +1250,22 @@ class TERMLazyDataLoader(Sampler):
             seqs.append(convert(data['sequence']))
             ids.append(data['pdb'])
             chain_lens.append(data['chain_lens'])
+
+            chain_idx = []
+            for i, c_len in enumerate(data['chain_lens']):
+                chain_idx.append(torch.ones(c_len) * i)
+            chain_idx = torch.cat(chain_idx, dim=0)
+            gvp_data.append(
+                self._jing_featurize(
+                    {
+                        'name': data['pdb'],
+                        'coords': data['coords'],
+                        'seq': data['sequence'],
+                        'chain_idx': chain_idx
+                    }
+                )
+            )
+
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -1067,7 +1320,7 @@ class TERMLazyDataLoader(Sampler):
             lens.append(diff % max_term_len)
 
         # featurize coordinates same way as ingraham et al
-        X, x_mask, _ = self._featurize(coords, 'cpu')
+        X, x_mask, _ = self._ingraham_featurize(coords, 'cpu')
 
         # pad with -1 so we can store term_lens in a tensor
         seq_lens = torch.tensor(seq_lens)
@@ -1098,7 +1351,8 @@ class TERMLazyDataLoader(Sampler):
             'x_mask': x_mask,
             'seqs': seqs,
             'ids': ids,
-            'chain_idx': chain_idx
+            'chain_idx': chain_idx,
+            'gvp_data': gvp_data
         }
 
     def __len__(self):
@@ -1120,8 +1374,9 @@ class TERMLazyDataLoader(Sampler):
             yield batch
 
     # pylint: disable=no-self-use
-    def _featurize(self, batch, device):
+    def _ingraham_featurize(self, batch, device):
         """ Pack and pad coords in batch into torch tensors
+        as done in https://github.com/jingraham/neurips19-graph-protein-design
 
         Args
         ----
@@ -1160,4 +1415,193 @@ class TERMLazyDataLoader(Sampler):
         X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
         mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
         return X, mask, lengths
+
+    def _jing_featurize(self, protein, dev='cpu'):
+        """ Featurize individual proteins for use in torch_geometric Data objects,
+        as done in https://github.com/drorlab/gvp-pytorch
+        
+        Args
+        ----
+        protein : dict 
+            Dictionary of protein features
+            
+            - :code:`name` - PDB ID of the protein
+            - :code:`coords` - list of dicts specifying backbone atom coordinates
+            in the format of that outputted by :code:`parseCoords.py`
+            - :code:`seq` - protein sequence
+            - :code:`chain_idx` - an integer per residue such that each unique integer represents a unique chain
+
+        Returns
+        -------
+        torch_geometric.data.Data
+            Data object containing
+            - :code:`x` - CA atomic coordinates
+            - :code:`seq` - sequence of protein
+            - :code:`name` - PDB ID of protein 
+            - :code:`node_s` - Node scalar features 
+            - :code:`node_v` - Node vector features 
+            - :code:`edge_s` - Edge scalar features 
+            - :code:`edge_v` - Edge vector features 
+            - :code:`edge_index` - Sparse representation of edge
+            - :code:`mask` - Residue mask specifying residues with incomplete coordinate sets
+        """
+        name = protein['name']
+        with torch.no_grad():
+            coords = torch.as_tensor(protein['coords'], 
+                                     device=dev, dtype=torch.float32)   
+            seq = torch.as_tensor(protein['seq'],
+                                  device=dev, dtype=torch.long)
+            
+            mask = torch.isfinite(coords.sum(dim=(1,2)))
+            coords[~mask] = np.inf
+            
+            X_ca = coords[:, 1]
+            edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True) # TODO: make param
+            
+            pos_embeddings = self._positional_embeddings(edge_index)
+            # generate mask for interchain interactions
+            pos_chain = (protein['chain_idx'][edge_index.view(-1)]).view(2, -1)
+            pos_mask = (pos_chain[0] != pos_chain[1])
+            # zero out all interchain positional embeddings
+            pos_embeddings = pos_mask.unsqueeze(-1) * pos_embeddings
+
+            E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]
+            rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev) # TODO: make param
+            
+            dihedrals = self._dihedrals(coords)                     
+            orientations = self._orientations(X_ca)
+            sidechains = self._sidechains(coords)
+            
+            node_s = dihedrals
+            node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2)
+            edge_s = torch.cat([rbf, pos_embeddings], dim=-1)
+            edge_v = _normalize(E_vectors).unsqueeze(-2)
+            
+            node_s, node_v, edge_s, edge_v = map(torch.nan_to_num,
+                    (node_s, node_v, edge_s, edge_v))
+
+        data = torch_geometric.data.Data(x=X_ca, seq=seq, name=name,
+                                         node_s=node_s, node_v=node_v,
+                                         edge_s=edge_s, edge_v=edge_v,
+                                         edge_index=edge_index, mask=mask)
+        return data
+                                
+    def _dihedrals(self, X, eps=1e-7):
+        """ Compute dihedral angles between residues given atomic backbone coordinates
+
+        Args
+        ----
+        X : torch.FloatTensor
+            Tensor specifying atomic backbone coordinates
+            Shape: num_res x 4 x 3
+
+        Returns
+        -------
+        D_features : torch.FloatTensor
+            Dihedral angles, lifted to the 3-torus
+            Shape: num_res x 7
+        """
+        # From https://github.com/jingraham/neurips19-graph-protein-design
+        
+        X = torch.reshape(X[:, :3], [3*X.shape[0], 3])
+        dX = X[1:] - X[:-1]
+        U = _normalize(dX, dim=-1)
+        u_2 = U[:-2]
+        u_1 = U[1:-1]
+        u_0 = U[2:]
+
+        # Backbone normals
+        n_2 = _normalize(torch.cross(u_2, u_1), dim=-1)
+        n_1 = _normalize(torch.cross(u_1, u_0), dim=-1)
+
+        # Angle between normals
+        cosD = torch.sum(n_2 * n_1, -1)
+        cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
+        D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
+
+        # This scheme will remove phi[0], psi[-1], omega[-1]
+        D = F.pad(D, [1, 2]) 
+        D = torch.reshape(D, [-1, 3])
+        # Lift angle representations to the circle
+        D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
+        return D_features
+    
+    
+    def _positional_embeddings(self, edge_index, 
+                               num_embeddings=16,
+                               dev='cpu'):
+        """ Sinusoidally encode sequence distances for edges.
+
+        Args
+        ----
+        edge_index : torch.LongTensor
+            Edge indices for sparse representation of protein graph
+            Shape: 2 x num_edges
+        num_embeddings : int or None, default=128
+            Dimensionality of sinusoidal embedding.
+        
+        Returns
+        -------
+        E : torch.FloatTensor
+            Sinusoidal encoding of sequence distances
+            Shape: num_edges x num_embeddings
+
+        """
+        # From https://github.com/jingraham/neurips19-graph-protein-design
+        num_embeddings = num_embeddings
+        d = edge_index[0] - edge_index[1]
+     
+        frequency = torch.exp(
+            torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev)
+            * -(np.log(10000.0) / num_embeddings)
+        )
+        angles = d.unsqueeze(-1) * frequency
+        E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
+        return E
+
+    def _orientations(self, X_ca):
+        """ Compute forward and backward vectors per residue.
+
+        Args
+        ----
+        X_ca : torch.FloatTensor
+            Tensor specifying atomic backbone coordinates for CA atoms.
+            Shape: num_res x 3
+
+        Returns
+        -------
+        torch.FloatTensor
+            Pairs of forward, backward vectors per residue.
+            Shape: num_res x 2 x 3
+        """
+        # From https://github.com/drorlab/gvp-pytorch
+        forward = _normalize(X_ca[1:] - X_ca[:-1])
+        backward = _normalize(X_ca[:-1] - X_ca[1:])
+        forward = F.pad(forward, [0, 0, 0, 1])
+        backward = F.pad(backward, [0, 0, 1, 0])
+        return torch.cat([forward.unsqueeze(-2), backward.unsqueeze(-2)], -2)
+
+    def _sidechains(self, X):
+        """ Compute vectors pointing in the approximate direction of the sidechain.
+
+        Args
+        ----
+        X : torch.FloatTensor
+            Tensor specifying atomic backbone coordinates.
+            Shape: num_res x 4 x 3
+        
+        Returns
+        -------
+        vec : torch.FloatTensor
+            Sidechain vectors.
+            Shape: num_res x 3
+        """
+        # From https://github.com/drorlab/gvp-pytorch
+        n, origin, c = X[:, 0], X[:, 1], X[:, 2]
+        c, n = _normalize(c - origin), _normalize(n - origin)
+        bisector = _normalize(c + n)
+        perp = _normalize(torch.cross(c, n))
+        vec = -bisector * math.sqrt(1 / 3) - perp * math.sqrt(2 / 3)
+        return vec
+
 
