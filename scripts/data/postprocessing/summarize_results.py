@@ -147,12 +147,22 @@ if __name__ == '__main__':
             if already_found and already_found_recov and already_found_mean and already_found_std:
                 break
 
-        if len(dtermen_pred_sequences) < len(pred_sequences):
+        num_seq = len(pred_sequences)
+
+        # pad the lists if the corresponding dTERMen values aren't available
+        if len(dtermen_pred_sequences) < num_seq:
             dtermen_pred_sequences += ['UNKNOWN']
-        if len(dtermen_recovery) < len(pred_sequences):
+        if len(dtermen_recovery) < num_seq:
             dtermen_recovery += [-1]
             with open('to_run.out', 'a') as f:
                 f.write(os.path.join(last_testfolder, pdb_id) + '\n')
+        if len(dtermen_energy) < num_seq:
+            dtermen_energy += [None]
+        if len(dtermen_energy_u) < num_seq:
+            dtermen_energy_u += [None]
+        if len(dtermen_energy_s) < num_seq:
+            dtermen_energy_s += [None]
+   
 
     os.chdir(output_path)
     for etab_file in glob.glob("*.etab"):
