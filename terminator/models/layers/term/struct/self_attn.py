@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from terminator.models.layers.s2s_modules import (Normalize, PositionWiseFeedForward)
+from terminator.models.layers.s2s_modules import (Normalize,
+                                                  PositionWiseFeedForward)
 
 
 class TERMAttention(nn.Module):

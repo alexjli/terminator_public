@@ -20,12 +20,8 @@ alphabet = ['D', 'E', 'K', 'R', 'H', 'Q', 'N', 'S', 'T', 'P', 'G', 'A', 'V', 'I'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse all results.')
-    parser.add_argument('--output_dir',
-                        help='Output directory',
-                        required=True)
-    parser.add_argument('--dtermen_data',
-                        help="Root directory for dTERMen runs",
-                        required=True)
+    parser.add_argument('--output_dir', help='Output directory', required=True)
+    parser.add_argument('--dtermen_data', help="Root directory for dTERMen runs", required=True)
     args = parser.parse_args()
 
     output_path = os.path.join(args.output_dir, 'etabs')
@@ -162,7 +158,6 @@ if __name__ == '__main__':
             dtermen_energy_u += [None]
         if len(dtermen_energy_s) < num_seq:
             dtermen_energy_s += [None]
-   
 
     os.chdir(output_path)
     for etab_file in glob.glob("*.etab"):

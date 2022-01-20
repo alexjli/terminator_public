@@ -3,55 +3,56 @@ import functools
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.distributions import Categorical
 from torch_scatter import scatter_mean
-import torch.nn.functional as F
 
-from ..gvp import GVP, GVPConvLayer, Dropout, LayerNorm, tuple_index, tuple_cat, _merge, _split, tuple_sum
+from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split,
+                   tuple_cat, tuple_index, tuple_sum)
 
 
 class EdgeLayer(nn.Module):
-    def __init__(self, node_dims, edge_dims, drop_rate=0.1,
-                 n_layers=3, module_list=None, 
-                 activations=(F.relu, torch.sigmoid), vector_gate=False):
+    def __init__(self,
+                 node_dims,
+                 edge_dims,
+                 drop_rate=0.1,
+                 n_layers=3,
+                 module_list=None,
+                 activations=(F.relu, torch.sigmoid),
+                 vector_gate=False):
         super().__init__()
         self.si, self.vi = node_dims
         self.so, self.vo = edge_dims
         self.se, self.ve = edge_dims
-        
-        GVP_ = functools.partial(GVP, 
-                activations=activations, vector_gate=vector_gate)
-        
+
+        GVP_ = functools.partial(GVP, activations=activations, vector_gate=vector_gate)
+
         # Edge Messages
         module_list = module_list or []
         if not module_list:
             if n_layers == 1:
                 module_list.append(
-                    GVP_((2*self.si + self.se, 2*self.vi + self.ve), 
-                        (self.so, self.vo), activations=(None, None)))
+                    GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), (self.so, self.vo), activations=(None, None)))
             else:
-                module_list.append(
-                    GVP_((2*self.si + self.se, 2*self.vi + self.ve), edge_dims)
-                )
+                module_list.append(GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), edge_dims))
                 for i in range(n_layers - 2):
                     module_list.append(GVP_(edge_dims, edge_dims))
-                module_list.append(GVP_(edge_dims, edge_dims,
-                                       activations=(None, None)))
+                module_list.append(GVP_(edge_dims, edge_dims, activations=(None, None)))
         self.message_func = nn.Sequential(*module_list)
 
         # norm and dropout
         self.norm = nn.ModuleList([LayerNorm(edge_dims) for _ in range(2)])
         self.dropout = nn.ModuleList([Dropout(drop_rate) for _ in range(2)])
-        
+
         # FFN
         n_feedforward = 2
         ff_func = []
         if n_feedforward == 1:
             ff_func.append(GVP_(edge_dims, edge_dims, activations=(None, None)))
         else:
-            hid_dims = 4*edge_dims[0], 2*edge_dims[1]
+            hid_dims = 4 * edge_dims[0], 2 * edge_dims[1]
             ff_func.append(GVP_(edge_dims, hid_dims))
-            for i in range(n_feedforward-2):
+            for i in range(n_feedforward - 2):
                 ff_func.append(GVP_(hid_dims, hid_dims))
             ff_func.append(GVP_(hid_dims, edge_dims, activations=(None, None)))
         self.ff_func = nn.Sequential(*ff_func)
@@ -66,7 +67,7 @@ class EdgeLayer(nn.Module):
 
         h_V_ij = _split(h_V_gather, self.vi)
         h_V_i, h_V_j = zip(*map(torch.unbind, h_V_ij))
-        
+
         h_EV = tuple_cat(h_V_i, h_E, h_V_j)
         dh = self.message_func(h_EV)
 
@@ -105,38 +106,29 @@ class GVPPairEnergies(nn.Module):
         self.hparams = hparams
         node_in_dim = (hparams['energies_input_dim'] + 6, 3)
         node_h_dim = (100, 16)
-        edge_in_dim = (hparams['energies_input_dim'] + 32, 1) 
+        edge_in_dim = (hparams['energies_input_dim'] + 32, 1)
         edge_h_dim = (32, 1)
         num_layers = hparams['energies_encoder_layers']
         drop_rate = hparams['energies_dropout']
         output_dim = (hparams['energies_output_dim'], 0)
-    
+
         super().__init__()
-        
-        self.W_v = nn.Sequential(
-            GVP(node_in_dim, node_h_dim, activations=(None, None)),
-            LayerNorm(node_h_dim)
-        )
-        self.W_e = nn.Sequential(
-            GVP(edge_in_dim, edge_h_dim, activations=(None, None)),
-            LayerNorm(edge_h_dim)
-        )
-        
+
+        self.W_v = nn.Sequential(GVP(node_in_dim, node_h_dim, activations=(None, None)), LayerNorm(node_h_dim))
+        self.W_e = nn.Sequential(GVP(edge_in_dim, edge_h_dim, activations=(None, None)), LayerNorm(edge_h_dim))
+
         self.node_encoder_layers = nn.ModuleList(
-                GVPConvLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate,
-                    activations=(F.relu, F.relu)) 
+            GVPConvLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate, activations=(F.relu, F.relu))
             for _ in range(num_layers))
         self.edge_encoder_layers = nn.ModuleList(
-                EdgeLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate,
-                    activations=(F.relu, F.relu)) 
+            EdgeLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate, activations=(F.relu, F.relu))
             for _ in range(num_layers))
 
         self.W_out = GVP(edge_h_dim, output_dim, activations=(None, None))
 
     def forward(self, h_V, edge_index, h_E):
-        '''
-        Forward pass to be used at train-time, or evaluating likelihood.
-        
+        '''Forward pass to be used at train-time, or evaluating likelihood.
+
         :param h_V: tuple (s, V) of node embeddings
         :param edge_index: `torch.Tensor` of shape [2, num_edges]
         :param h_E: tuple (s, V) of edge embeddings
@@ -148,7 +140,7 @@ class GVPPairEnergies(nn.Module):
 
         h_V = self.W_v(h_V)
         h_E = self.W_e(h_E)
-        
+
         for node_layer, edge_layer in zip(self.node_encoder_layers, self.edge_encoder_layers):
             h_V = node_layer(h_V, edge_index, h_E)
             h_E = edge_layer(h_V, edge_index, h_E)

@@ -121,13 +121,7 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
     for key, nrg in sorted(pair_nrgs.items(), key=lambda pair: pair[0][0][1]):
         chain_i, i_resid, i_3lt_id = key[0]
         chain_j, j_resid, j_3lt_id = key[1]
-        out_file.write(
-            '{},{} {},{} {} {} {}\n'.format(
-                chain_i, i_resid,
-                chain_j, j_resid,
-                i_3lt_id, j_3lt_id,
-                nrg)
-        )
+        out_file.write('{},{} {},{} {} {} {}\n'.format(chain_i, i_resid, chain_j, j_resid, i_3lt_id, j_3lt_id, nrg))
 
     out_file.close()
     return True, out_path
@@ -185,20 +179,10 @@ def get_idx_dict(pdb, chain_filter=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Generate etabs')
-    parser.add_argument('--output_dir',
-                        help='output directory',
-                        required=True)
-    parser.add_argument("--dtermen_data",
-                        help="Root directory for all dTERMen runs",
-                        required=True)
-    parser.add_argument('--num_cores',
-                        help='number of processes for parallelization',
-                        default=1)
-    parser.add_argument('-u',
-                        dest='update',
-                        help='flag for force updating etabs',
-                        default=False,
-                        action='store_true')
+    parser.add_argument('--output_dir', help='output directory', required=True)
+    parser.add_argument("--dtermen_data", help="Root directory for all dTERMen runs", required=True)
+    parser.add_argument('--num_cores', help='number of processes for parallelization', default=1)
+    parser.add_argument('-u', dest='update', help='flag for force updating etabs', default=False, action='store_true')
     args = parser.parse_args()
 
     if not os.path.isdir(os.path.join(args.output_dir, 'etabs')):

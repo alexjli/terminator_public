@@ -239,9 +239,5 @@ DEFAULT_HPARAMS = {
     'max_seq_tokens': None,
     'term_dropout': None,
     'num_features':
-        len(['sin_phi', 'sin_psi', 'sin_omega',
-             'cos_phi', 'cos_psi', 'cos_omega',
-             'env',
-             'rmsd',
-             'term_len'])  #
+    len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])  #
 }

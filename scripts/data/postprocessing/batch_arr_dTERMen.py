@@ -27,19 +27,10 @@ assert DIR[0] == "/", "DIR should be an abspath"
 if __name__ == '__main__':
     # TODO: create argument for parser to take in folder w proper dir structure for pdbs
     parser = argparse.ArgumentParser('Run dTERMen for testing.')
-    parser.add_argument('--output_dir',
-                        help='Output directory',
-                        required=True)
-    parser.add_argument("--pdb_root",
-                        help="The root for all raw data PDB databases",
-                        required=True)
-    parser.add_argument('--dtermen_data',
-                        help="Root directory for dTERMen runs",
-                        required=True)
-    parser.add_argument('--batch_size',
-                        help='number of dTERMen runs to run per node',
-                        default=5,
-                        type=int)
+    parser.add_argument('--output_dir', help='Output directory', required=True)
+    parser.add_argument("--pdb_root", help="The root for all raw data PDB databases", required=True)
+    parser.add_argument('--dtermen_data', help="Root directory for dTERMen runs", required=True)
+    parser.add_argument('--batch_size', help='number of dTERMen runs to run per node', default=5, type=int)
     args = parser.parse_args()
     os.chdir(DIR)
 
@@ -70,7 +61,6 @@ if __name__ == '__main__':
 
     bid = os.popen(
         (f"sbatch --parsable --array=0-{num_batches} "
-         f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {args.batch_size}")
-    ).read()
+         f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {args.batch_size}")).read()
     bid = int(bid.strip())
     os.system(f"sbatch --dependency=afterany:{bid} sum_res.sh {args.output_dir} {args.dtermen_data}")
