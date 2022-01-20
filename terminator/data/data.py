@@ -17,16 +17,13 @@ import torch_cluster
 import torch_geometric
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
-from torch.utils.data.distributed import DistributedSampler
-from torch_geometric.data import Data
 from tqdm import tqdm
 
 # pylint: disable=no-member, not-callable
 
 
 def _normalize(tensor, dim=-1):
-    '''Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.
-    '''
+    '''Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.'''
     return torch.nan_to_num(torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
 
 
@@ -84,7 +81,7 @@ def load_file(in_folder, pdb_id, min_protein_len=30):
     return data, total_term_length, seq_len
 
 
-class TERMDataset():
+class TERMDataset(Dataset):
     """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure.
 
     Attributes
@@ -304,6 +301,7 @@ class TERMDataLoader(Sampler):
             sequence residues included below `max_seq_tokens`. Exactly one of :code:`max_term_res`
             and :code:`max_seq_tokens` must be None.
         """
+        super().__init__(dataset)
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
         assert not (max_term_res is None
@@ -734,7 +732,6 @@ class TERMDataLoader(Sampler):
 
         """
         # From https://github.com/jingraham/neurips19-graph-protein-design
-        num_embeddings = num_embeddings
         d = edge_index[0] - edge_index[1]
 
         frequency = torch.exp(
@@ -1058,6 +1055,7 @@ class TERMLazyDataLoader(Sampler):
             keep the first match and choose `n-1` from the rest.
             If :code:`term_dropout='all'`, choose `n` matches from all matches.
         """
+        super().__init__(dataset)
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
@@ -1083,8 +1081,6 @@ class TERMLazyDataLoader(Sampler):
         self.term_dropout = term_dropout
 
         assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        # an assert for myself but i'm not sure if this is provably true
-        # assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
         # initialize clusters
         self._cluster()
@@ -1535,7 +1531,6 @@ class TERMLazyDataLoader(Sampler):
 
         """
         # From https://github.com/jingraham/neurips19-graph-protein-design
-        num_embeddings = num_embeddings
         d = edge_index[0] - edge_index[1]
 
         frequency = torch.exp(
