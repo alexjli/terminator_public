@@ -28,8 +28,7 @@ def _normalize(tensor, dim=-1):
     '''
     Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.
     '''
-    return torch.nan_to_num(
-        torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
+    return torch.nan_to_num(torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
 
 
 def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
@@ -45,7 +44,7 @@ def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
     D_sigma = (D_max - D_min) / D_count
     D_expand = torch.unsqueeze(D, -1)
 
-    RBF = torch.exp(-((D_expand - D_mu) / D_sigma) ** 2)
+    RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
     return RBF
 
 
@@ -481,15 +480,12 @@ class TERMDataLoader(Sampler):
                 chain_idx.append(torch.ones(c_len) * i)
             chain_idx = torch.cat(chain_idx, dim=0)
             gvp_data.append(
-                self._jing_featurize(
-                    {
-                        'name': data['pdb'],
-                        'coords': data['coords'],
-                        'seq': data['sequence'],
-                        'chain_idx': chain_idx
-                    }
-                )
-            )
+                self._jing_featurize({
+                    'name': data['pdb'],
+                    'coords': data['coords'],
+                    'seq': data['sequence'],
+                    'chain_idx': chain_idx
+                }))
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -639,17 +635,15 @@ class TERMDataLoader(Sampler):
         """
         name = protein['name']
         with torch.no_grad():
-            coords = torch.as_tensor(protein['coords'], 
-                                     device=dev, dtype=torch.float32)   
-            seq = torch.as_tensor(protein['seq'],
-                                  device=dev, dtype=torch.long)
-            
-            mask = torch.isfinite(coords.sum(dim=(1,2)))
+            coords = torch.as_tensor(protein['coords'], device=dev, dtype=torch.float32)
+            seq = torch.as_tensor(protein['seq'], device=dev, dtype=torch.long)
+
+            mask = torch.isfinite(coords.sum(dim=(1, 2)))
             coords[~mask] = np.inf
-            
+
             X_ca = coords[:, 1]
-            edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True) # TODO: make param
-            
+            edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True)  # TODO: make param
+
             pos_embeddings = self._positional_embeddings(edge_index)
             # generate mask for interchain interactions
             pos_chain = (protein['chain_idx'][edge_index.view(-1)]).view(2, -1)
@@ -658,26 +652,30 @@ class TERMDataLoader(Sampler):
             pos_embeddings = pos_mask.unsqueeze(-1) * pos_embeddings
 
             E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]
-            rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev) # TODO: make param
-            
-            dihedrals = self._dihedrals(coords)                     
+            rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev)  # TODO: make param
+
+            dihedrals = self._dihedrals(coords)
             orientations = self._orientations(X_ca)
             sidechains = self._sidechains(coords)
-            
+
             node_s = dihedrals
             node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2)
             edge_s = torch.cat([rbf, pos_embeddings], dim=-1)
             edge_v = _normalize(E_vectors).unsqueeze(-2)
-            
-            node_s, node_v, edge_s, edge_v = map(torch.nan_to_num,
-                    (node_s, node_v, edge_s, edge_v))
-            
-        data = torch_geometric.data.Data(x=X_ca, seq=seq, name=name,
-                                         node_s=node_s, node_v=node_v,
-                                         edge_s=edge_s, edge_v=edge_v,
-                                         edge_index=edge_index, mask=mask)
+
+            node_s, node_v, edge_s, edge_v = map(torch.nan_to_num, (node_s, node_v, edge_s, edge_v))
+
+        data = torch_geometric.data.Data(x=X_ca,
+                                         seq=seq,
+                                         name=name,
+                                         node_s=node_s,
+                                         node_v=node_v,
+                                         edge_s=edge_s,
+                                         edge_v=edge_v,
+                                         edge_index=edge_index,
+                                         mask=mask)
         return data
-                                
+
     def _dihedrals(self, X, eps=1e-7):
         """ Compute dihedral angles between residues given atomic backbone coordinates
 
@@ -694,8 +692,8 @@ class TERMDataLoader(Sampler):
             Shape: num_res x 7
         """
         # From https://github.com/jingraham/neurips19-graph-protein-design
-        
-        X = torch.reshape(X[:, :3], [3*X.shape[0], 3])
+
+        X = torch.reshape(X[:, :3], [3 * X.shape[0], 3])
         dX = X[1:] - X[:-1]
         U = _normalize(dX, dim=-1)
         u_2 = U[:-2]
@@ -712,16 +710,13 @@ class TERMDataLoader(Sampler):
         D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
 
         # This scheme will remove phi[0], psi[-1], omega[-1]
-        D = F.pad(D, [1, 2]) 
+        D = F.pad(D, [1, 2])
         D = torch.reshape(D, [-1, 3])
         # Lift angle representations to the circle
         D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
         return D_features
-    
-    
-    def _positional_embeddings(self, edge_index, 
-                               num_embeddings=16,
-                               dev='cpu'):
+
+    def _positional_embeddings(self, edge_index, num_embeddings=16, dev='cpu'):
         """ Sinusoidally encode sequence distances for edges.
 
         Args
@@ -742,11 +737,9 @@ class TERMDataLoader(Sampler):
         # From https://github.com/jingraham/neurips19-graph-protein-design
         num_embeddings = num_embeddings
         d = edge_index[0] - edge_index[1]
-     
+
         frequency = torch.exp(
-            torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev)
-            * -(np.log(10000.0) / num_embeddings)
-        )
+            torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev) * -(np.log(10000.0) / num_embeddings))
         angles = d.unsqueeze(-1) * frequency
         E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
         return E
@@ -1256,16 +1249,12 @@ class TERMLazyDataLoader(Sampler):
                 chain_idx.append(torch.ones(c_len) * i)
             chain_idx = torch.cat(chain_idx, dim=0)
             gvp_data.append(
-                self._jing_featurize(
-                    {
-                        'name': data['pdb'],
-                        'coords': data['coords'],
-                        'seq': data['sequence'],
-                        'chain_idx': chain_idx
-                    }
-                )
-            )
-
+                self._jing_featurize({
+                    'name': data['pdb'],
+                    'coords': data['coords'],
+                    'seq': data['sequence'],
+                    'chain_idx': chain_idx
+                }))
 
         # transpose back after padding
         features = pad_sequence(features, batch_first=True).transpose(1, 2)
@@ -1447,17 +1436,15 @@ class TERMLazyDataLoader(Sampler):
         """
         name = protein['name']
         with torch.no_grad():
-            coords = torch.as_tensor(protein['coords'], 
-                                     device=dev, dtype=torch.float32)   
-            seq = torch.as_tensor(protein['seq'],
-                                  device=dev, dtype=torch.long)
-            
-            mask = torch.isfinite(coords.sum(dim=(1,2)))
+            coords = torch.as_tensor(protein['coords'], device=dev, dtype=torch.float32)
+            seq = torch.as_tensor(protein['seq'], device=dev, dtype=torch.long)
+
+            mask = torch.isfinite(coords.sum(dim=(1, 2)))
             coords[~mask] = np.inf
-            
+
             X_ca = coords[:, 1]
-            edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True) # TODO: make param
-            
+            edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True)  # TODO: make param
+
             pos_embeddings = self._positional_embeddings(edge_index)
             # generate mask for interchain interactions
             pos_chain = (protein['chain_idx'][edge_index.view(-1)]).view(2, -1)
@@ -1466,26 +1453,30 @@ class TERMLazyDataLoader(Sampler):
             pos_embeddings = pos_mask.unsqueeze(-1) * pos_embeddings
 
             E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]
-            rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev) # TODO: make param
-            
-            dihedrals = self._dihedrals(coords)                     
+            rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev)  # TODO: make param
+
+            dihedrals = self._dihedrals(coords)
             orientations = self._orientations(X_ca)
             sidechains = self._sidechains(coords)
-            
+
             node_s = dihedrals
             node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2)
             edge_s = torch.cat([rbf, pos_embeddings], dim=-1)
             edge_v = _normalize(E_vectors).unsqueeze(-2)
-            
-            node_s, node_v, edge_s, edge_v = map(torch.nan_to_num,
-                    (node_s, node_v, edge_s, edge_v))
 
-        data = torch_geometric.data.Data(x=X_ca, seq=seq, name=name,
-                                         node_s=node_s, node_v=node_v,
-                                         edge_s=edge_s, edge_v=edge_v,
-                                         edge_index=edge_index, mask=mask)
+            node_s, node_v, edge_s, edge_v = map(torch.nan_to_num, (node_s, node_v, edge_s, edge_v))
+
+        data = torch_geometric.data.Data(x=X_ca,
+                                         seq=seq,
+                                         name=name,
+                                         node_s=node_s,
+                                         node_v=node_v,
+                                         edge_s=edge_s,
+                                         edge_v=edge_v,
+                                         edge_index=edge_index,
+                                         mask=mask)
         return data
-                                
+
     def _dihedrals(self, X, eps=1e-7):
         """ Compute dihedral angles between residues given atomic backbone coordinates
 
@@ -1502,8 +1493,8 @@ class TERMLazyDataLoader(Sampler):
             Shape: num_res x 7
         """
         # From https://github.com/jingraham/neurips19-graph-protein-design
-        
-        X = torch.reshape(X[:, :3], [3*X.shape[0], 3])
+
+        X = torch.reshape(X[:, :3], [3 * X.shape[0], 3])
         dX = X[1:] - X[:-1]
         U = _normalize(dX, dim=-1)
         u_2 = U[:-2]
@@ -1520,16 +1511,13 @@ class TERMLazyDataLoader(Sampler):
         D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
 
         # This scheme will remove phi[0], psi[-1], omega[-1]
-        D = F.pad(D, [1, 2]) 
+        D = F.pad(D, [1, 2])
         D = torch.reshape(D, [-1, 3])
         # Lift angle representations to the circle
         D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
         return D_features
-    
-    
-    def _positional_embeddings(self, edge_index, 
-                               num_embeddings=16,
-                               dev='cpu'):
+
+    def _positional_embeddings(self, edge_index, num_embeddings=16, dev='cpu'):
         """ Sinusoidally encode sequence distances for edges.
 
         Args
@@ -1550,11 +1538,9 @@ class TERMLazyDataLoader(Sampler):
         # From https://github.com/jingraham/neurips19-graph-protein-design
         num_embeddings = num_embeddings
         d = edge_index[0] - edge_index[1]
-     
+
         frequency = torch.exp(
-            torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev)
-            * -(np.log(10000.0) / num_embeddings)
-        )
+            torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev) * -(np.log(10000.0) / num_embeddings))
         angles = d.unsqueeze(-1) * frequency
         E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
         return E
@@ -1603,5 +1589,3 @@ class TERMLazyDataLoader(Sampler):
         perp = _normalize(torch.cross(c, n))
         vec = -bisector * math.sqrt(1 / 3) - perp * math.sqrt(2 / 3)
         return vec
-
-

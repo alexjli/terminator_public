@@ -233,7 +233,7 @@ class CondenseTERM(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-    
+
     def _matches(self, embeddings, ppoe, focuses):
         # use Convolutional ResNet or Transformer
         # for further embedding and to reduce dimensionality
@@ -292,9 +292,15 @@ class CondenseTERM(nn.Module):
             batched_focuses.unsqueeze(-2).expand(-1, -1, max_term_len, -1), -1, batch_rel_E_idx)
 
         return edge_features, batch_rel_E_idx, batch_abs_E_idx
-        
-    def _term_mpnn(self, batchify_terms, edge_features, batch_rel_E_idx, batchify_src_key_mask, 
-                   contact_idx=None, src_key_mask=None, term_lens=None):
+
+    def _term_mpnn(self,
+                   batchify_terms,
+                   edge_features,
+                   batch_rel_E_idx,
+                   batchify_src_key_mask,
+                   contact_idx=None,
+                   src_key_mask=None,
+                   term_lens=None):
         if self.hparams['contact_idx']:
             contact_idx = self.cie(contact_idx, ~src_key_mask)
             contact_idx = batchify(contact_idx, term_lens)
@@ -320,8 +326,7 @@ class CondenseTERM(nn.Module):
                                                             mask=batchify_src_key_mask.float())
         return node_embeddings, edge_embeddings
 
-    def _agg_nodes(self, node_embeddings, batched_focuses, batch_abs_E_idx, 
-                   seq_lens, n_batches, max_seq_len):
+    def _agg_nodes(self, node_embeddings, batched_focuses, batch_abs_E_idx, seq_lens, n_batches, max_seq_len):
         local_dev = node_embeddings.device
         # create a space to aggregate term data
         aggregate = torch.zeros((n_batches, max_seq_len, self.hparams['term_hidden_dim'])).to(local_dev)
@@ -351,7 +356,7 @@ class CondenseTERM(nn.Module):
         return aggregate
 
     def forward(self, data, max_seq_len):
-        # grab necessary data        
+        # grab necessary data
         X = data['msas']
         features = data['features']
         seq_lens = data['seq_lens']
@@ -392,23 +397,14 @@ class CondenseTERM(nn.Module):
         batched_focuses = batchify(focuses, term_lens).to(local_dev)
 
         # generate edge features
-        edge_features, batch_rel_E_idx, batch_abs_E_idx = self._edges(embeddings, 
-                                                                      features, 
-                                                                      X, 
-                                                                      term_lens,
-                                                                      batched_focuses,
-                                                                      batchify_src_key_mask)
+        edge_features, batch_rel_E_idx, batch_abs_E_idx = self._edges(embeddings, features, X, term_lens,
+                                                                      batched_focuses, batchify_src_key_mask)
         # run TERM MPNN
-        node_embeddings, edge_embeddings = self._term_mpnn(batchify_terms, 
-                                                           edge_features, 
-                                                           batch_rel_E_idx, 
-                                                           batchify_src_key_mask, 
-                                                           contact_idx, 
-                                                           src_key_mask, 
-                                                           term_lens)
+        node_embeddings, edge_embeddings = self._term_mpnn(batchify_terms, edge_features, batch_rel_E_idx,
+                                                           batchify_src_key_mask, contact_idx, src_key_mask, term_lens)
         # aggregate nodes and edges using batch_abs_E_idx
-        agg_nodes = self._agg_nodes(node_embeddings, batched_focuses, batch_abs_E_idx, 
-                                    seq_lens, n_batches, max_seq_len)
+        agg_nodes = self._agg_nodes(node_embeddings, batched_focuses, batch_abs_E_idx, seq_lens, n_batches,
+                                    max_seq_len)
         agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx, max_seq_len)
 
         return agg_nodes, agg_edges

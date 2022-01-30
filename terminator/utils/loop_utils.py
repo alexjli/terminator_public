@@ -21,14 +21,7 @@ def _to_dev(data_dict, dev):
             data_dict['gvp_data'] = [data.to(dev) for data in data_dict['gvp_data']]
 
 
-def run_epoch(model,
-              dataloader,
-              optimizer=None,
-              scheduler=None,
-              grad=False,
-              test=False,
-              dev="cuda:0",
-              scaler=None):
+def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0", scaler=None):
     # arg checking
     if test:
         assert not grad, "grad should not be on for test set"
@@ -100,10 +93,8 @@ def run_epoch(model,
 
         avg_loss = running_loss / (global_count)
         avg_prob = running_prob / (global_count)
-        term_mask_eff = int(
-            (~data['src_key_mask']).sum().item() / data['src_key_mask'].numel() * 100)
-        res_mask_eff = int(
-            data['x_mask'].sum().item() / data['x_mask'].numel() * 100)
+        term_mask_eff = int((~data['src_key_mask']).sum().item() / data['src_key_mask'].numel() * 100)
+        res_mask_eff = int(data['x_mask'].sum().item() / data['x_mask'].numel() * 100)
 
         progress.update(1)
         progress.refresh()
