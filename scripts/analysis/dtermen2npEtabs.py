@@ -8,7 +8,7 @@ Usage:
             --out_folder <output_folder> \\
             -n <num_processes>
 
-    :code:`<etab_paths_file>` should be a file of paths to .pdb files, with one path per line
+    :code:`<etab_paths_file>` should be a file of paths to .etab files, with one path per line
 
 See :code:`python dtermen2npEtabs.py --help` for more info.
 """

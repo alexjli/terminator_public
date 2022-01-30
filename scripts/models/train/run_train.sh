@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH --mincpu=40
 #SBATCH --gres=gpu:volta:2
-#SBATCH --time=144:00:00
+#SBATCH --time=60:00:00
 #SBATCH --exclusive
 #SBATCH -o OUTPUTDIR/train-output_runRUNNO.out
 #SBATCH -e OUTPUTDIR/train-error_runRUNNO.out
