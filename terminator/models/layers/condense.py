@@ -72,6 +72,8 @@ class ContactIndexEncoding(nn.Module):
         self.hparams = hparams
         self.dropout = nn.Dropout(p=hparams['cie_dropout'])
         self.hidden_dim = hparams['term_hidden_dim']
+        self.cie_scaling = hparams['cie_scaling'] if 'cie_scaling' in hparams else 500  # tested to work
+        self.cie_offset = hparams['cie_offset'] if 'cie_offset' in hparams else 0
         hdim = self.hidden_dim
 
     def forward(self, focuses, mask=None):
@@ -79,6 +81,7 @@ class ContactIndexEncoding(nn.Module):
         hdim = self.hidden_dim
         cie = torch.zeros(list(focuses.shape) + [hdim]).to(dev)
         position = focuses.unsqueeze(-1)
+        position = position * self.cie_scaling + self.cie_offset
         div_term = torch.exp(torch.arange(0, hdim, 2).double() * (-math.log(10000.0) / hdim)).to(dev)
         cie[:, :, 0::2] = torch.sin(position * div_term)
         cie[:, :, 1::2] = torch.cos(position * div_term)
