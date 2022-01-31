@@ -204,4 +204,11 @@ class TERMinator(nn.Module):
             etab, E_idx = self._from_gvp_outputs(h_E, E_idx, data['seq_lens'], max_seq_len)
         else:
             etab, E_idx = self.top(node_embeddings, edge_embeddings, data['X'], data['x_mask'], data['chain_idx'])
+        if self.hparams['k_cutoff']:
+            k = E_idx.shape[-1]
+            k_cutoff = self.hparams['k_cutoff']
+            assert k > k_cutoff and k_cutoff > 0, f"k_cutoff={k_cutoff} must be greater than k"
+            etab = etab[..., :k_cutoff, :]
+            E_idx = E_idx[..., :k_cutoff]
+
         return etab, E_idx
