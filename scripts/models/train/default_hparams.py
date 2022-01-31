@@ -83,11 +83,20 @@ Parameters
     k_neighbors : int, default=30
         What `k` is for kNN computation
 
+    k_cutoff : int, default=None
+        When outputting a kNN potts model, take the top :code:`k_cutoff` edges and output the truncated etab
+
     contact_idx : bool, default=True
         Whether or not to include contact indices in computation
 
     cie_dropout : float, default=0.1
         Dropout rate for sinusoidal encoding of contact index
+
+    cie_scaling : int, default=500
+        Multiplicative factor by which to scale contact indices
+
+    cie_offset : int, default=0
+        Additive factor by which to offset contact indices
 
     transformer_dropout : float, default=0.1
         Dropout rate for Transformers used in the TERM Information Condensor
@@ -209,8 +218,11 @@ DEFAULT_HPARAMS = {
     'matches_layers': 4,  #
     'matches_num_heads': 4,  #
     'k_neighbors': 30,  #
+    'k_cutoff': None, #
     'contact_idx': True,  #
     'cie_dropout': 0.1,  #
+    'cie_scaling': 500, #
+    'cie_offset': 0, #
     'transformer_dropout': 0.1,  #
     'term_use_mpnn': True,  #
     'energies_protein_features': 'full',  #
