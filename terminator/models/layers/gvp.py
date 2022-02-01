@@ -1,10 +1,12 @@
 """Module for Geometric Vector Perceptrons.
-Sourced from https://github.com/drorlab/gvp-pytorch 
+Sourced from https://github.com/drorlab/gvp-pytorch
 """
 
-import torch, functools
-from torch import nn
+import functools
+
+import torch
 import torch.nn.functional as F
+from torch import nn
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter_add
 
@@ -19,7 +21,7 @@ def tuple_sum(*args):
 def tuple_cat(*args, dim=-1):
     '''
     Concatenates any number of tuples (s, V) elementwise.
-    
+
     :param dim: dimension along which to concatenate when viewed
                 as the `dim` index for the scalar-channel tensors.
                 This means that `dim=-1` will be applied as
@@ -33,7 +35,7 @@ def tuple_cat(*args, dim=-1):
 def tuple_index(x, idx):
     '''
     Indexes into a tuple (s, V) along the first dimension.
-    
+
     :param idx: any object which can be used to index into a `torch.Tensor`
     '''
     return x[0][idx], x[1][idx]
@@ -42,21 +44,21 @@ def tuple_index(x, idx):
 def randn(n, dims, device="cpu"):
     '''
     Returns random tuples (s, V) drawn elementwise from a normal distribution.
-    
+
     :param n: number of data points
     :param dims: tuple of dimensions (n_scalar, n_vector)
-    
+
     :return: (s, V) with s.shape = (n, n_scalar) and
              V.shape = (n, n_vector, 3)
     '''
-    return torch.randn(n, dims[0], device=device), \
-            torch.randn(n, dims[1], 3, device=device)
+    return torch.randn(n, dims[0], device=device), torch.randn(n, dims[1], 3, device=device)
+
 
 
 def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):
     '''
     L2 norm of tensor clamped above a minimum value `eps`.
-    
+
     :param sqrt: if `False`, returns the square of the L2 norm
     '''
     out = torch.clamp(torch.sum(torch.square(x), axis, keepdims), min=eps)
@@ -65,10 +67,10 @@ def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):
 
 def _split(x, nv):
     '''
-    Splits a merged representation of (s, V) back into a tuple. 
-    Should be used only with `_merge(s, V)` and only if the tuple 
+    Splits a merged representation of (s, V) back into a tuple.
+    Should be used only with `_merge(s, V)` and only if the tuple
     representation cannot be used.
-    
+
     :param x: the `torch.Tensor` returned from `_merge`
     :param nv: the number of vector channels in the input to `_merge`
     '''
@@ -92,7 +94,7 @@ class GVP(nn.Module):
     '''
     Geometric Vector Perceptron. See manuscript and README.md
     for more details.
-    
+
     :param in_dims: tuple (n_scalar, n_vector)
     :param out_dims: tuple (n_scalar, n_vector)
     :param h_dim: intermediate number of vector channels, optional
@@ -111,7 +113,8 @@ class GVP(nn.Module):
             self.ws = nn.Linear(self.h_dim + self.si, self.so)
             if self.vo:
                 self.wv = nn.Linear(self.h_dim, self.vo, bias=False)
-                if self.vector_gate: self.wsv = nn.Linear(self.so, self.vo)
+                if self.vector_gate:
+                    self.wsv = nn.Linear(self.so, self.vo)
         else:
             self.ws = nn.Linear(self.si, self.so)
 
@@ -120,7 +123,7 @@ class GVP(nn.Module):
 
     def forward(self, x):
         '''
-        :param x: tuple (s, V) of `torch.Tensor`, 
+        :param x: tuple (s, V) of `torch.Tensor`,
                   or (if vectors_in is 0), a single `torch.Tensor`
         :return: tuple (s, V) of `torch.Tensor`,
                  or (if vectors_out is 0), a single `torch.Tensor`
@@ -187,7 +190,7 @@ class Dropout(nn.Module):
     def forward(self, x):
         '''
         :param x: tuple (s, V) of `torch.Tensor`,
-                  or single `torch.Tensor` 
+                  or single `torch.Tensor`
                   (will be assumed to be scalar channels)
         '''
         if type(x) is torch.Tensor:
@@ -209,7 +212,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         '''
         :param x: tuple (s, V) of `torch.Tensor`,
-                  or single `torch.Tensor` 
+                  or single `torch.Tensor`
                   (will be assumed to be scalar channels)
         '''
         if not self.v:
@@ -225,10 +228,10 @@ class GVPConv(MessagePassing):
     Graph convolution / message passing with Geometric Vector Perceptrons.
     Takes in a graph with node and edge embeddings,
     and returns new node embeddings.
-    
+
     This does NOT do residual updates and pointwise feedforward layers
     ---see `GVPConvLayer`.
-    
+
     :param in_dims: input node embedding dimensions (n_scalar, n_vector)
     :param out_dims: output node embedding dimensions (n_scalar, n_vector)
     :param edge_dims: input edge embedding dimensions (n_scalar, n_vector)
@@ -288,13 +291,13 @@ class GVPConv(MessagePassing):
 
 class GVPConvLayer(nn.Module):
     '''
-    Full graph convolution / message passing layer with 
+    Full graph convolution / message passing layer with
     Geometric Vector Perceptrons. Residually updates node embeddings with
-    aggregated incoming messages, applies a pointwise feedforward 
+    aggregated incoming messages, applies a pointwise feedforward
     network to node embeddings, and returns updated node embeddings.
-    
+
     To only compute the aggregated messages, see `GVPConv`.
-    
+
     :param node_dims: node embedding dimensions (n_scalar, n_vector)
     :param edge_dims: input edge embedding dimensions (n_scalar, n_vector)
     :param n_message: number of GVPs to use in message function
@@ -345,10 +348,10 @@ class GVPConvLayer(nn.Module):
         :param x: tuple (s, V) of `torch.Tensor`
         :param edge_index: array of shape [2, n_edges]
         :param edge_attr: tuple (s, V) of `torch.Tensor`
-        :param autoregressive_x: tuple (s, V) of `torch.Tensor`. 
+        :param autoregressive_x: tuple (s, V) of `torch.Tensor`.
                 If not `None`, will be used as src node embeddings
-                for forming messages where src >= dst. The corrent node 
-                embeddings `x` will still be the base of the update and the 
+                for forming messages where src >= dst. The corrent node
+                embeddings `x` will still be the base of the update and the
                 pointwise feedforward.
         :param node_mask: array of type `bool` to index into the first
                 dim of node embeddings (s, V). If not `None`, only

@@ -3,11 +3,12 @@ import functools
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.distributions import Categorical
 from torch_scatter import scatter_mean
-import torch.nn.functional as F
 
-from ..gvp import GVP, GVPConvLayer, Dropout, LayerNorm, tuple_index, tuple_cat, _merge, _split, tuple_sum
+from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split,
+                   tuple_cat, tuple_index, tuple_sum)
 
 
 class EdgeLayer(nn.Module):
@@ -126,9 +127,8 @@ class GVPPairEnergies(nn.Module):
         self.W_out = GVP(edge_h_dim, output_dim, activations=(None, None))
 
     def forward(self, h_V, edge_index, h_E):
-        '''
-        Forward pass to be used at train-time, or evaluating likelihood.
-        
+        '''Forward pass to be used at train-time, or evaluating likelihood.
+
         :param h_V: tuple (s, V) of node embeddings
         :param edge_index: `torch.Tensor` of shape [2, num_edges]
         :param h_E: tuple (s, V) of edge embeddings

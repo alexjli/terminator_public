@@ -67,12 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset',
                         help='input folder .features files in proper directory structure. prefix is $ifsdata/',
                         default='features_singlechain')
-    parser.add_argument('--folds',
-                        help='number of folds',
-                        default='11',
-                        type=int)
-    parser.add_argument('--outfolder',
-                        help='folder to store fold splits in',
-                        default='fold_splits')
+    parser.add_argument('--folds', help='number of folds', default='11', type=int)
+    parser.add_argument('--outfolder', help='folder to store fold splits in', default='fold_splits')
     args = parser.parse_args()
     main(args)

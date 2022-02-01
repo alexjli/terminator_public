@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
-from terminator.models.layers.s2s_modules import (Normalize, PositionWiseFeedForward)
+from terminator.models.layers.s2s_modules import (Normalize,
+                                                  PositionWiseFeedForward)
 
 
 class TERMMatchAttention(nn.Module):

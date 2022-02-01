@@ -101,10 +101,7 @@ def generateDatasetParallel(in_folder,
 
     os.chdir(in_folder)
 
-    process_func = functools.partial(dataGen,
-                                     cutoff=cutoff,
-                                     coords_only=coords_only,
-                                     dummy_terms=dummy_terms)
+    process_func = functools.partial(dataGen, cutoff=cutoff, coords_only=coords_only, dummy_terms=dummy_terms)
 
     pool = mp.Pool(num_cores, maxtasksperchild=10)
     # process folder by folder
@@ -124,9 +121,7 @@ def generateDatasetParallel(in_folder,
                 if os.path.exists(out_file + '.features'):
                     continue
 
-            res = pool.apply_async(process_func,
-                                   args=(file, out_folder),
-                                   error_callback=_raise_error)
+            res = pool.apply_async(process_func, args=(file, out_folder), error_callback=_raise_error)
 
     pool.close()
     pool.join()
@@ -180,19 +175,9 @@ if __name__ == '__main__':
     parser.add_argument('--in_folder',
                         help='input folder containing .dat files in proper directory structure',
                         required=True)
-    parser.add_argument('--out_folder',
-                        help='folder where features will be placed',
-                        required=True)
-    parser.add_argument('--cutoff',
-                        dest='cutoff',
-                        help='max number of match entries per TERM',
-                        default=50,
-                        type=int)
-    parser.add_argument('-n',
-                        dest='num_cores',
-                        help='number of processes to use',
-                        default=1,
-                        type=int)
+    parser.add_argument('--out_folder', help='folder where features will be placed', required=True)
+    parser.add_argument('--cutoff', dest='cutoff', help='max number of match entries per TERM', default=50, type=int)
+    parser.add_argument('-n', dest='num_cores', help='number of processes to use', default=1, type=int)
     parser.add_argument('-u',
                         dest='update',
                         help='if added, update existing files. else, files that already exist will not be overwritten',
@@ -203,9 +188,7 @@ if __name__ == '__main__':
                         help='if added, only include coordinates-relevant data in the feature files',
                         default=False,
                         action='store_true')
-    parser.add_argument('--dummy_terms',
-                        help='option for how to use dummy TERMs in the feature files',
-                        default=None)
+    parser.add_argument('--dummy_terms', help='option for how to use dummy TERMs in the feature files', default=None)
     args = parser.parse_args()
     generateDatasetParallel(args.in_folder,
                             args.out_folder,

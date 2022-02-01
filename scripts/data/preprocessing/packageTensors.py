@@ -16,17 +16,11 @@ from parseCoords import parseCoords
 from parseEtab import parseEtab
 from parseTERM import parseTERMdata
 
-
 NUM_AA = 21  # including X
 ZERO = 1e-10  # 0 is used for padding
 
 
-def dumpTrainingTensors(in_path,
-                        out_path=None,
-                        cutoff=1000,
-                        save=True,
-                        coords_only=False,
-                        dummy_terms=None):
+def dumpTrainingTensors(in_path, out_path=None, cutoff=1000, save=True, coords_only=False, dummy_terms=None):
     """Generate features from dTERMen :code:`.dat` and :code:`.red.pdb`, and
     dump the output into a file if requested.
 
@@ -154,13 +148,7 @@ def dumpTrainingTensors(in_path,
         num_alignments_arr += num_alignments
 
         # select features, cutoff at top N
-        selected_features = [
-            sin_ppo[:cutoff],
-            cos_ppo[:cutoff],
-            env[:cutoff],
-            rmsd_arr[:cutoff],
-            term_len_arr
-        ]
+        selected_features = [sin_ppo[:cutoff], cos_ppo[:cutoff], env[:cutoff], rmsd_arr[:cutoff], term_len_arr]
 
         features = np.concatenate(selected_features, axis=1)
 

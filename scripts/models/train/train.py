@@ -264,34 +264,17 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
-    parser.add_argument('--dataset',
-                        help='input folder .features files in proper directory structure.',
-                        required=True)
-    parser.add_argument('--hparams',
-                        help='hparams file path',
-                        required=True)
-    parser.add_argument('--run_dir',
-                        help='path to place folder to store model files',
-                        required=True)
-    parser.add_argument('--train',
-                        help='file with training dataset split')
-    parser.add_argument('--validation',
-                        help='file with validation dataset split')
-    parser.add_argument('--test',
-                        help='file with test dataset split')
+    parser.add_argument('--dataset', help='input folder .features files in proper directory structure.', required=True)
+    parser.add_argument('--hparams', help='hparams file path', required=True)
+    parser.add_argument('--run_dir', help='path to place folder to store model files', required=True)
+    parser.add_argument('--train', help='file with training dataset split')
+    parser.add_argument('--validation', help='file with validation dataset split')
+    parser.add_argument('--test', help='file with test dataset split')
     parser.add_argument('--out_dir',
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
-    parser.add_argument('--dev',
-                        help='device to train on',
-                        default='cuda:0')
-    parser.add_argument('--epochs',
-                        help='number of epochs to train for',
-                        default=100,
-                        type=int)
-    parser.add_argument('--lazy',
-                        help="use lazy data loading",
-                        type=bool,
-                        default=True)
+    parser.add_argument('--dev', help='device to train on', default='cuda:0')
+    parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
+    parser.add_argument('--lazy', help="use lazy data loading", type=bool, default=True)
     args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder

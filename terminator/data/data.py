@@ -12,32 +12,28 @@ import random
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torch_cluster
 import torch_geometric
-import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
-from torch.utils.data.distributed import DistributedSampler
-from torch_geometric.data import Data
 from tqdm import tqdm
 
 # pylint: disable=no-member, not-callable
 
 
 def _normalize(tensor, dim=-1):
-    '''
-    Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.
-    '''
+    '''Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.'''
     return torch.nan_to_num(torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
 
 
 def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
-    '''
-    From https://github.com/jingraham/neurips19-graph-protein-design
-    
-    Returns an RBF embedding of `torch.Tensor` `D` along a new axis=-1.
+    '''Returns an RBF embedding of `torch.Tensor` `D` along a new axis=-1.
+
     That is, if `D` has shape [...dims], then the returned tensor will have
     shape [...dims, D_count].
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
     '''
     D_mu = torch.linspace(D_min, D_max, D_count, device=device)
     D_mu = D_mu.view([1, -1])
@@ -85,7 +81,7 @@ def load_file(in_folder, pdb_id, min_protein_len=30):
     return data, total_term_length, seq_len
 
 
-class TERMDataset():
+class TERMDataset(Dataset):
     """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure.
 
     Attributes
@@ -305,6 +301,7 @@ class TERMDataLoader(Sampler):
             sequence residues included below `max_seq_tokens`. Exactly one of :code:`max_term_res`
             and :code:`max_seq_tokens` must be None.
         """
+        super().__init__(dataset)
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
         assert not (max_term_res is None
@@ -607,12 +604,12 @@ class TERMDataLoader(Sampler):
     def _jing_featurize(self, protein, dev='cpu'):
         """ Featurize individual proteins for use in torch_geometric Data objects,
         as done in https://github.com/drorlab/gvp-pytorch
-        
+
         Args
         ----
-        protein : dict 
+        protein : dict
             Dictionary of protein features
-            
+
             - :code:`name` - PDB ID of the protein
             - :code:`coords` - list of dicts specifying backbone atom coordinates
             in the format of that outputted by :code:`parseCoords.py`
@@ -625,11 +622,11 @@ class TERMDataLoader(Sampler):
             Data object containing
             - :code:`x` - CA atomic coordinates
             - :code:`seq` - sequence of protein
-            - :code:`name` - PDB ID of protein 
-            - :code:`node_s` - Node scalar features 
-            - :code:`node_v` - Node vector features 
-            - :code:`edge_s` - Edge scalar features 
-            - :code:`edge_v` - Edge vector features 
+            - :code:`name` - PDB ID of protein
+            - :code:`node_s` - Node scalar features
+            - :code:`node_v` - Node vector features
+            - :code:`edge_s` - Edge scalar features
+            - :code:`edge_v` - Edge vector features
             - :code:`edge_index` - Sparse representation of edge
             - :code:`mask` - Residue mask specifying residues with incomplete coordinate sets
         """
@@ -726,7 +723,7 @@ class TERMDataLoader(Sampler):
             Shape: 2 x num_edges
         num_embeddings : int or None, default=128
             Dimensionality of sinusoidal embedding.
-        
+
         Returns
         -------
         E : torch.FloatTensor
@@ -735,7 +732,6 @@ class TERMDataLoader(Sampler):
 
         """
         # From https://github.com/jingraham/neurips19-graph-protein-design
-        num_embeddings = num_embeddings
         d = edge_index[0] - edge_index[1]
 
         frequency = torch.exp(
@@ -774,7 +770,7 @@ class TERMDataLoader(Sampler):
         X : torch.FloatTensor
             Tensor specifying atomic backbone coordinates.
             Shape: num_res x 4 x 3
-        
+
         Returns
         -------
         vec : torch.FloatTensor
@@ -1059,6 +1055,7 @@ class TERMLazyDataLoader(Sampler):
             keep the first match and choose `n-1` from the rest.
             If :code:`term_dropout='all'`, choose `n` matches from all matches.
         """
+        super().__init__(dataset)
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
@@ -1084,8 +1081,6 @@ class TERMLazyDataLoader(Sampler):
         self.term_dropout = term_dropout
 
         assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        # an assert for myself but i'm not sure if this is provably true
-        # assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
         # initialize clusters
         self._cluster()
@@ -1408,12 +1403,12 @@ class TERMLazyDataLoader(Sampler):
     def _jing_featurize(self, protein, dev='cpu'):
         """ Featurize individual proteins for use in torch_geometric Data objects,
         as done in https://github.com/drorlab/gvp-pytorch
-        
+
         Args
         ----
-        protein : dict 
+        protein : dict
             Dictionary of protein features
-            
+
             - :code:`name` - PDB ID of the protein
             - :code:`coords` - list of dicts specifying backbone atom coordinates
             in the format of that outputted by :code:`parseCoords.py`
@@ -1426,11 +1421,11 @@ class TERMLazyDataLoader(Sampler):
             Data object containing
             - :code:`x` - CA atomic coordinates
             - :code:`seq` - sequence of protein
-            - :code:`name` - PDB ID of protein 
-            - :code:`node_s` - Node scalar features 
-            - :code:`node_v` - Node vector features 
-            - :code:`edge_s` - Edge scalar features 
-            - :code:`edge_v` - Edge vector features 
+            - :code:`name` - PDB ID of protein
+            - :code:`node_s` - Node scalar features
+            - :code:`node_v` - Node vector features
+            - :code:`edge_s` - Edge scalar features
+            - :code:`edge_v` - Edge vector features
             - :code:`edge_index` - Sparse representation of edge
             - :code:`mask` - Residue mask specifying residues with incomplete coordinate sets
         """
@@ -1527,7 +1522,7 @@ class TERMLazyDataLoader(Sampler):
             Shape: 2 x num_edges
         num_embeddings : int or None, default=128
             Dimensionality of sinusoidal embedding.
-        
+
         Returns
         -------
         E : torch.FloatTensor
@@ -1536,7 +1531,6 @@ class TERMLazyDataLoader(Sampler):
 
         """
         # From https://github.com/jingraham/neurips19-graph-protein-design
-        num_embeddings = num_embeddings
         d = edge_index[0] - edge_index[1]
 
         frequency = torch.exp(
@@ -1575,7 +1569,7 @@ class TERMLazyDataLoader(Sampler):
         X : torch.FloatTensor
             Tensor specifying atomic backbone coordinates.
             Shape: num_res x 4 x 3
-        
+
         Returns
         -------
         vec : torch.FloatTensor

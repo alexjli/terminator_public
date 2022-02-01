@@ -76,10 +76,7 @@ def parseEtab(filename, save=True):
             residue1 = AA_to_int[l[3]]
             E = float(l[4])
 
-            pairE.append({
-                'resid0': resid0, 'resid1': resid1,
-                'residue0': residue0, 'residue1': residue1,
-                'E': E})
+            pairE.append({'resid0': resid0, 'resid1': resid1, 'residue0': residue0, 'residue1': residue1, 'E': E})
         else:
             raise ValueError("Something doesn't look right at line %d: %s" % (idx, line))
 

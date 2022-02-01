@@ -83,14 +83,8 @@ if __name__ == '__main__':
     parser.add_argument('--in_list_path',
                         help='file containing etab paths, with one etab path per line',
                         required=True)
-    parser.add_argument('--out_folder',
-                        help='folder where numpy etabs will be placed',
-                        required=True)
-    parser.add_argument('-n',
-                        dest='num_cores',
-                        help='number of proceses to use',
-                        type=int,
-                        default=1)
+    parser.add_argument('--out_folder', help='folder where numpy etabs will be placed', required=True)
+    parser.add_argument('-n', dest='num_cores', help='number of proceses to use', type=int, default=1)
     args = parser.parse_args()
 
     with open(args.in_list_path) as fp:

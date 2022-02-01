@@ -63,10 +63,7 @@ def extractBackbone(filename, outpath):
             raise e
 
         if (chain, residx) not in struct_dict.keys():
-            struct_dict[(chain, residx)] = {
-                "elements": np.array([False for _ in range(5)]),
-                "line_numbers": []
-            }
+            struct_dict[(chain, residx)] = {"elements": np.array([False for _ in range(5)]), "line_numbers": []}
 
         if element in valid_elements:
             struct_dict[(chain, residx)]["elements"][valid_elements.index(element)] = True
@@ -174,11 +171,7 @@ if __name__ == '__main__':
                         help=('folder where cleaned .red.pdb files will be placed. '
                               'folder organization is <out_folder>/<pdb_id>/<pdb_id>.red.pdb'),
                         required=True)
-    parser.add_argument('-n',
-                        dest='num_cores',
-                        help='number of cores to use',
-                        default=1,
-                        type=int)
+    parser.add_argument('-n', dest='num_cores', help='number of cores to use', default=1, type=int)
     args = parser.parse_args()
     with open(args.in_list_path) as fp:
         in_list = [l.strip() for l in fp]

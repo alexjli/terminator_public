@@ -10,7 +10,9 @@ from torch.utils.checkpoint import checkpoint
 
 from .term.matches.attn import TERMMatchTransformerEncoder
 from .term.matches.cnn import Conv1DResNet, Conv2DResNet
-from .term.struct.s2s import (S2STERMTransformerEncoder, TERMGraphTransformerEncoder, TERMGraphTransformerEncoder_cnkt)
+from .term.struct.s2s import (S2STERMTransformerEncoder,
+                              TERMGraphTransformerEncoder,
+                              TERMGraphTransformerEncoder_cnkt)
 from .term.struct.self_attn import TERMTransformer, TERMTransformerLayer
 from .utils import aggregate_edges, batchify, cat_term_edge_endpoints
 

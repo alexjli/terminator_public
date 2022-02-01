@@ -1,7 +1,7 @@
 """TERMinator models"""
 import torch
-from torch import nn
 import torch_geometric.data
+from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
 from terminator.utils.loop_utils import nlcpl as _nlcpl
@@ -10,6 +10,7 @@ from .layers.condense import CondenseTERM
 from .layers.energies.gvp import GVPPairEnergies
 from .layers.energies.s2s import (AblatedPairEnergies_g, MultiChainPairEnergies_g, PairEnergiesFullGraph)
 from .layers.utils import gather_edges, pad_sequence_12
+
 # pylint: disable=no-member, not-callable, arguments-differ
 
 
@@ -192,9 +193,9 @@ class TERMinator(nn.Module):
 
         Args
         ----
-        data : dict 
+        data : dict
             Contains the following keys:
-            
+
             msas : torch.LongTensor
                 Integer encoding of sequence matches. Shape: n_batch x n_term_res x n_matches
             features : torch.FloatTensor
