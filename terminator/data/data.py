@@ -1283,7 +1283,7 @@ class TERMLazyDataLoader(Sampler):
             filepath = data[0]
             with open(filepath, 'rb') as fp:
                 batch.append((pickle.load(fp), data[1]))
-                if 'ppoe' not in batch[-1].keys():
+                if 'ppoe' not in batch[-1][0].keys():
                     print(filepath)
 
         # package batch
