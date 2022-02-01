@@ -67,7 +67,34 @@ class TERMinator(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def _to_gvp_input(self, node_embeddings, edge_embeddings, data):
-        """ """
+        """ Convert Ingraham-style inputs to Jing-style inputs for use in GVP models 
+        
+        Args
+        ----
+        node_embeddings : torch.Tensor or None
+            Node embeddings at the structure level, outputted by the TERM Info Condensor.
+            :code:`None` if running in TERMless mode
+            Shape: n_batch x max_seq_len x tic_n_hidden
+
+        edge_embeddings : torch.Tensor or None
+            Edge embedings at the structure level, outputted by the TERM Info Condensor.
+            :code:`None` if running in TERMless mode
+            Shape: n_batch x max_seq_len x max_seq_len x tic_n_hidden
+
+        data : dict of torch.Tensor
+            Overall input data dictionary. See :code:`forward` for more info.
+            
+        Returns
+        -------
+        h_V : torch.Tensor
+            Node embeddings in Jing format
+        edge_idex : torch.LongTensor
+            Edge index matrix in Jing format (sparse form)
+        h_E : torch.Tensor
+            Edge embeddings in Jing format
+        E_idx : torch.LongTensor
+            Edge index matrix in Ingraham format (kNN form)
+        """
         gvp_data_list = [data['gvp_data'][i] for i in data['scatter_idx'].tolist()]
         gvp_batch = torch_geometric.data.Batch.from_data_list(gvp_data_list)
         seq_lens = data['seq_lens']
@@ -120,6 +147,26 @@ class TERMinator(nn.Module):
         return h_V, gvp_batch.edge_index, h_E, E_idx
 
     def _from_gvp_outputs(self, h_E, E_idx, seq_lens, max_seq_len):
+        """ Convert outputs of GVP models to Ingraham style outputs
+        
+        Args
+        ----
+        h_E : torch.Tensor
+            Outputted Potts Model in Jing format
+        E_idx : torch.Tensor 
+            Edge index matrix in Ingraham format (kNN sparse)
+        seq_lens : np.ndarray (int)
+            Sequence lens of proteins in batch
+        max_seq_len : int
+            Max sequence length of proteins in batch
+
+        Returns
+        -------
+        etab : torch.Tensor
+            Potts Model in Ingraham Format
+        E_idx : torch.LongTensor
+            Edge index matrix in Ingraham format (kNN sparse)
+        """
         # convert gvp outputs to TERMinator format
         h_E = h_E.view([
             h_E.shape[0] // self.hparams['k_neighbors'], self.hparams['k_neighbors'],

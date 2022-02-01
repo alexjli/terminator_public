@@ -236,8 +236,31 @@ class CondenseTERM(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-
+    
+    # TODO: check shapes in docstring
     def _matches(self, embeddings, ppoe, focuses):
+        """ Extract singleton statistics from matches using MatchesCondensor 
+        
+        Args
+        ----
+        embeddings : torch.Tensor
+            Embedded match features
+            Shape: TODO
+
+        ppoe : torch.Tensor
+            Target structure :math:`\phi, \psi, \omega`, and environment value
+            Shape: n_batch x seq_len x 4
+
+        focuses : torch.LongTensor
+            Integer indices corresponding to `embeddings` which specifies 
+            what residue in the target structure that set of matches corresponds to
+            Shape: TODO
+        
+        Returns
+        -------
+        condensed_matches : torch.Tensor 
+            The condensed matches, such that each term residue has one vector associated with it
+        """
         # use Convolutional ResNet or Transformer
         # for further embedding and to reduce dimensionality
         if self.hparams['matches_linear']:
