@@ -8,9 +8,7 @@ from terminator.utils.loop_utils import nlcpl as _nlcpl
 
 from .layers.condense import CondenseTERM
 from .layers.energies.gvp import GVPPairEnergies
-from .layers.energies.s2s import (AblatedPairEnergies_g,
-                                  MultiChainPairEnergies_g,
-                                  PairEnergiesFullGraph)
+from .layers.energies.s2s import (AblatedPairEnergies_g, MultiChainPairEnergies_g, PairEnergiesFullGraph)
 from .layers.utils import gather_edges, pad_sequence_12
 
 # pylint: disable=no-member, not-callable, arguments-differ

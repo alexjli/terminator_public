@@ -54,6 +54,7 @@ def randn(n, dims, device="cpu"):
     return torch.randn(n, dims[0], device=device), torch.randn(n, dims[1], 3, device=device)
 
 
+
 def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):
     '''
     L2 norm of tensor clamped above a minimum value `eps`.
