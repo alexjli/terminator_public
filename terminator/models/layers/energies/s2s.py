@@ -13,8 +13,7 @@ from terminator.models.layers.graph_features import (MultiChainProteinFeatures,
 from terminator.models.layers.s2s_modules import (EdgeMPNNLayer,
                                                   EdgeTransformerLayer,
                                                   NodeMPNNLayer,
-                                                  TransformerLayer)
-from terminator.models.layers.struct2seq import Struct2Seq
+                                                  NodeTransformerLayer)
 from terminator.models.layers.utils import (cat_edge_endpoints,
                                             cat_neighbors_nodes, gather_edges,
                                             gather_nodes,
@@ -22,114 +21,7 @@ from terminator.models.layers.utils import (cat_edge_endpoints,
                                             merge_duplicate_pairE)
 
 
-class PairEnergies(nn.Module):
-    def __init__(self, hparams):
-        """ Graph labeling network """
-        super(PairEnergies, self).__init__()
-        self.hparams = hparams
-
-        hdim = hparams['energies_hidden_dim']
-
-        # Featurization layers
-        self.features = S2SProteinFeatures(node_features=hdim,
-                                           edge_features=hdim,
-                                           top_k=hparams['k_neighbors'],
-                                           features_type=hparams['energies_protein_features'],
-                                           augment_eps=hparams['energies_augment_eps'],
-                                           dropout=hparams['energies_dropout'])
-
-        # Embedding layers
-        self.W_v = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
-        self.W_e = nn.Linear(hdim, hdim, bias=True)
-        layer = EdgeTransformerLayer if not hparams['energies_use_mpnn'] else EdgeMPNNLayer
-
-        # Encoder layers
-        self.encoder_layers = nn.ModuleList([
-            layer(hdim, hdim * 3, dropout=hparams['energies_dropout'])
-            for _ in range(hparams['energies_encoder_layers'])
-        ])
-
-        self.W_out = nn.Linear(hdim, hparams['energies_output_dim'], bias=True)
-
-        # Initialization
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, X, x_mask, V_embed=[], sparse=False):
-        # Prepare node and edge embeddings
-        V, E, E_idx = self.features(X, x_mask)
-        if not isinstance(V_embed, list) or V_embed != []:
-            V = torch.cat([V, V_embed], dim=-1)
-        h_V = self.W_v(V)
-        h_E = self.W_e(E)
-
-        # Encoder is unmasked self-attention
-        mask_attend = gather_nodes(x_mask.unsqueeze(-1), E_idx).squeeze(-1)
-        mask_attend = x_mask.unsqueeze(-1) * mask_attend
-
-        for layer in self.encoder_layers:
-            h_EV = cat_edge_endpoints(h_E, h_V, E_idx)
-            h_E = layer(h_E, h_EV, E_idx, mask_E=x_mask, mask_attend=mask_attend)
-
-        h_EV = self.W_out(h_E)  # /30
-        h_EV = merge_duplicate_edges(h_EV, E_idx)
-
-        if not sparse:
-            return h_EV, E_idx
-        else:
-            n_batch, n_nodes, k = h_E.shape[:-1]
-
-            h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
-            h_j_idx = E_idx.unsqueeze(-1)
-            batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
-            ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
-
-            flat_ij = ij.view(-1, 3).transpose(0, 1)
-            flat_h_E = h_E.view(-1, self.hparams['energies_output_dim']).float()
-
-            etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
-
-            return etab, E_idx
-
-
 class AblatedPairEnergies(nn.Module):
-    def __init__(self, hparams):
-        """ Graph labeling network """
-        super(AblatedPairEnergies, self).__init__()
-        hdim = hparams['energies_hidden_dim']
-        self.hparams = hparams
-
-        # Featurization layers
-        self.features = S2SProteinFeatures(node_features=hdim,
-                                           edge_features=hdim,
-                                           top_k=hparams['k_neighbors'],
-                                           features_type=hparams['energies_protein_features'],
-                                           augment_eps=hparams['energies_augment_eps'],
-                                           dropout=hparams['energies_dropout'])
-
-        self.k_neighbors = hparams['k_neighbors']
-        self.W = nn.Linear(hparams['energies_input_dim'] * 2, hparams['energies_output_dim'])
-
-    def forward(self, X, x_mask, V_embed, sparse=False):
-        # Prepare node and edge embeddings
-        _, _, E_idx = self.features(X, x_mask)
-
-        h_nodes = V_embed
-
-        h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, self.k_neighbors).contiguous()
-        h_j_idx = E_idx
-
-        h_i = gather_nodes(h_nodes, h_i_idx)
-        h_j = gather_nodes(h_nodes, h_j_idx)
-
-        h_E = torch.cat((h_i, h_j), -1)
-        h_EV = self.W(h_E)
-
-        return h_EV, E_idx
-
-
-class AblatedPairEnergies_g(nn.Module):
     def __init__(self, hparams):
         """ Graph labeling network """
         super().__init__()
@@ -158,130 +50,10 @@ class AblatedPairEnergies_g(nn.Module):
         return h_EV, E_idx
 
 
-class MultiChainPairEnergies(PairEnergies):
+class PairEnergies(nn.Module):
     def __init__(self, hparams):
         """ Graph labeling network """
-        super(MultiChainPairEnergies, self).__init__(hparams)
-        self.hparams = hparams
-
-        hdim = hparams['energies_hidden_dim']
-
-        # Featurization layers
-        self.features = MultiChainProteinFeatures(node_features=hdim,
-                                                  edge_features=hdim,
-                                                  top_k=hparams['k_neighbors'],
-                                                  features_type=hparams['energies_protein_features'],
-                                                  augment_eps=hparams['energies_augment_eps'],
-                                                  dropout=hparams['energies_dropout'])
-
-        # Initialization
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, V_embed, X, x_mask, chain_idx, sparse=False):
-        # Prepare node and edge embeddings
-        V, E, E_idx = self.features(X, chain_idx, x_mask)
-        V = torch.cat([V, V_embed], dim=-1)
-        h_V = self.W_v(V)
-        h_E = self.W_e(E)
-
-        # Encoder is unmasked self-attention
-        mask_attend = gather_nodes(x_mask.unsqueeze(-1), E_idx).squeeze(-1)
-        mask_attend = x_mask.unsqueeze(-1) * mask_attend
-
-        for layer in self.encoder_layers:
-            h_EV = cat_edge_endpoints(h_E, h_V, E_idx)
-            h_E = layer(h_E, h_EV, E_idx, mask_E=x_mask, mask_attend=mask_attend)
-
-        h_EV = self.W_out(h_E)
-        h_EV = merge_duplicate_edges(h_EV, E_idx)
-
-        if not sparse:
-            return h_EV, E_idx
-        else:
-            n_batch, n_nodes, k = h_E.shape[:-1]
-
-            h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
-            h_j_idx = E_idx.unsqueeze(-1)
-            batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
-            ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
-
-            flat_ij = ij.view(-1, 3).transpose(0, 1)
-            flat_h_E = h_E.view(-1, self.output_dim).float()
-
-            etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
-
-            return etab, E_idx
-
-
-class MultiChainPairEnergies_g(PairEnergies):
-    def __init__(self, hparams):
-        """ Graph labeling network """
-        super(MultiChainPairEnergies_g, self).__init__(hparams)
-        self.hparams = hparams
-
-        hdim = hparams['energies_hidden_dim']
-
-        # Featurization layers
-        self.features = MultiChainProteinFeatures(node_features=hdim,
-                                                  edge_features=hdim,
-                                                  top_k=hparams['k_neighbors'],
-                                                  features_type=hparams['energies_protein_features'],
-                                                  augment_eps=hparams['energies_augment_eps'],
-                                                  dropout=hparams['energies_dropout'])
-
-        self.W_e = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
-
-        # Initialization
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse=False):
-        # Prepare node and edge embeddings
-
-        V, E, E_idx = self.features(X, chain_idx, x_mask)
-        V = torch.cat([V, V_embed], dim=-1)
-        E_embed_neighbors = gather_edges(E_embed, E_idx)
-        E = torch.cat([E, E_embed_neighbors], dim=-1)
-
-        h_V = self.W_v(V)
-        h_E = self.W_e(E)
-
-        # Encoder is unmasked self-attention
-        mask_attend = gather_nodes(x_mask.unsqueeze(-1), E_idx).squeeze(-1)
-        mask_attend = x_mask.unsqueeze(-1) * mask_attend
-
-        for layer in self.encoder_layers:
-            h_EV = cat_edge_endpoints(h_E, h_V, E_idx)
-            h_E = layer(h_E, h_EV, E_idx, mask_E=x_mask, mask_attend=mask_attend)
-
-        h_EV = self.W_out(h_E)
-        h_EV = merge_duplicate_edges(h_EV, E_idx)
-
-        if not sparse:
-            return h_EV, E_idx
-        else:
-            n_batch, n_nodes, k = h_E.shape[:-1]
-
-            h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
-            h_j_idx = E_idx.unsqueeze(-1)
-            batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
-            ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
-
-            flat_ij = ij.view(-1, 3).transpose(0, 1)
-            flat_h_E = h_E.view(-1, self.output_dim).float()
-
-            etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
-
-            return etab, E_idx
-
-
-class PairEnergiesFullGraph(nn.Module):
-    def __init__(self, hparams):
-        """ Graph labeling network """
-        super(PairEnergiesFullGraph, self).__init__()
+        super().__init__()
         self.hparams = hparams
 
         hdim = hparams['energies_hidden_dim']
@@ -307,7 +79,7 @@ class PairEnergiesFullGraph(nn.Module):
         self.W_v = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
         self.W_e = nn.Linear(hdim + hparams['energies_input_dim'], hdim, bias=True)
         edge_layer = EdgeTransformerLayer if not hparams['energies_use_mpnn'] else EdgeMPNNLayer
-        node_layer = TransformerLayer if not hparams['energies_use_mpnn'] else NodeMPNNLayer
+        node_layer = NodeTransformerLayer if not hparams['energies_use_mpnn'] else NodeMPNNLayer
 
         # Encoder layers
         self.edge_encoder = nn.ModuleList(
@@ -325,7 +97,7 @@ class PairEnergiesFullGraph(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, V_embed, E_embed, X, x_mask, chain_idx, sparse=False):
+    def forward(self, V_embed, E_embed, X, x_mask, chain_idx):
         # Prepare node and edge embeddings
         if self.hparams['energies_input_dim'] != 0:
             V, E, E_idx = self.features(X, chain_idx, x_mask)
@@ -364,19 +136,4 @@ class PairEnergiesFullGraph(nn.Module):
 
         h_E = h_E.view(n_batch, n_res, k, out_dim)
 
-        if not sparse:
-            return h_E, E_idx
-        else:
-            n_batch, n_nodes, k = h_E.shape[:-1]
-
-            h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).unsqueeze(-1)
-            h_j_idx = E_idx.unsqueeze(-1)
-            batch_num = torch.arange(n_batch).view(n_batch, 1, 1, 1).expand(-1, n_nodes, k, -1)
-            ij = torch.cat([batch_num, h_i_idx, h_j_idx], dim=-1)
-
-            flat_ij = ij.view(-1, 3).transpose(0, 1)
-            flat_h_E = h_E.view(-1, self.output_dim).float()
-
-            etab = torch.sparse.FloatTensor(flat_ij, flat_h_E)
-
-            return etab, E_idx
+        return h_E, E_idx

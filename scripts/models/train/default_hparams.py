@@ -128,7 +128,9 @@ Parameters
         Use GVP version of GNN Potts Model Encoder instead
 
     energies_full_graph : bool, default=True
-        Update both node and edge representations in the GNN Potts Model Encoder
+        [DEPRECIATED] Update both node and edge representations in the GNN Potts Model Encoder.
+        GNN Potts Model Encoder always updates node and edge representations now,
+        making this option do nothing.
 
     res_embed_linear : bool, default=False
         Replace the singleton matches residue embedding layer with a linear layer.
@@ -218,11 +220,11 @@ DEFAULT_HPARAMS = {
     'matches_layers': 4,  #
     'matches_num_heads': 4,  #
     'k_neighbors': 30,  #
-    'k_cutoff': None, #
+    'k_cutoff': None,  #
     'contact_idx': True,  #
     'cie_dropout': 0.1,  #
-    'cie_scaling': 500, #
-    'cie_offset': 0, #
+    'cie_scaling': 500,  #
+    'cie_offset': 0,  #
     'transformer_dropout': 0.1,  #
     'term_use_mpnn': True,  #
     'energies_protein_features': 'full',  #

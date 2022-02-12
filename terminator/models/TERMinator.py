@@ -4,14 +4,12 @@ import torch_geometric.data
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
-from terminator.utils.loop_utils import nlcpl as _nlcpl
-
 from .layers.condense import CondenseTERM
 from .layers.energies.gvp import GVPPairEnergies
 from .layers.energies.s2s import (AblatedPairEnergies_g, MultiChainPairEnergies_g, PairEnergiesFullGraph)
 from .layers.utils import gather_edges, pad_sequence_12
 
-# pylint: disable=no-member, not-callable, arguments-differ
+# pylint: disable=no-member, not-callable
 
 
 class TERMinator(nn.Module):
@@ -50,16 +48,15 @@ class TERMinator(nn.Module):
             self.hparams['energies_input_dim'] = 0
 
         if hparams['struct2seq_linear']:
-            self.top = AblatedPairEnergies_g(hparams).to(self.dev)
+            self.top = AblatedPairEnergies(hparams).to(self.dev)
         elif hparams['energies_gvp']:
             self.top = GVPPairEnergies(hparams).to(self.dev)
-        elif hparams['energies_full_graph']:
-            self.top = PairEnergiesFullGraph(hparams).to(self.dev)
         else:
-            self.top = MultiChainPairEnergies_g(hparams).to(self.dev)
+            self.top = PairEnergies(hparams).to(self.dev)
 
         print(
-            f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}'
+            (f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} '
+             f'and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}')
         )
 
         # Initialization
@@ -68,8 +65,8 @@ class TERMinator(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def _to_gvp_input(self, node_embeddings, edge_embeddings, data):
-        """ Convert Ingraham-style inputs to Jing-style inputs for use in GVP models 
-        
+        """ Convert Ingraham-style inputs to Jing-style inputs for use in GVP models
+
         Args
         ----
         node_embeddings : torch.Tensor or None
@@ -84,7 +81,7 @@ class TERMinator(nn.Module):
 
         data : dict of torch.Tensor
             Overall input data dictionary. See :code:`forward` for more info.
-            
+
         Returns
         -------
         h_V : torch.Tensor
@@ -149,12 +146,12 @@ class TERMinator(nn.Module):
 
     def _from_gvp_outputs(self, h_E, E_idx, seq_lens, max_seq_len):
         """ Convert outputs of GVP models to Ingraham style outputs
-        
+
         Args
         ----
         h_E : torch.Tensor
             Outputted Potts Model in Jing format
-        E_idx : torch.Tensor 
+        E_idx : torch.Tensor
             Edge index matrix in Ingraham format (kNN sparse)
         seq_lens : np.ndarray (int)
             Sequence lens of proteins in batch
