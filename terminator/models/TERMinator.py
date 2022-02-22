@@ -6,7 +6,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from .layers.condense import CondenseTERM
 from .layers.energies.gvp import GVPPairEnergies
-from .layers.energies.s2s import (AblatedPairEnergies_g, MultiChainPairEnergies_g, PairEnergiesFullGraph)
+from .layers.energies.s2s import (AblatedPairEnergies, PairEnergies)
 from .layers.utils import gather_edges, pad_sequence_12
 
 # pylint: disable=no-member, not-callable
@@ -194,27 +194,37 @@ class TERMinator(nn.Module):
             Contains the following keys:
 
             msas : torch.LongTensor
-                Integer encoding of sequence matches. Shape: n_batch x n_term_res x n_matches
+                Integer encoding of sequence matches.
+                Shape: n_batch x n_term_res x n_matches
             features : torch.FloatTensor
-                Featurization of match structural data. Shape: n_batch x n_term_res x n_matches x n_features(=9 by default)
+                Featurization of match structural data.
+                Shape: n_batch x n_term_res x n_matches x n_features(=9 by default)
             seq_lens : int np.ndarray
-                1D Array of batched sequence lengths. Shape: n_batch
+                1D Array of batched sequence lengths.
+                Shape: n_batch
             focuses : torch.LongTensor
-                Indices for TERM residues matches. Shape: n_batch x n_term_res
+                Indices for TERM residues matches.
+                Shape: n_batch x n_term_res
             term_lens : int np.ndarray
-                2D Array of batched TERM lengths. Shape: n_batch x n_terms
+                2D Array of batched TERM lengths.
+                Shape: n_batch x n_terms
             src_key_mask : torch.ByteTensor
-                Mask for TERM residue positions padding. Shape: n_batch x n_term_res
+                Mask for TERM residue positions padding.
+                Shape: n_batch x n_term_res
             X : torch.FloatTensor
-                Raw coordinates of protein backbones. Shape: n_batch x n_res
+                Raw coordinates of protein backbones.
+                Shape: n_batch x n_res x 4 x 3
             x_mask : torch.ByteTensor
-                Mask for X. Shape: n_batch x n_res
+                Mask for X.
+                Shape: n_batch x n_res
             sequence : torch.LongTensor
-                Integer encoding of ground truth native sequences. Shape: n_batch x n_res
+                Integer encoding of ground truth native sequences.
+                Shape: n_batch x n_res
             max_seq_len : int
                 Max length of protein in the batch.
             ppoe : torch.FloatTensor
-                Featurization of target protein structural data. Shape: n_batch x n_res x n_features(=9 by default)
+                Featurization of target protein structural data.
+                Shape: n_batch x n_res x n_features(=9 by default)
             chain_idx : torch.LongTensor
                 Integers indices that designate ever residue to a chain.
                 Shape: n_batch x n_res
@@ -252,7 +262,7 @@ class TERMinator(nn.Module):
         if self.hparams['k_cutoff']:
             k = E_idx.shape[-1]
             k_cutoff = self.hparams['k_cutoff']
-            assert k > k_cutoff and k_cutoff > 0, f"k_cutoff={k_cutoff} must be greater than k"
+            assert k > k_cutoff > 0, f"k_cutoff={k_cutoff} must be greater than k"
             etab = etab[..., :k_cutoff, :]
             E_idx = E_idx[..., :k_cutoff]
 
