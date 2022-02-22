@@ -39,7 +39,7 @@ class Normalize(nn.Module):
         return gain * (x - mu) / (sigma + self.epsilon) + bias
 
 
-class TransformerLayer(nn.Module):
+class NodeTransformerLayer(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
         super(TransformerLayer, self).__init__()
         self.num_heads = num_heads

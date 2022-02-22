@@ -1,16 +1,32 @@
+""" Util functions useful in TERMinator modules """
 import sys
 
-import numpy as np
 import torch
-import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
+
+# pylint: disable=no-member
+
+
 """
     batchify functions
 """
 
 
-# pads both dims 1 and 2 to max length
 def pad_sequence_12(sequences, padding_value=0):
+    """Given a sequence of tensors, batch them together by pads both dims 1 and 2 to max length.
+
+    Args
+    ----
+    sequences : list of torch.Tensor
+        Sequence of tensors with number of axes `N >= 2`
+    padding value : int, default=0
+        What value to pad the tensors with
+
+    Returns
+    -------
+    out_tensor : torch.Tensor
+        Batched tensor with shape (n_batch, max_dim1, max_dim2, ...)
+    """
     n_batches = len(sequences)
     out_dims = list(sequences[0].size())
     dim1, dim2 = 0, 1
@@ -19,7 +35,6 @@ def pad_sequence_12(sequences, padding_value=0):
     out_dims[dim1] = max_dim1
     out_dims[dim2] = max_dim2
     out_dims = [n_batches] + out_dims
-    # print(out_dims)
 
     out_tensor = sequences[0].data.new(*out_dims).fill_(padding_value)
     for i, tensor in enumerate(sequences):
@@ -32,21 +47,31 @@ def pad_sequence_12(sequences, padding_value=0):
 
 
 def batchify(batched_flat_terms, term_lens):
+    """ Take a flat representation of TERM information and batch them into a stacked representation.
+
+    In the TERM information condensor, TERM information is initially stored by concatenating all
+    TERM tensors side by side in one dimension. However, for message passing, it's convenient to batch
+    these TERMs by splitting them and stacking them in a new dimension.
+
+    Args
+    ----
+    batched_flat_terms : torch.Tensor
+        Tensor with shape :code:`(n_batch, sum_term_len, ...)`
+    term_lens : list of (list of int)
+        Length of each TERM per protein
+
+    Returns
+    -------
+    batchify_terms : torch.Tensor
+        Tensor with shape :code:`(n_batch, max_num_terms, max_term_len, ...)`
+    """
     n_batches = batched_flat_terms.shape[0]
     flat_terms = torch.unbind(batched_flat_terms)
     list_terms = [torch.split(flat_terms[i], term_lens[i]) for i in range(n_batches)]
     padded_terms = [pad_sequence(terms) for terms in list_terms]
     padded_terms = [term.transpose(0, 1) for term in padded_terms]
-    batchify = pad_sequence_12(padded_terms)
-    return batchify
-
-
-class BatchifyTERM(nn.Module):
-    def __init__(self):
-        super(BatchifyTERM, self).__init__()
-
-    def forward(self, batched_flat_terms, term_lens):
-        return batchify(batched_flat_terms, term_lens)
+    batchify_terms = pad_sequence_12(padded_terms)
+    return batchify_terms
 
 
 """
@@ -56,6 +81,25 @@ class BatchifyTERM(nn.Module):
 
 
 def gather_edges(edges, neighbor_idx):
+    """ Gather the edge features of the nearest neighbors.
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    edges : torch.Tensor
+        The edge features in dense form
+        Shape: n_batch x n_res x n_res x n_hidden
+    neighbor_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    edge_features : torch.Tensor
+        The gathered edge features
+        Shape : n_batch x n_res x k x n_hidden
+    """
     # Features [B,N,N,C] at Neighbor indices [B,N,K] => Neighbor features [B,N,K,C]
     neighbors = neighbor_idx.unsqueeze(-1).expand(-1, -1, -1, edges.size(-1))
     edge_features = torch.gather(edges, 2, neighbors)
@@ -63,6 +107,25 @@ def gather_edges(edges, neighbor_idx):
 
 
 def gather_nodes(nodes, neighbor_idx):
+    """ Gather node features of nearest neighbors.
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    nodes : torch.Tensor
+        The node features for all nodes
+        Shape: n_batch x n_res x n_hidden
+    neighbor_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    neighbor_features : torch.Tensor
+        The gathered neighbor node features
+        Shape : n_batch x n_res x k x n_hidden
+    """
     # Features [B,N,C] at Neighbor indices [B,N,K] => [B,N,K,C]
     # Flatten and expand indices per batch [B,N,K] => [B,NK] => [B,NK,C]
     neighbors_flat = neighbor_idx.view((neighbor_idx.shape[0], -1))
@@ -73,24 +136,59 @@ def gather_nodes(nodes, neighbor_idx):
     return neighbor_features
 
 
-def gather_nodes_t(nodes, neighbor_idx):
-    # Features [B,N,C] at Neighbor index [B,K] => Neighbor features[B,K,C]
-    idx_flat = neighbor_idx.unsqueeze(-1).expand(-1, -1, nodes.size(2))
-    neighbor_features = torch.gather(nodes, 1, idx_flat)
-    return neighbor_features
-
-
 def cat_neighbors_nodes(h_nodes, h_neighbors, E_idx):
+    """ Concatenate node features onto the ends of gathered edge features given kNN sparse edge indices
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    h_nodes : torch.Tensor
+        The node features for all nodes
+        Shape: n_batch x n_res x n_hidden
+    h_neighbors : torch.Tensor
+        The gathered edge features
+        Shape: n_batch x n_res x k x n_hidden
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    h_nn : torch.Tensor
+        The gathered concatenated node and edge features
+        Shape : n_batch x n_res x k x n_hidden
+    """
     h_nodes = gather_nodes(h_nodes, E_idx)
     h_nn = torch.cat([h_neighbors, h_nodes], -1)
     return h_nn
 
 
 def cat_edge_endpoints(h_edges, h_nodes, E_idx):
+    """ Concatenate both node features onto the ends of gathered edge features given kNN sparse edge indices
+
+    Args
+    ----
+    h_edges : torch.Tensor
+        The gathered edge features
+        Shape: n_batch x n_res x k x n_hidden
+    h_nodes : torch.Tensor
+        The node features for all nodes
+        Shape: n_batch x n_res x n_hidden
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    h_nn : torch.Tensor
+        The gathered concatenated node and edge features
+        Shape : n_batch x n_res x k x n_hidden
+    """
     # Neighbor indices E_idx [B,N,K]
     # Edge features h_edges [B,N,N,C]
     # Node features h_nodes [B,N,C]
-    n_batches, n_nodes, k = E_idx.shape
+    k = E_idx.shape[-1]
 
     h_i_idx = E_idx[:, :, 0].unsqueeze(-1).expand(-1, -1, k).contiguous()
     h_j_idx = E_idx
@@ -98,16 +196,31 @@ def cat_edge_endpoints(h_edges, h_nodes, E_idx):
     h_i = gather_nodes(h_nodes, h_i_idx)
     h_j = gather_nodes(h_nodes, h_j_idx)
 
-    # e_ij = gather_edges(h_edges, E_idx)
-    e_ij = h_edges
-
     # output features [B, N, K, 3C]
-    h_nn = torch.cat([h_i, h_j, e_ij], -1)
+    h_nn = torch.cat([h_i, h_j, h_edges], -1)
     return h_nn
 
 
 def gather_pairEs(pairEs, neighbor_idx):
-    # Features [B,N,N,C] at Neighbor indices [B,N,K] => Neighbor features [B,N,K,C]
+    """ Gather the pair energies features of the nearest neighbors.
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    pairEs : torch.Tensor
+        The pair energies in dense form
+        Shape: n_batch x n_res x n_res x n_aa x n_aa
+    neighbor_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    pairE_features : torch.Tensor
+        The gathered pair energies
+        Shape : n_batch x n_res x k x n_aa x n_aa
+    """
     n_aa = pairEs.size(-1)
     neighbors = neighbor_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_aa, n_aa)
     pairE_features = torch.gather(pairEs, 2, neighbors)
@@ -118,6 +231,25 @@ def gather_pairEs(pairEs, neighbor_idx):
 
 
 def gather_term_nodes(nodes, neighbor_idx):
+    """ Gather TERM node features of nearest neighbors.
+
+    Adatped from https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    nodes : torch.Tensor
+        The node features for all nodes
+        Shape: n_batch x n_terms x n_res x n_hidden
+    neighbor_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_terms x n_res x k
+
+    Returns
+    -------
+    neighbor_features : torch.Tensor
+        The gathered neighbor node features
+        Shape : n_batch x n_terms x n_res x k x n_hidden
+    """
     # Features [B,T,N,C] at Neighbor indices [B,T,N,K] => [B,T,N,K,C]
     # Flatten and expand indices per batch [B,T,N,K] => [B,T,NK] => [B,T,NK,C]
     neighbors_flat = neighbor_idx.view((neighbor_idx.shape[0], neighbor_idx.shape[1], -1))
@@ -129,6 +261,25 @@ def gather_term_nodes(nodes, neighbor_idx):
 
 
 def gather_term_edges(edges, neighbor_idx):
+    """ Gather the TERM edge features of the nearest neighbors.
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    edges : torch.Tensor
+        The edge features in dense form
+        Shape: n_batch x n_terms x n_res x n_res x n_hidden
+    neighbor_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_terms x n_res x k
+
+    Returns
+    -------
+    edge_features : torch.Tensor
+        The gathered edge features
+        Shape : n_batch x n_terms x n_res x k x n_hidden
+    """
     # Features [B,T,N,N,C] at Neighbor indices [B,T,N,K] => Neighbor features [B,T,N,K,C]
     neighbors = neighbor_idx.unsqueeze(-1).expand(-1, -1, -1, -1, edges.size(-1))
     edge_features = torch.gather(edges, 3, neighbors)
@@ -136,16 +287,58 @@ def gather_term_edges(edges, neighbor_idx):
 
 
 def cat_term_neighbors_nodes(h_nodes, h_neighbors, E_idx):
+    """ Concatenate node features onto the ends of gathered edge features given kNN sparse edge indices
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    h_nodes : torch.Tensor
+        The node features for all nodes
+        Shape: n_batch x n_terms x n_res x n_hidden
+    h_neighbors : torch.Tensor
+        The gathered edge features
+        Shape: n_batch x n_terms x n_res x k x n_hidden
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_terms x n_res x k
+
+    Returns
+    -------
+    h_nn : torch.Tensor
+        The gathered concatenated node and edge features
+        Shape : n_batch x n_terms x n_res x k x n_hidden
+    """
     h_nodes = gather_term_nodes(h_nodes, E_idx)
     h_nn = torch.cat([h_neighbors, h_nodes], -1)
     return h_nn
 
 
 def cat_term_edge_endpoints(h_edges, h_nodes, E_idx):
+    """ Concatenate both node features onto the ends of gathered edge features given kNN sparse edge indices
+
+    Args
+    ----
+    h_edges : torch.Tensor
+        The gathered edge features
+        Shape: n_batch x n_terms x n_res x k x n_hidden
+    h_nodes : torch.Tensor
+        The node features for all nodes
+        Shape: n_batch x n_terms x n_res x n_hidden
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_terms x n_res x k
+
+    Returns
+    -------
+    h_nn : torch.Tensor
+        The gathered concatenated node and edge features
+        Shape : n_batch x n_terms x n_res x k x n_hidden
+    """
     # Neighbor indices E_idx [B,T,N,K]
     # Edge features h_edges [B,T,N,N,C]
     # Node features h_nodes [B,T,N,C]
-    n_batches, n_terms, n_nodes, k = E_idx.shape
+    k = E_idx.shape[-1]
 
     h_i_idx = E_idx[:, :, :, 0].unsqueeze(-1).expand(-1, -1, -1, k).contiguous()
     h_j_idx = E_idx
@@ -167,8 +360,28 @@ def cat_term_edge_endpoints(h_edges, h_nodes, E_idx):
 
 
 def merge_duplicate_edges(h_E_update, E_idx):
+    """ Average embeddings across bidirectional edges.
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings.
+
+    Args
+    ----
+    h_E_update : torch.Tensor
+        Update tensor for edges embeddings in kNN sparse form
+        Shape : n_batch x n_res x k x n_hidden
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    merged_E_updates : torch.Tensor
+        Edge update with merged updates for bidirectional edges
+        Shape : n_batch x n_res x k x n_hidden
+    """
     dev = h_E_update.device
-    n_batch, n_nodes, k, hidden_dim = h_E_update.shape
+    n_batch, n_nodes, _, hidden_dim = h_E_update.shape
     # collect edges into NxN tensor shape
     collection = torch.zeros((n_batch, n_nodes, n_nodes, hidden_dim)).to(dev)
     neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, hidden_dim).to(dev)
@@ -183,8 +396,28 @@ def merge_duplicate_edges(h_E_update, E_idx):
 
 
 def merge_duplicate_term_edges(h_E_update, E_idx):
+    """ Average embeddings across bidirectional TERM edges.
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings.
+
+    Args
+    ----
+    h_E_update : torch.Tensor
+        Update tensor for edges embeddings in kNN sparse form
+        Shape : n_batch x n_terms x n_res x k x n_hidden
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_terms x n_res x k
+
+    Returns
+    -------
+    merged_E_updates : torch.Tensor
+        Edge update with merged updates for bidirectional edges
+        Shape : n_batch x n_terms x n_res x k x n_hidden
+    """
     dev = h_E_update.device
-    n_batch, n_terms, n_aa, n_neighbors, hidden_dim = h_E_update.shape
+    n_batch, n_terms, n_aa, _, hidden_dim = h_E_update.shape
     # collect edges into NxN tensor shape
     collection = torch.zeros((n_batch, n_terms, n_aa, n_aa, hidden_dim)).to(dev)
     neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, -1, hidden_dim).to(dev)
@@ -199,18 +432,64 @@ def merge_duplicate_term_edges(h_E_update, E_idx):
 
 
 def merge_duplicate_pairE(h_E, E_idx):
+    """ Average pair energy tables across bidirectional edges.
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings. In the case for
+    pair energies, we transpose the tables to ensure that the pair energy table
+    is symmetric upon inverse (e.g. the pair energy between i and j should be
+    the same as the pair energy between j and i)
+
+    Args
+    ----
+    h_E : torch.Tensor
+        Pair energies in kNN sparse form
+        Shape : n_batch x n_res x k x n_aa x n_aa
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    torch.Tensor
+        Pair energies with merged energies for bidirectional edges
+        Shape : n_batch x n_res x k x n_aa x n_aa
+    """
     try:
         return merge_duplicate_pairE_dense(h_E, E_idx)
-    except RuntimeError as e:
-        print(e, file=sys.stderr)
+    except RuntimeError as err:
+        print(err, file=sys.stderr)
         print("We're handling this error as if it's an out-of-memory error", file=sys.stderr)
         torch.cuda.empty_cache()  # this is probably unnecessary but just in case
         return merge_duplicate_pairE_sparse(h_E, E_idx)
 
 
 def merge_duplicate_pairE_dense(h_E, E_idx):
+    """ Dense method to average pair energy tables across bidirectional edges.
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings. In the case for
+    pair energies, we transpose the tables to ensure that the pair energy table
+    is symmetric upon inverse (e.g. the pair energy between i and j should be
+    the same as the pair energy between j and i)
+
+    Args
+    ----
+    h_E : torch.Tensor
+        Pair energies in kNN sparse form
+        Shape : n_batch x n_res x k x n_aa x n_aa
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    torch.Tensor
+        Pair energies with merged energies for bidirectional edges
+        Shape : n_batch x n_res x k x n_aa x n_aa
+    """
     dev = h_E.device
-    n_batch, n_nodes, k, n_aa, _ = h_E.shape
+    n_batch, n_nodes, _, n_aa, _ = h_E.shape
     # collect edges into NxN tensor shape
     collection = torch.zeros((n_batch, n_nodes, n_nodes, n_aa, n_aa)).to(dev)
     neighbor_idx = E_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_aa, n_aa).to(dev)
@@ -228,9 +507,30 @@ def merge_duplicate_pairE_dense(h_E, E_idx):
 
 # TODO: rigorous test that this is equiv to the dense version
 def merge_duplicate_pairE_sparse(h_E, E_idx):
-    """
-    sparse tensor version of merge_duplicate_pairE
-    significant slowdown so only worth using if memory is an issue
+    """ Sparse method to average pair energy tables across bidirectional edges.
+
+    Note: This method involves a significant slowdown so it's only worth using if memory is an issue.
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings. In the case for
+    pair energies, we transpose the tables to ensure that the pair energy table
+    is symmetric upon inverse (e.g. the pair energy between i and j should be
+    the same as the pair energy between j and i)
+
+    Args
+    ----
+    h_E : torch.Tensor
+        Pair energies in kNN sparse form
+        Shape : n_batch x n_res x k x n_aa x n_aa
+    E_idx : torch.LongTensor
+        kNN sparse edge indices
+        Shape : n_batch x n_res x k
+
+    Returns
+    -------
+    torch.Tensor
+        Pair energies with merged energies for bidirectional edges
+        Shape : n_batch x n_res x k x n_aa x n_aa
     """
     dev = h_E.device
     n_batch, n_nodes, k, n_aa, _ = h_E.shape
@@ -286,8 +586,27 @@ def merge_duplicate_pairE_sparse(h_E, E_idx):
 
 
 def aggregate_edges(edge_embeddings, E_idx, max_seq_len):
+    """ Aggregate TERM edge embeddings into a sequence-level dense edge features tensor
+
+    Args
+    ----
+    edge_embeddings : torch.Tensor
+        TERM edge features tensor
+        Shape : n_batch x n_terms x n_aa x n_neighbors x n_hidden
+    E_idx : torch.LongTensor
+        TERM edge indices
+        Shape : n_batch x n_terms x n_aa x n_neighbors
+    max_seq_len : int
+        Max length of a sequence in the batch
+
+    Returns
+    -------
+    torch.Tensor
+        Dense sequence-level edge features
+        Shape : n_batch x max_seq_len x max_seq_len x n_hidden
+    """
     dev = edge_embeddings.device
-    n_batch, n_terms, n_aa, n_neighbors, hidden_dim = edge_embeddings.shape
+    n_batch, _, _, n_neighbors, hidden_dim = edge_embeddings.shape
     # collect edges into NxN tensor shape
     collection = torch.zeros((n_batch, max_seq_len, max_seq_len, hidden_dim)).to(dev)
     # edge the edge indecies
@@ -307,95 +626,3 @@ def aggregate_edges(edge_embeddings, E_idx, max_seq_len):
     count[count == 0] = 1
 
     return collection / count.unsqueeze(-1)
-
-
-"""
-    some random debugging fns
-"""
-
-ERROR_FILE = '/nobackup/users/alexjli/TERMinator/run.error'
-
-
-def process_nan(t, prev_t, msg):
-    if torch.isnan(t).any():
-        with open(ERROR_FILE, 'w') as fp:
-            fp.write(repr(prev_t) + '\n')
-            fp.write(repr(t) + '\n')
-            fp.write(str(msg))
-        raise KeyboardInterrupt
-
-
-def stat_cuda(msg):
-    dev1, dev2, dev3 = 0, 1, 2
-    print('--', msg)
-    print('allocated 1: %dM, max allocated: %dM, cached: %dM, max cached: %dM' %
-          (torch.cuda.memory_allocated(dev1) / 1024 / 1024, torch.cuda.max_memory_allocated(dev1) / 1024 / 1024,
-           torch.cuda.memory_cached(dev1) / 1024 / 1024, torch.cuda.max_memory_cached(dev1) / 1024 / 1024))
-    print('allocated 2: %dM, max allocated: %dM, cached: %dM, max cached: %dM' %
-          (torch.cuda.memory_allocated(dev2) / 1024 / 1024, torch.cuda.max_memory_allocated(dev2) / 1024 / 1024,
-           torch.cuda.memory_cached(dev2) / 1024 / 1024, torch.cuda.max_memory_cached(dev2) / 1024 / 1024))
-    print('allocated 3: %dM, max allocated: %dM, cached: %dM, max cached: %dM' %
-          (torch.cuda.memory_allocated(dev3) / 1024 / 1024, torch.cuda.max_memory_allocated(dev3) / 1024 / 1024,
-           torch.cuda.memory_cached(dev3) / 1024 / 1024, torch.cuda.max_memory_cached(dev3) / 1024 / 1024))
-
-
-def inf_nan_hook_fn(self, input, output):
-    """
-    try:
-        print('mean', self.running_mean)
-        print('var', self.running_var)
-    except:
-        pass
-    """
-    if has_large(input[0]):
-        print("large mag input")
-        with open(ERROR_FILE, 'w') as fp:
-            abs_input = torch.abs(input[0])
-            fp.write('Input to ' + repr(self) + ' forward\n')
-            fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
-            fp.write("top 5 " + repr(torch.topk(abs_input.view([-1]), 5)) + '\n')
-            fp.write('Weights ' + repr(self.weight) + '\n')
-            fp.write('Biases ' + repr(self.bias) + '\n')
-            try:
-                fp.write('Running mean ' + repr(self.running_mean) + '\n')
-                fp.write('Running var ' + repr(self.running_var) + '\n')
-            except Exception:
-                fp.write('Not a batchnorm layer')
-        exit()
-
-    elif (output == float('inf')).any() or (output == float('-inf')).any() or torch.isnan(output).any():
-        print('we got an inf/nan rip')
-        with open(ERROR_FILE, 'w') as fp:
-            fp.write('Inf/nan is from ' + repr(self) + ' forward\n')
-            fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
-            fp.write('Outputs from b_idx 0 channel 0' + repr(output[0][0]) + '\n')
-            fp.write('Weights ' + repr(self.weight) + '\n')
-            fp.write('Biases ' + repr(self.bias) + '\n')
-            try:
-                fp.write('Running mean ' + repr(self.running_mean) + '\n')
-                fp.write('Running var ' + repr(self.running_var) + '\n')
-            except Exception:
-                fp.write('Not a batchnorm layer')
-        exit()
-    else:
-        try:
-            if is_nan_inf(self.running_mean) or is_nan_inf(self.running_var):
-                with open(ERROR_FILE, 'w') as fp:
-                    fp.write('Inf/nan is from ' + repr(self) + ' forward\n')
-                    fp.write('Inputs from b_idx 0 channel 0' + repr(input[0][0][0]) + '\n')
-                    fp.write('Outputs from b_idx 0 channel 0' + repr(output[0][0]) + '\n')
-                    fp.write('Weights ' + repr(self.weight) + '\n')
-                    fp.write('Biases ' + repr(self.bias) + '\n')
-                    fp.write('Running mean ' + repr(self.running_mean) + '\n')
-                    fp.write('Running var ' + repr(self.running_var) + '\n')
-                exit()
-        except Exception:
-            pass
-
-
-def is_nan_inf(output):
-    return (output == float('inf')).any() or (output == float('-inf')).any() or torch.isnan(output).any()
-
-
-def has_large(input):
-    return torch.max(torch.abs(input)) > 1000
