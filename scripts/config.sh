@@ -1,1 +1,1 @@
-MST_PATH="$HOME/MST_workspace/MST"
+MST_PATH="$HOME/keatinglab_shared/MST_workspace/MST"

@@ -280,6 +280,8 @@ class MultiChainTERMinator_gcnkt(TERMinator):
                                  chain_idx,
                                  contact_idx=contact_idx)
         nlcpl, avg_prob, counter = _nlcpl(etab, E_idx, sequence, x_mask)
+        if self.hparams["regularize_etab"] != 0:
+            nlcpl += self.hparams["regularize_etab"]*etab.norm()
         return nlcpl, avg_prob, counter
 
     def potts(self, msas, features, seq_lens, focuses, term_lens, src_key_mask, X, x_mask, max_seq_len, ppoe,

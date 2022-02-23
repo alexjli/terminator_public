@@ -155,6 +155,20 @@ def main(args):
     print(terminator)
     print("hparams", terminator.hparams)
 
+    if hparams['finetune']: # freeze all but the last output layer
+        for (name, module) in terminator.named_children():
+            if name == "top":
+                for (n, m) in module.named_children():
+                    if n == "W_out":
+                        m.requires_grad = True
+                        print("top.{} unfrozen".format(n))
+                    else:
+                        m.requires_grad = False
+                        print("top.{} frozen".format(n))
+            else:
+                module.requires_grad = False
+                print("{} frozen".format(name))
+
     if torch.cuda.device_count() > 1 and dev != "cpu":
         terminator = nn.DataParallel(terminator)
         terminator_module = terminator.module

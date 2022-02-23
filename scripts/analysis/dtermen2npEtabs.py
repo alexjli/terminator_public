@@ -8,7 +8,7 @@ Usage:
             --out_folder <output_folder> \\
             -n <num_processes>
 
-    :code:`<etab_paths_file>` should be a file of paths to .pdb files, with one path per line
+    :code:`<etab_paths_file>` should be a file of paths to .etab files, with one path per line
 
 See :code:`python dtermen2npEtabs.py --help` for more info.
 """
@@ -18,11 +18,11 @@ import multiprocessing as mp
 import os
 import sys
 
+import re
 import numpy as np
 
 # Code from preprocessing folder
-up_one_dir = os.path.dirname(os.path.dirname(__file__))
-sys.path.insert(0, up_one_dir)
+sys.path.append("../")
 from data.preprocessing.parseEtab import parseEtab
 
 
@@ -66,7 +66,7 @@ def dataGen(filepath, out_folder):
     out_folder : str
         output directory to dump .etab.npy files into
     """
-    name = filepath.split('/')[-1]
+    name = re.split('/|\\\\', filepath)[-1]
     out_file = os.path.join(out_folder, name)
     print('out file', out_file)
     try:
@@ -74,6 +74,7 @@ def dataGen(filepath, out_folder):
         np.save(out_file, etab)
     except Exception as e:
         print(out_file, file=sys.stderr)
+        print(e)
         raise e
 
 

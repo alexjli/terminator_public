@@ -87,7 +87,7 @@ if __name__ == '__main__':
             continue
 
         last_testfolder = None
-        for testfolder in glob.glob(os.path.join(args.dtermen_data, "*")):
+        for testfolder in glob.glob(args.dtermen_data):
             already_found = False
             already_found_recov = False
             already_found_mean = False
@@ -150,7 +150,14 @@ if __name__ == '__main__':
         if len(dtermen_pred_sequences) < len(pred_sequences):
             dtermen_pred_sequences += ['UNKNOWN']
         if len(dtermen_recovery) < len(pred_sequences):
-            dtermen_recovery += [-1]
+            dtermen_recovery += [None]
+        if len(dtermen_energy) < len(pred_sequences):
+            dtermen_energy += [None]
+        if len(dtermen_energy_u) < len(pred_sequences):
+            dtermen_energy_u += [None]
+        if len(dtermen_energy_s) < len(pred_sequences):
+            dtermen_energy_s += [None]
+
             with open('to_run.out', 'a') as f:
                 f.write(os.path.join(last_testfolder, pdb_id) + '\n')
 

@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH --mincpu=40
 #SBATCH --gres=gpu:volta:2
-#SBATCH --time=144:00:00
+#SBATCH --time=2:00:00
 #SBATCH --exclusive
 #SBATCH -o OUTPUTDIR/eval-output.out
 #SBATCH -e OUTPUTDIR/eval-error.out

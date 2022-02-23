@@ -25,7 +25,7 @@ def find_pdb_path(pdb, root):
     ValueError
         If the PDB file is not found
     """
-    pattern = os.path.join(root, "*", "PDB", pdb[1:3].lower(), f"{pdb}.pdb")
+    pattern = os.path.join(root, "PDB", pdb[1:3].lower(), f"{pdb}.pdb")
     for pdb_path in glob.glob(pattern):
         if os.path.exists(pdb_path):
             return pdb_path
@@ -53,8 +53,7 @@ def find_dtermen_folder(pdb, root):
     ValueError
         If the dTERMen run folder is not found
     """
-    for dataDir in glob.glob(os.path.join(root, "*")):
-        pdb_folder = os.path.join(dataDir, pdb)
-        if os.path.isdir(pdb_folder):
-            return pdb_folder
+    pdb_folder = os.path.join(root, pdb)
+    if os.path.isdir(pdb_folder):
+        return pdb_folder
     raise ValueError(f"{pdb} not found in $INPUT_DATA")

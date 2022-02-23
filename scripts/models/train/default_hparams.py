@@ -243,5 +243,7 @@ DEFAULT_HPARAMS = {
              'cos_phi', 'cos_psi', 'cos_omega',
              'env',
              'rmsd',
-             'term_len'])  #
+             'term_len']),  #
+    'regularize_etab': 0,
+    'finetune': False
 }
