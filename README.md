@@ -19,6 +19,7 @@ As of now, we don't have the docs hosted anywhere, but they're pretty nice! You 
 * pylint
 * pytest-pylint
 * yapf
+* pyg
 
 Above should be all that's needed, and an `env.yaml` is included that specifies these.
 

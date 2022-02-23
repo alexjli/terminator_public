@@ -83,11 +83,20 @@ Parameters
     k_neighbors : int, default=30
         What `k` is for kNN computation
 
+    k_cutoff : int, default=None
+        When outputting a kNN potts model, take the top :code:`k_cutoff` edges and output the truncated etab
+
     contact_idx : bool, default=True
         Whether or not to include contact indices in computation
 
     cie_dropout : float, default=0.1
         Dropout rate for sinusoidal encoding of contact index
+
+    cie_scaling : int, default=500
+        Multiplicative factor by which to scale contact indices
+
+    cie_offset : int, default=0
+        Additive factor by which to offset contact indices
 
     transformer_dropout : float, default=0.1
         Dropout rate for Transformers used in the TERM Information Condensor
@@ -119,7 +128,9 @@ Parameters
         Use GVP version of GNN Potts Model Encoder instead
 
     energies_full_graph : bool, default=True
-        Update both node and edge representations in the GNN Potts Model Encoder
+        [DEPRECIATED] Update both node and edge representations in the GNN Potts Model Encoder.
+        GNN Potts Model Encoder always updates node and edge representations now,
+        making this option do nothing.
 
     res_embed_linear : bool, default=False
         Replace the singleton matches residue embedding layer with a linear layer.
@@ -209,8 +220,11 @@ DEFAULT_HPARAMS = {
     'matches_layers': 4,  #
     'matches_num_heads': 4,  #
     'k_neighbors': 30,  #
+    'k_cutoff': None,  #
     'contact_idx': True,  #
     'cie_dropout': 0.1,  #
+    'cie_scaling': 500,  #
+    'cie_offset': 0,  #
     'transformer_dropout': 0.1,  #
     'term_use_mpnn': True,  #
     'energies_protein_features': 'full',  #
@@ -238,12 +252,7 @@ DEFAULT_HPARAMS = {
     'max_term_res': 55000,
     'max_seq_tokens': None,
     'term_dropout': None,
-    'num_features':
-        len(['sin_phi', 'sin_psi', 'sin_omega',
-             'cos_phi', 'cos_psi', 'cos_omega',
-             'env',
-             'rmsd',
-             'term_len']),  #
+    'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len']),  #
     'regularize_etab': 0,
     'finetune': False
 }

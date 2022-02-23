@@ -60,7 +60,7 @@ def parseEtab(filename, save=True):
             resid = idx // 20
             id_to_resid[id] = resid
 
-            residue = AA_to_int(l[1])
+            residue = AA_to_int[l[1]]
             E = float(l[2])
 
             selfE.append({'resid': resid, 'residue': residue, 'E': E})
@@ -72,14 +72,11 @@ def parseEtab(filename, save=True):
             resid0 = id_to_resid[id0]
             resid1 = id_to_resid[id1]
 
-            residue0 = AA_to_int(l[2])
-            residue1 = AA_to_int(l[3])
+            residue0 = AA_to_int[l[2]]
+            residue1 = AA_to_int[l[3]]
             E = float(l[4])
 
-            pairE.append({
-                'resid0': resid0, 'resid1': resid1,
-                'residue0': residue0, 'residue1': residue1,
-                'E': E})
+            pairE.append({'resid0': resid0, 'resid1': resid1, 'residue0': residue0, 'residue1': residue1, 'E': E})
         else:
             raise ValueError("Something doesn't look right at line %d: %s" % (idx, line))
 

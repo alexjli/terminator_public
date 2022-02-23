@@ -1,100 +1,149 @@
-from __future__ import print_function
-
-import copy
+import functools
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from matplotlib import pyplot as plt
+from torch.distributions import Categorical
+from torch_scatter import scatter_mean
 
-from ..graph_features import GVPProteinFeatures
-from ..gvp import GVP, GVPEdgeLayer, GVPNodeLayer
-from ..utils import (cat_gvp_edge_endpoints, gather_edges, gather_nodes, merge_duplicate_pairE)
+from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split,
+                   tuple_cat, tuple_index, tuple_sum)
+
+
+class EdgeLayer(nn.Module):
+    def __init__(self,
+                 node_dims,
+                 edge_dims,
+                 drop_rate=0.1,
+                 n_layers=3,
+                 module_list=None,
+                 activations=(F.relu, torch.sigmoid),
+                 vector_gate=False):
+        super().__init__()
+        self.si, self.vi = node_dims
+        self.so, self.vo = edge_dims
+        self.se, self.ve = edge_dims
+
+        GVP_ = functools.partial(GVP, activations=activations, vector_gate=vector_gate)
+
+        # Edge Messages
+        module_list = module_list or []
+        if not module_list:
+            if n_layers == 1:
+                module_list.append(
+                    GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), (self.so, self.vo), activations=(None, None)))
+            else:
+                module_list.append(GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), edge_dims))
+                for i in range(n_layers - 2):
+                    module_list.append(GVP_(edge_dims, edge_dims))
+                module_list.append(GVP_(edge_dims, edge_dims, activations=(None, None)))
+        self.message_func = nn.Sequential(*module_list)
+
+        # norm and dropout
+        self.norm = nn.ModuleList([LayerNorm(edge_dims) for _ in range(2)])
+        self.dropout = nn.ModuleList([Dropout(drop_rate) for _ in range(2)])
+
+        # FFN
+        n_feedforward = 2
+        ff_func = []
+        if n_feedforward == 1:
+            ff_func.append(GVP_(edge_dims, edge_dims, activations=(None, None)))
+        else:
+            hid_dims = 4 * edge_dims[0], 2 * edge_dims[1]
+            ff_func.append(GVP_(edge_dims, hid_dims))
+            for i in range(n_feedforward - 2):
+                ff_func.append(GVP_(hid_dims, hid_dims))
+            ff_func.append(GVP_(hid_dims, edge_dims, activations=(None, None)))
+        self.ff_func = nn.Sequential(*ff_func)
+
+    def forward(self, h_V, edge_index, h_E, node_mask=None):
+        h_V_merge = _merge(*h_V)
+        fake_h_dim = h_V_merge.shape[-1]
+        edge_index_flat = edge_index.flatten()
+        edge_index_flat = edge_index_flat.unsqueeze(-1).expand([-1, fake_h_dim])
+        h_V_gather = torch.gather(h_V_merge, -2, edge_index_flat)
+        h_V_gather = h_V_gather.view(list(edge_index.shape) + [fake_h_dim])
+
+        h_V_ij = _split(h_V_gather, self.vi)
+        h_V_i, h_V_j = zip(*map(torch.unbind, h_V_ij))
+
+        h_EV = tuple_cat(h_V_i, h_E, h_V_j)
+        dh = self.message_func(h_EV)
+
+        x = h_E
+        if node_mask is not None:
+            x_ = x
+            x, dh = tuple_index(x, node_mask), tuple_index(dh, node_mask)
+
+        x = self.norm[0](tuple_sum(x, self.dropout[0](dh)))
+
+        dh = self.ff_func(x)
+        x = self.norm[1](tuple_sum(x, self.dropout[1](dh)))
+
+        if node_mask is not None:
+            x_[0][node_mask], x_[1][node_mask] = x[0], x[1]
+            x = x_
+        return x
 
 
 class GVPPairEnergies(nn.Module):
+    '''GNN Potts Model Encoder using GVP
+
+    :param node_in_dim: node dimensions in input graph, should be
+                        (6, 3) if using original features
+    :param node_h_dim: node dimensions to use in GVP layers
+    :param node_in_dim: edge dimensions in input graph, should be
+                        (32, 1) if using original features
+    :param edge_h_dim: edge dimensions to embed to before use
+                       in GVP layers
+    :param num_layers: number of GVP layers in each of the encoder
+                       and decoder modules
+    :param drop_rate: rate to use in all dropout layers
+    '''
     def __init__(self, hparams):
-        """ Graph labeling network """
-        super(GVPPairEnergies, self).__init__()
+
         self.hparams = hparams
-        # self.scalar_in = True #hparams['gvp_energies_scalar_in']
+        node_in_dim = (hparams['energies_input_dim'] + 6, 3)
+        node_h_dim = (100, 16)
+        edge_in_dim = (hparams['energies_input_dim'] + 32, 1)
+        edge_h_dim = (32, 1)
+        num_layers = hparams['energies_encoder_layers']
+        drop_rate = hparams['energies_dropout']
+        output_dim = (hparams['energies_output_dim'], 0)
 
-        node_features = (4, 50)  # (8,100)
-        edge_features = (1, 32)
-        hidden_dim = (8, 50)  # (16,100)
+        super().__init__()
 
-        # Featurization layers
-        self.features = GVPProteinFeatures(node_features=node_features,
-                                           edge_features=edge_features,
-                                           top_k=hparams['k_neighbors'])
+        self.W_v = nn.Sequential(GVP(node_in_dim, node_h_dim, activations=(None, None)), LayerNorm(node_h_dim))
+        self.W_e = nn.Sequential(GVP(edge_in_dim, edge_h_dim, activations=(None, None)), LayerNorm(edge_h_dim))
 
-        # Hyperparameters
-        self.nv, self.ns = node_features
-        self.hv, self.hs = hidden_dim
-        self.ev, self.es = edge_features
-        input_dim = hparams['energies_input_dim']
-        dropout = hparams['energies_dropout']
-        output_dim = hparams['energies_output_dim']
-        num_encoder_layers = hparams['energies_encoder_layers']
-        node_layer = GVPNodeLayer
-        edge_layer = GVPEdgeLayer
+        self.node_encoder_layers = nn.ModuleList(
+            GVPConvLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate, activations=(F.relu, F.relu))
+            for _ in range(num_layers))
+        self.edge_encoder_layers = nn.ModuleList(
+            EdgeLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate, activations=(F.relu, F.relu))
+            for _ in range(num_layers))
 
-        # Embedding layers
-        # self.W_v = GVP(vi=self.nv*2, vo=self.hv, si=self.hs*2, so=self.hs,
-        #                nls=None, nlv=None)
-        # self.W_e = GVP(vi=self.ev*2, vo=self.ev, si=self.hs*2, so=self.hs,
-        #                nls=None, nlv=None)
-        self.W_v = GVP(vi=self.nv, vo=self.hv, si=self.ns + input_dim, so=self.hs, nls=None, nlv=None)
-        self.W_e = GVP(vi=self.ev, vo=self.hv, si=self.es + input_dim, so=self.hs, nls=None, nlv=None)
+        self.W_out = GVP(edge_h_dim, output_dim, activations=(None, None))
 
-        # Encoder layers
-        self.edge_encoder = nn.ModuleList([
-            edge_layer(nv=self.hv, ns=self.hs, ev=self.hv, es=self.hs, dropout=dropout)
-            for _ in range(num_encoder_layers)
-        ])
-        self.node_encoder = nn.ModuleList([
-            node_layer(nv=self.hv, ns=self.hs, ev=self.hv, es=self.hs, dropout=dropout)
-            for _ in range(num_encoder_layers)
-        ])
+    def forward(self, h_V, edge_index, h_E):
+        '''Forward pass to be used at train-time, or evaluating likelihood.
 
-        self.W_out = GVP(vi=self.hv, vo=0, si=self.hs, so=output_dim, nls=None, nlv=None)
+        :param h_V: tuple (s, V) of node embeddings
+        :param edge_index: `torch.Tensor` of shape [2, num_edges]
+        :param h_E: tuple (s, V) of edge embeddings
+        '''
+        local_dev = self.W_v[0].wh.weight.device  # slightly hacky way of getting current device
+        h_V = (h_V[0].to(local_dev), h_V[1].to(local_dev))
+        h_E = (h_E[0].to(local_dev), h_E[1].to(local_dev))
+        edge_index = edge_index.to(local_dev)
 
-        # Initialization
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        h_V = self.W_v(h_V)
+        h_E = self.W_e(h_E)
 
-    def forward(self, V_term, E_term, X, x_mask, chain_idx):
-        # get graph features
-        V, E, E_idx = self.features(X, x_mask, chain_idx)
+        for node_layer, edge_layer in zip(self.node_encoder_layers, self.edge_encoder_layers):
+            h_V = node_layer(h_V, edge_index, h_E)
+            h_E = edge_layer(h_V, edge_index, h_E)
 
-        E_term = gather_edges(E_term, E_idx)
-
-        h_V = self.W_v(torch.cat([V, V_term], -1))
-        h_E = self.W_e(torch.cat([E, E_term], -1))
-        # h_V = self.W_v(vs_concat(V, V_term, self.nv, self.nv))
-        # h_E = self.W_e(vs_concat(E, E_term, self.ev, self.ev))
-
-        # Encoder is unmasked self-attention
-        mask = x_mask  # hacky alias
-        mask_attend = gather_nodes(mask.unsqueeze(-1), E_idx).squeeze(-1)
-        mask_attend = mask.unsqueeze(-1) * mask_attend
-
-        for edge_layer, node_layer in zip(self.edge_encoder, self.node_encoder):
-            # update nodes using edges
-            h_EV_nodes = cat_gvp_edge_endpoints(h_E, h_V, E_idx, self.nv, self.ev)
-            h_V = node_layer(h_V, h_EV_nodes, mask_V=mask, mask_attend=mask_attend)
-
-            # update edges using nodes
-            h_EV_edges = cat_gvp_edge_endpoints(h_E, h_V, E_idx, self.nv, self.ev)
-            h_E = edge_layer(h_E, h_EV_edges, mask_E=mask_attend, mask_attend=mask_attend)
-
-        h_E = self.W_out(h_E)
-        # merge directional edges features
-        n_batch, n_res, k, out_dim = h_E.shape
-        h_E = h_E.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
-        h_E = merge_duplicate_pairE(h_E, E_idx)
-        h_E = h_E.view(n_batch, n_res, k, out_dim)
-
-        return h_E, E_idx
+        etab = self.W_out(h_E)
+        return etab, edge_index

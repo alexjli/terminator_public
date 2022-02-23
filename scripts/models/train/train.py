@@ -43,7 +43,7 @@ from tqdm import tqdm
 
 from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset,
                                   TERMLazyDataLoader)
-from terminator.models.TERMinator import MultiChainTERMinator_gcnkt
+from terminator.models.TERMinator import TERMinator
 from terminator.utils.loop_utils import run_epoch
 
 # for autosummary import purposes
@@ -151,7 +151,7 @@ def main(args):
                                  collate_fn=test_batch_sampler._package,
                                  **kwargs)
 
-    terminator = MultiChainTERMinator_gcnkt(hparams=hparams, device=dev)
+    terminator = TERMinator(hparams=hparams, device=dev)
     print(terminator)
     print("hparams", terminator.hparams)
 
@@ -278,34 +278,17 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
-    parser.add_argument('--dataset',
-                        help='input folder .features files in proper directory structure.',
-                        required=True)
-    parser.add_argument('--hparams',
-                        help='hparams file path',
-                        required=True)
-    parser.add_argument('--run_dir',
-                        help='path to place folder to store model files',
-                        required=True)
-    parser.add_argument('--train',
-                        help='file with training dataset split')
-    parser.add_argument('--validation',
-                        help='file with validation dataset split')
-    parser.add_argument('--test',
-                        help='file with test dataset split')
+    parser.add_argument('--dataset', help='input folder .features files in proper directory structure.', required=True)
+    parser.add_argument('--hparams', help='hparams file path', required=True)
+    parser.add_argument('--run_dir', help='path to place folder to store model files', required=True)
+    parser.add_argument('--train', help='file with training dataset split')
+    parser.add_argument('--validation', help='file with validation dataset split')
+    parser.add_argument('--test', help='file with test dataset split')
     parser.add_argument('--out_dir',
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
-    parser.add_argument('--dev',
-                        help='device to train on',
-                        default='cuda:0')
-    parser.add_argument('--epochs',
-                        help='number of epochs to train for',
-                        default=100,
-                        type=int)
-    parser.add_argument('--lazy',
-                        help="use lazy data loading",
-                        type=bool,
-                        default=True)
+    parser.add_argument('--dev', help='device to train on', default='cuda:0')
+    parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
+    parser.add_argument('--lazy', help="use lazy data loading", type=bool, default=True)
     args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder

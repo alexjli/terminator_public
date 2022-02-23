@@ -196,7 +196,11 @@ biorender / diagrams.net / latex / chimera / pymol
 
 Alex:
 1. *** scatter plot for etabs ***
+- subtract mean, per site, for singleton and pairwise energies for plotting
+- plotting the top 1% energies
 1. residue likelihoods / energies and correlate
+- can energy tables be different locally but similar performance globally
+- puts everything on same scale
 2. recompute feature files with 999 torsions lifted to 3 torus masked
 2. run multichain (just choose a random split)
 3. test suite to fix GVP + restructure
@@ -215,3 +219,7 @@ tests
     test input and output shapes, deterministic computations, test it runs
 Document hyperparameters in default_hyperparams.py
 make sure code taken from other places is cited
+
+throw away contact index?
+
+take dtermen run folder directly rather than try to search for the right folder?

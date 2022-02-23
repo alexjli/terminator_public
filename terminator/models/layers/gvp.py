@@ -1,199 +1,391 @@
-# adapted from https://github.com/drorlab/gvp/blob/master/src/gvp.py
+"""Module for Geometric Vector Perceptrons.
+Sourced from https://github.com/drorlab/gvp-pytorch
+"""
+
+import functools
 
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.nn import MessagePassing
+from torch_scatter import scatter_add
 
 
-def norm_no_nan(x, dim=-1, keepdim=False, eps=1e-8, sqrt=True):
-    local_dev = x.device
-    inner = torch.sum(torch.square(x.clone()), dim=dim, keepdim=keepdim)
-    eps_tensor = torch.tensor(eps).view([1 for _ in range(len(inner.shape))]).expand(inner.shape).to(local_dev)
-    out = torch.where(inner > eps, inner, eps_tensor)
-    return (torch.sqrt(out) if sqrt else out)
+def tuple_sum(*args):
+    '''
+    Sums any number of tuples (s, V) elementwise.
+    '''
+    return tuple(map(sum, zip(*args)))
+
+
+def tuple_cat(*args, dim=-1):
+    '''
+    Concatenates any number of tuples (s, V) elementwise.
+
+    :param dim: dimension along which to concatenate when viewed
+                as the `dim` index for the scalar-channel tensors.
+                This means that `dim=-1` will be applied as
+                `dim=-2` for the vector-channel tensors.
+    '''
+    dim %= len(args[0][0].shape)
+    s_args, v_args = list(zip(*args))
+    return torch.cat(s_args, dim=dim), torch.cat(v_args, dim=dim)
+
+
+def tuple_index(x, idx):
+    '''
+    Indexes into a tuple (s, V) along the first dimension.
+
+    :param idx: any object which can be used to index into a `torch.Tensor`
+    '''
+    return x[0][idx], x[1][idx]
+
+
+def randn(n, dims, device="cpu"):
+    '''
+    Returns random tuples (s, V) drawn elementwise from a normal distribution.
+
+    :param n: number of data points
+    :param dims: tuple of dimensions (n_scalar, n_vector)
+
+    :return: (s, V) with s.shape = (n, n_scalar) and
+             V.shape = (n, n_vector, 3)
+    '''
+    return torch.randn(n, dims[0], device=device), torch.randn(n, dims[1], 3, device=device)
+
+
+
+def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):
+    '''
+    L2 norm of tensor clamped above a minimum value `eps`.
+
+    :param sqrt: if `False`, returns the square of the L2 norm
+    '''
+    out = torch.clamp(torch.sum(torch.square(x), axis, keepdims), min=eps)
+    return torch.sqrt(out) if sqrt else out
+
+
+def _split(x, nv):
+    '''
+    Splits a merged representation of (s, V) back into a tuple.
+    Should be used only with `_merge(s, V)` and only if the tuple
+    representation cannot be used.
+
+    :param x: the `torch.Tensor` returned from `_merge`
+    :param nv: the number of vector channels in the input to `_merge`
+    '''
+    v = torch.reshape(x[..., -3 * nv:], x.shape[:-1] + (nv, 3))
+    s = x[..., :-3 * nv]
+    return s, v
+
+
+def _merge(s, v):
+    '''
+    Merges a tuple (s, V) into a single `torch.Tensor`, where the
+    vector channels are flattened and appended to the scalar channels.
+    Should be used only if the tuple representation cannot be used.
+    Use `_split(x, nv)` to reverse.
+    '''
+    v = torch.reshape(v, v.shape[:-2] + (3 * v.shape[-2], ))
+    return torch.cat([s, v], -1)
 
 
 class GVP(nn.Module):
-    def __init__(self, vi, vo, si, so, nlv=torch.sigmoid, nls=nn.ReLU):
-        '''[v/s][i/o] = number of [vector/scalar] channels [in/out]'''
+    '''
+    Geometric Vector Perceptron. See manuscript and README.md
+    for more details.
+
+    :param in_dims: tuple (n_scalar, n_vector)
+    :param out_dims: tuple (n_scalar, n_vector)
+    :param h_dim: intermediate number of vector channels, optional
+    :param activations: tuple of functions (scalar_act, vector_act)
+    :param vector_gate: whether to use vector gating.
+                        (vector_act will be used as sigma^+ in vector gating if `True`)
+    '''
+    def __init__(self, in_dims, out_dims, h_dim=None, activations=(F.relu, torch.sigmoid), vector_gate=False):
         super(GVP, self).__init__()
-        nh = max(vi, vo)
-        if vi:
-            self.wh = nn.Linear(vi, nh)
-        if nls and vi:
-            self.ws = nn.Sequential(nn.Linear(nh + si, so), nls())
-        elif nls:
-            self.ws = nn.Sequential(nn.Linear(nh, so), nls())
-        elif vi:
-            self.ws = nn.Linear(nh + si, so)
-        else:
-            self.ws = nn.Linear(nh, so)
-
-        if vo:
-            self.wv = nn.Linear(nh, vo)
-        self.vi, self.vo, self.si, self.so, self.nlv = vi, vo, si, so, nlv
-
-    def forward(self, x, return_split=False):
-        # X: [..., 3*vi + si]
-        # if split, returns: [..., 3, vo], [..., so]
-        # if not split, returns [..., 3*vo + so]
-        v, s = split(x, self.vi)
+        self.si, self.vi = in_dims
+        self.so, self.vo = out_dims
+        self.vector_gate = vector_gate
         if self.vi:
-            vh = self.wh(v)
-            vn = norm_no_nan(vh, dim=-2)
-            out = self.ws(torch.cat([s, vn], dim=-1))
-
+            self.h_dim = h_dim or max(self.vi, self.vo)
+            self.wh = nn.Linear(self.vi, self.h_dim, bias=False)
+            self.ws = nn.Linear(self.h_dim + self.si, self.so)
             if self.vo:
-                vo = self.wv(vh)
-                if self.nlv:
-                    vo *= self.nlv(norm_no_nan(vo, dim=-2, keepdim=True))
-                out = (vo, out) if return_split else merge(vo, out)
-
+                self.wv = nn.Linear(self.h_dim, self.vo, bias=False)
+                if self.vector_gate:
+                    self.wsv = nn.Linear(self.so, self.vo)
         else:
-            out = self.ws(s)
-        return out
+            self.ws = nn.Linear(self.si, self.so)
 
-
-# Dropout that drops vector and scalar channels separately
-class GVPDropout(nn.Module):
-    def __init__(self, rate, nv):
-        super(GVPDropout, self).__init__()
-        self.nv = nv
-        self.rate = rate
-        self.sdropout = nn.Dropout(rate)
+        self.scalar_act, self.vector_act = activations
+        self.dummy_param = nn.Parameter(torch.empty(0))
 
     def forward(self, x):
+        '''
+        :param x: tuple (s, V) of `torch.Tensor`,
+                  or (if vectors_in is 0), a single `torch.Tensor`
+        :return: tuple (s, V) of `torch.Tensor`,
+                 or (if vectors_out is 0), a single `torch.Tensor`
+        '''
+        if self.vi:
+            s, v = x
+            v = torch.transpose(v, -1, -2)
+            vh = self.wh(v)
+            vn = _norm_no_nan(vh, axis=-2)
+            s = self.ws(torch.cat([s, vn], -1))
+            if self.vo:
+                v = self.wv(vh)
+                v = torch.transpose(v, -1, -2)
+                if self.vector_gate:
+                    if self.vector_act:
+                        gate = self.wsv(self.vector_act(s))
+                    else:
+                        gate = self.wsv(s)
+                    v = v * torch.sigmoid(gate).unsqueeze(-1)
+                elif self.vector_act:
+                    v = v * self.vector_act(_norm_no_nan(v, axis=-1, keepdims=True))
+        else:
+            s = self.ws(x)
+            if self.vo:
+                v = torch.zeros(s.shape[0], self.vo, 3, device=self.dummy_param.device)
+        if self.scalar_act:
+            s = self.scalar_act(s)
+
+        return (s, v) if self.vo else s
+
+
+class _VDropout(nn.Module):
+    '''
+    Vector channel dropout where the elements of each
+    vector channel are dropped together.
+    '''
+    def __init__(self, drop_rate):
+        super(_VDropout, self).__init__()
+        self.drop_rate = drop_rate
+        self.dummy_param = nn.Parameter(torch.empty(0))
+
+    def forward(self, x):
+        '''
+        :param x: `torch.Tensor` corresponding to vector channels
+        '''
+        device = self.dummy_param.device
         if not self.training:
             return x
-        v, s = split(x, self.nv)
-        v, s = self.vdropout(v), self.sdropout(s)
-        return merge(v, s)
-
-    # a form of dropout that either drops
-    # the whole vector or none of it
-    def vdropout(self, x):
-        dev = x.device
-
-        p = self.rate
-        p_mask = torch.tensor(1 - p).to(dev)  # probability of a 1
-        p_mask = p_mask.view([1 for _ in range(len(x.shape))])  # view so we can expand
-        p_mask = p_mask.expand(list(x.shape[:-2]) + [1, self.nv])  # e x p a n d
-        mask = torch.bernoulli(p_mask)  # now we have dropout probs
-
-        x = mask * x  # apply dropout
-        x *= 1 / (1 - p) if p != 1 else 0  # scale by prob, avoid div by 0
+        mask = torch.bernoulli((1 - self.drop_rate) * torch.ones(x.shape[:-1], device=device)).unsqueeze(-1)
+        x = mask * x / (1 - self.drop_rate)
         return x
 
 
-# Normal layer norm for scalars, nontrainable norm for vectors
-class GVPLayerNorm(nn.Module):
-    def __init__(self, nv, ns):
-        super(GVPLayerNorm, self).__init__()
-        self.nv = nv
-        self.ns = ns
-        self.snorm = nn.LayerNorm(ns)
+class Dropout(nn.Module):
+    '''
+    Combined dropout for tuples (s, V).
+    Takes tuples (s, V) as input and as output.
+    '''
+    def __init__(self, drop_rate):
+        super(Dropout, self).__init__()
+        self.sdropout = nn.Dropout(drop_rate)
+        self.vdropout = _VDropout(drop_rate)
 
     def forward(self, x):
-        v, s = split(x, self.nv)
-        vn = norm_no_nan(v, dim=-2, keepdim=True, sqrt=False)  # [..,1, nv]
-        vn = torch.sqrt(torch.mean(vn, dim=-1, keepdim=True))
-        return merge(v / vn, self.snorm(s))
+        '''
+        :param x: tuple (s, V) of `torch.Tensor`,
+                  or single `torch.Tensor`
+                  (will be assumed to be scalar channels)
+        '''
+        if type(x) is torch.Tensor:
+            return self.sdropout(x)
+        s, v = x
+        return self.sdropout(s), self.vdropout(v)
 
 
-# [..., 3*nv + ns] -> [..., 3, nv], [..., ns]
-# nv = number of vector channels
-# ns = number of scalar channels
-# vector channels are ALWAYS at the top!
-def split(x, nv):
-    v = torch.reshape(x[..., :3 * nv], list(x.shape[:-1]) + [3, nv])
-    s = x[..., 3 * nv:]
-    return v, s
+class LayerNorm(nn.Module):
+    '''
+    Combined LayerNorm for tuples (s, V).
+    Takes tuples (s, V) as input and as output.
+    '''
+    def __init__(self, dims):
+        super(LayerNorm, self).__init__()
+        self.s, self.v = dims
+        self.scalar_norm = nn.LayerNorm(self.s)
+
+    def forward(self, x):
+        '''
+        :param x: tuple (s, V) of `torch.Tensor`,
+                  or single `torch.Tensor`
+                  (will be assumed to be scalar channels)
+        '''
+        if not self.v:
+            return self.scalar_norm(x)
+        s, v = x
+        vn = _norm_no_nan(v, axis=-1, keepdims=True, sqrt=False)
+        vn = torch.sqrt(torch.mean(vn, dim=-2, keepdim=True))
+        return self.scalar_norm(s), v / vn
 
 
-# [..., 3, nv], [..., ns] -> [..., 3*nv + ns]
-def merge(v, s):
-    v = torch.reshape(v, list(v.shape[:-2]) + [3 * v.shape[-1]])
-    return torch.cat([v, s], dim=-1)
+class GVPConv(MessagePassing):
+    '''
+    Graph convolution / message passing with Geometric Vector Perceptrons.
+    Takes in a graph with node and edge embeddings,
+    and returns new node embeddings.
+
+    This does NOT do residual updates and pointwise feedforward layers
+    ---see `GVPConvLayer`.
+
+    :param in_dims: input node embedding dimensions (n_scalar, n_vector)
+    :param out_dims: output node embedding dimensions (n_scalar, n_vector)
+    :param edge_dims: input edge embedding dimensions (n_scalar, n_vector)
+    :param n_layers: number of GVPs in the message function
+    :param module_list: preconstructed message function, overrides n_layers
+    :param aggr: should be "add" if some incoming edges are masked, as in
+                 a masked autoregressive decoder architecture, otherwise "mean"
+    :param activations: tuple of functions (scalar_act, vector_act) to use in GVPs
+    :param vector_gate: whether to use vector gating.
+                        (vector_act will be used as sigma^+ in vector gating if `True`)
+    '''
+    def __init__(self,
+                 in_dims,
+                 out_dims,
+                 edge_dims,
+                 n_layers=3,
+                 module_list=None,
+                 aggr="mean",
+                 activations=(F.relu, torch.sigmoid),
+                 vector_gate=False):
+        super(GVPConv, self).__init__(aggr=aggr)
+        self.si, self.vi = in_dims
+        self.so, self.vo = out_dims
+        self.se, self.ve = edge_dims
+
+        GVP_ = functools.partial(GVP, activations=activations, vector_gate=vector_gate)
+
+        module_list = module_list or []
+        if not module_list:
+            if n_layers == 1:
+                module_list.append(
+                    GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), (self.so, self.vo), activations=(None, None)))
+            else:
+                module_list.append(GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), out_dims))
+                for i in range(n_layers - 2):
+                    module_list.append(GVP_(out_dims, out_dims))
+                module_list.append(GVP_(out_dims, out_dims, activations=(None, None)))
+        self.message_func = nn.Sequential(*module_list)
+
+    def forward(self, x, edge_index, edge_attr):
+        '''
+        :param x: tuple (s, V) of `torch.Tensor`
+        :param edge_index: array of shape [2, n_edges]
+        :param edge_attr: tuple (s, V) of `torch.Tensor`
+        '''
+        x_s, x_v = x
+        message = self.propagate(edge_index, s=x_s, v=x_v.reshape(x_v.shape[0], 3 * x_v.shape[1]), edge_attr=edge_attr)
+        return _split(message, self.vo)
+
+    def message(self, s_i, v_i, s_j, v_j, edge_attr):
+        v_j = v_j.view(v_j.shape[0], v_j.shape[1] // 3, 3)
+        v_i = v_i.view(v_i.shape[0], v_i.shape[1] // 3, 3)
+        message = tuple_cat((s_j, v_j), edge_attr, (s_i, v_i))
+        message = self.message_func(message)
+        return _merge(*message)
 
 
-# Concat in a way that keeps vector channels at the top
-def vs_concat(x1, x2, nv1, nv2):
+class GVPConvLayer(nn.Module):
+    '''
+    Full graph convolution / message passing layer with
+    Geometric Vector Perceptrons. Residually updates node embeddings with
+    aggregated incoming messages, applies a pointwise feedforward
+    network to node embeddings, and returns updated node embeddings.
 
-    v1, s1 = split(x1, nv1)
-    v2, s2 = split(x2, nv2)
+    To only compute the aggregated messages, see `GVPConv`.
 
-    v = torch.cat([v1, v2], -1)
-    s = torch.cat([s1, s2], -1)
-    return merge(v, s)
+    :param node_dims: node embedding dimensions (n_scalar, n_vector)
+    :param edge_dims: input edge embedding dimensions (n_scalar, n_vector)
+    :param n_message: number of GVPs to use in message function
+    :param n_feedforward: number of GVPs to use in feedforward function
+    :param drop_rate: drop probability in all dropout layers
+    :param autoregressive: if `True`, this `GVPConvLayer` will be used
+           with a different set of input node embeddings for messages
+           where src >= dst
+    :param activations: tuple of functions (scalar_act, vector_act) to use in GVPs
+    :param vector_gate: whether to use vector gating.
+                        (vector_act will be used as sigma^+ in vector gating if `True`)
+    '''
+    def __init__(self,
+                 node_dims,
+                 edge_dims,
+                 n_message=3,
+                 n_feedforward=2,
+                 drop_rate=.1,
+                 autoregressive=False,
+                 activations=(F.relu, torch.sigmoid),
+                 vector_gate=False):
 
+        super(GVPConvLayer, self).__init__()
+        self.conv = GVPConv(node_dims,
+                            node_dims,
+                            edge_dims,
+                            n_message,
+                            aggr="add" if autoregressive else "mean",
+                            activations=activations,
+                            vector_gate=vector_gate)
+        GVP_ = functools.partial(GVP, activations=activations, vector_gate=vector_gate)
+        self.norm = nn.ModuleList([LayerNorm(node_dims) for _ in range(2)])
+        self.dropout = nn.ModuleList([Dropout(drop_rate) for _ in range(2)])
 
-# common layers using GVP
+        ff_func = []
+        if n_feedforward == 1:
+            ff_func.append(GVP_(node_dims, node_dims, activations=(None, None)))
+        else:
+            hid_dims = 4 * node_dims[0], 2 * node_dims[1]
+            ff_func.append(GVP_(node_dims, hid_dims))
+            for i in range(n_feedforward - 2):
+                ff_func.append(GVP_(hid_dims, hid_dims))
+            ff_func.append(GVP_(hid_dims, node_dims, activations=(None, None)))
+        self.ff_func = nn.Sequential(*ff_func)
 
+    def forward(self, x, edge_index, edge_attr, autoregressive_x=None, node_mask=None):
+        '''
+        :param x: tuple (s, V) of `torch.Tensor`
+        :param edge_index: array of shape [2, n_edges]
+        :param edge_attr: tuple (s, V) of `torch.Tensor`
+        :param autoregressive_x: tuple (s, V) of `torch.Tensor`.
+                If not `None`, will be used as src node embeddings
+                for forming messages where src >= dst. The corrent node
+                embeddings `x` will still be the base of the update and the
+                pointwise feedforward.
+        :param node_mask: array of type `bool` to index into the first
+                dim of node embeddings (s, V). If not `None`, only
+                these nodes will be updated.
+        '''
 
-class GVPNodeLayer(nn.Module):
-    def __init__(self, nv, ns, ev, es, dropout=0.1):
-        super(GVPNodeLayer, self).__init__()
-        self.nv, self.ns, self.ev, self.es = nv, ns, ev, es
+        if autoregressive_x is not None:
+            src, dst = edge_index
+            mask = src < dst
+            edge_index_forward = edge_index[:, mask]
+            edge_index_backward = edge_index[:, ~mask]
+            edge_attr_forward = tuple_index(edge_attr, mask)
+            edge_attr_backward = tuple_index(edge_attr, ~mask)
 
-        self.vec_in = vec_in = nv + ev
-        self.vo, self.so = vo, so = nv, ns
-        self.norm = nn.ModuleList([GVPLayerNorm(nv, ns) for _ in range(2)])
-        self.dropout = GVPDropout(dropout, nv)
+            dh = tuple_sum(self.conv(x, edge_index_forward, edge_attr_forward),
+                           self.conv(autoregressive_x, edge_index_backward, edge_attr_backward))
 
-        # this receives the vec_in message AND the receiver node
-        self.W_EV = nn.Sequential(GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so), GVP(vi=vo, vo=vo, si=so, so=so),
-                                  GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
+            count = scatter_add(torch.ones_like(dst), dst, dim_size=dh[0].size(0)).clamp(min=1).unsqueeze(-1)
 
-        self.W_dh = nn.Sequential(GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
-                                  GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
+            dh = dh[0] / count, dh[1] / count.unsqueeze(-1)
 
-    def forward(self, h_V, h_EV, mask_V=None, mask_attend=None):
-        # Concatenate h_V_i to h_E_ij
-        h_message = self.W_EV(h_EV)
+        else:
+            dh = self.conv(x, edge_index, edge_attr)
 
-        if mask_attend is not None:
-            h_message = mask_attend.unsqueeze(-1) * h_message
-        dh = torch.mean(h_message, -2)
-        h_V = self.norm[0](h_V + self.dropout(dh))
+        if node_mask is not None:
+            x_ = x
+            x, dh = tuple_index(x, node_mask), tuple_index(dh, node_mask)
 
-        # Position-wise feedforward
-        dh = self.W_dh(h_V)
-        h_V = self.norm[1](h_V + self.dropout(dh))
+        x = self.norm[0](tuple_sum(x, self.dropout[0](dh)))
 
-        if mask_V is not None:
-            mask_V = mask_V.unsqueeze(-1)
-            h_V = mask_V * h_V
-        return h_V
+        dh = self.ff_func(x)
+        x = self.norm[1](tuple_sum(x, self.dropout[1](dh)))
 
-
-class GVPEdgeLayer(nn.Module):
-    def __init__(self, nv, ns, ev, es, dropout=0.1):
-        super(GVPEdgeLayer, self).__init__()
-        self.nv, self.ns, self.ev, self.es = nv, ns, ev, es
-
-        self.vec_in = vec_in = nv + ev
-        self.vo, self.so = vo, so = nv, ns
-        self.norm = nn.ModuleList([GVPLayerNorm(nv, ns) for _ in range(2)])
-        self.dropout = GVPDropout(dropout, nv)
-
-        # this receives the vec_in message AND the receiver node
-        self.W_EV = nn.Sequential(GVP(vi=vec_in + vo, vo=vo, si=2 * so + es, so=so), GVP(vi=vo, vo=vo, si=so, so=so),
-                                  GVP(vi=vo, vo=vo, si=so, so=so, nls=None, nlv=None))
-
-        self.W_dh = nn.Sequential(GVP(vi=vo, vo=2 * vo, si=so, so=4 * so),
-                                  GVP(vi=2 * vo, vo=vo, si=4 * so, so=so, nls=None, nlv=None))
-
-    def forward(self, h_E, h_EV, mask_E=None, mask_attend=None):
-        # Concatenate h_V_i to h_E_ij
-        dh = self.W_EV(h_EV)
-        if mask_attend is not None:
-            dh = mask_attend.unsqueeze(-1) * dh
-        h_E = self.norm[0](h_E + self.dropout(dh))
-
-        # Position-wise feedforward
-        dh = self.W_dh(h_E)
-        h_E = self.norm[1](h_E + self.dropout(dh))
-
-        if mask_E is not None:
-            mask_E = mask_E.unsqueeze(-1)
-            h_E = mask_E * h_E
-        return h_E
+        if node_mask is not None:
+            x_[0][node_mask], x_[1][node_mask] = x[0], x[1]
+            x = x_
+        return x

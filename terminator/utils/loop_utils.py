@@ -4,14 +4,25 @@ from torch.cuda.amp import autocast
 from tqdm import tqdm
 
 
-def run_epoch(terminator,
-              dataloader,
-              optimizer=None,
-              scheduler=None,
-              grad=False,
-              test=False,
-              dev="cuda:0",
-              scaler=None):
+def _to_dev(data_dict, dev):
+    """ Push all tensor objects in the dictionary to the given device.
+
+    Args
+    ----
+    data_dict : dict 
+        Dictionary of input features to TERMinator
+    dev : str 
+        Device to load tensors onto
+    """
+    for key, value in data_dict.items():
+        if isinstance(value, torch.Tensor):
+            data_dict[key] = value.to(dev)
+        if key == 'gvp_data':
+            data_dict['gvp_data'] = [data.to(dev) for data in data_dict['gvp_data']]
+
+
+def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0", scaler=None):
+    # arg checking
     if test:
         assert not grad, "grad should not be on for test set"
     if grad:
@@ -21,41 +32,38 @@ def run_epoch(terminator,
     running_prob = 0
     global_count = 0
 
+    # set grads properly
     if grad:
-        terminator.train()
+        model.train()
         torch.set_grad_enabled(True)
     else:
-        terminator.eval()
+        model.eval()
         torch.set_grad_enabled(False)
 
+    # record inference outputs if necessary
     if test:
         dump = []
 
     progress = tqdm(total=len(dataloader))
     for i, data in enumerate(dataloader):
-        msas = data['msas'].to(dev)
-        features = data['features'].to(dev).float()
-        focuses = data['focuses'].to(dev)
-        src_key_mask = data['src_key_mask'].to(dev)
-        X = data['X'].to(dev)
-        x_mask = data['x_mask'].to(dev)
-        seqs = data['seqs'].to(dev)
-        seq_lens = data['seq_lens'].to(dev)
-        term_lens = data['term_lens'].to(dev)
-        max_seq_len = max(seq_lens.tolist())
-        chain_idx = data['chain_idx'].to(dev)
-        ppoe = data['ppoe'].to(dev).float()
-        contact_idxs = data['contact_idxs'].to(dev)
+        # a small hack for DataParallel to know which device got which proteins
+        data['scatter_idx'] = torch.arange(len(data['seq_lens']))
+        _to_dev(data, dev)
+        max_seq_len = max(data['seq_lens'].tolist())
         ids = data['ids']
 
         try:
             if scaler:
                 with autocast():
-                    loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X,
-                                                         x_mask, seqs, max_seq_len, ppoe, chain_idx, contact_idxs)
+                    etab, E_idx = model(data, max_seq_len)
+                    loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
+                    if model.hparams['regularize_etab'] != 0:
+                        loss += model.hparams['regularize_etab']*etab.norm()
             else:
-                loss, prob, batch_count = terminator(msas, features, seq_lens, focuses, term_lens, src_key_mask, X,
-                                                     x_mask, seqs, max_seq_len, ppoe, chain_idx, contact_idxs)
+                etab, E_idx = model(data, max_seq_len)
+                loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
+                if model.hparams['regularize_etab'] != 0:
+                    loss += model.hparams['regularize_etab']*etab.norm()
         except Exception as e:
             print(ids)
             raise e
@@ -75,27 +83,22 @@ def run_epoch(terminator,
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                # max_grad_norm = 1
                 optimizer.zero_grad()
                 loss.backward()
-                # torch.nn.utils.clip_grad_norm_(terminator.parameters(), max_grad_norm)
                 optimizer.step()
 
         if test:
-            output, E_idx = terminator.module.potts(msas, features, seq_lens, focuses, term_lens, src_key_mask, X,
-                                                    x_mask, max_seq_len, ppoe, chain_idx, contact_idxs)
-
-            n_batch, l, n = output.shape[:3]
+            n_batch, l, n = etab.shape[:3]
             dump.append({
-                'out': output.view(n_batch, l, n, 20, 20).cpu().numpy(),
+                'out': etab.view(n_batch, l, n, 20, 20).cpu().numpy(),
                 'idx': E_idx.cpu().numpy(),
                 'ids': ids
             })
 
         avg_loss = running_loss / (global_count)
         avg_prob = running_prob / (global_count)
-        term_mask_eff = int((~src_key_mask).sum().item() / src_key_mask.numel() * 100)
-        res_mask_eff = int(x_mask.sum().item() / x_mask.numel() * 100)
+        term_mask_eff = int((~data['src_key_mask']).sum().item() / data['src_key_mask'].numel() * 100)
+        res_mask_eff = int(data['x_mask'].sum().item() / data['x_mask'].numel() * 100)
 
         progress.update(1)
         progress.refresh()

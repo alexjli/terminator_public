@@ -20,4 +20,4 @@ python batch_arr_dTERMen.py \
     --output_dir=OUTPUTDIR \
     --pdb_root=PDBROOT \
     --dtermen_data=DTERMENDATA \
-    --batch_size=10
+    --batch_size=15

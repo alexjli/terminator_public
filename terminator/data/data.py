@@ -4,6 +4,7 @@ This file contains dataset and dataloader classes
 to be used when interacting with TERMs.
 """
 import glob
+import math
 import multiprocessing as mp
 import os
 import pickle
@@ -11,17 +12,430 @@ import random
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+import torch_cluster
+import torch_geometric
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
-from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 # pylint: disable=no-member, not-callable
 
 
+"""
+Ingraham featurization functions
+"""
+
+
+def _ingraham_featurize(batch, device="cpu"):
+    """ Pack and pad coords in batch into torch tensors
+    as done in https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    batch : list of dict
+        list of protein backbone coordinate dictionaries,
+        in the format of that outputted by :code:`parseCoords.py`
+    device : str
+        device to place torch tensors
+
+    Returns
+    -------
+    X : torch.Tensor
+        Batched coordinates tensor
+    mask : torch.Tensor
+        Mask for X
+    lengths : np.ndarray
+        Array of lengths of batched proteins
+    """
+    B = len(batch)
+    lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
+    l_max = max(lengths)
+    X = np.zeros([B, l_max, 4, 3])
+
+    # Build the batch
+    for i, x in enumerate(batch):
+        l = x.shape[0]
+        x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
+        X[i, :, :, :] = x_pad
+
+    # Mask
+    isnan = np.isnan(X)
+    mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
+    X[isnan] = 0.
+
+    # Conversion
+    X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
+    mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
+    return X, mask, lengths
+
+
+"""
+Jing featurization functions
+"""
+
+
+def _normalize(tensor, dim=-1):
+    '''Normalizes a `torch.Tensor` along dimension `dim` without `nan`s.'''
+    return torch.nan_to_num(torch.div(tensor, torch.norm(tensor, dim=dim, keepdim=True)))
+
+
+def _rbf(D, D_min=0., D_max=20., D_count=16, device='cpu'):
+    '''Returns an RBF embedding of `torch.Tensor` `D` along a new axis=-1.
+
+    That is, if `D` has shape [...dims], then the returned tensor will have
+    shape [...dims, D_count].
+
+    From https://github.com/jingraham/neurips19-graph-protein-design
+    '''
+    D_mu = torch.linspace(D_min, D_max, D_count, device=device)
+    D_mu = D_mu.view([1, -1])
+    D_sigma = (D_max - D_min) / D_count
+    D_expand = torch.unsqueeze(D, -1)
+
+    rbf = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
+    return rbf
+
+
+def _dihedrals(X, eps=1e-7):
+    """ Compute dihedral angles between residues given atomic backbone coordinates
+
+    Args
+    ----
+    X : torch.FloatTensor
+        Tensor specifying atomic backbone coordinates
+        Shape: num_res x 4 x 3
+
+    Returns
+    -------
+    D_features : torch.FloatTensor
+        Dihedral angles, lifted to the 3-torus
+        Shape: num_res x 7
+    """
+    # From https://github.com/jingraham/neurips19-graph-protein-design
+
+    X = torch.reshape(X[:, :3], [3 * X.shape[0], 3])
+    dX = X[1:] - X[:-1]
+    U = _normalize(dX, dim=-1)
+    u_2 = U[:-2]
+    u_1 = U[1:-1]
+    u_0 = U[2:]
+
+    # Backbone normals
+    n_2 = _normalize(torch.cross(u_2, u_1), dim=-1)
+    n_1 = _normalize(torch.cross(u_1, u_0), dim=-1)
+
+    # Angle between normals
+    cosD = torch.sum(n_2 * n_1, -1)
+    cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
+    D = torch.sign(torch.sum(u_2 * n_1, -1)) * torch.acos(cosD)
+
+    # This scheme will remove phi[0], psi[-1], omega[-1]
+    D = F.pad(D, [1, 2])
+    D = torch.reshape(D, [-1, 3])
+    # Lift angle representations to the circle
+    D_features = torch.cat([torch.cos(D), torch.sin(D)], 1)
+    return D_features
+
+
+def _positional_embeddings(edge_index, num_embeddings=16, dev='cpu'):
+    """ Sinusoidally encode sequence distances for edges.
+
+    Args
+    ----
+    edge_index : torch.LongTensor
+        Edge indices for sparse representation of protein graph
+        Shape: 2 x num_edges
+    num_embeddings : int or None, default=128
+        Dimensionality of sinusoidal embedding.
+
+    Returns
+    -------
+    E : torch.FloatTensor
+        Sinusoidal encoding of sequence distances
+        Shape: num_edges x num_embeddings
+
+    """
+    # From https://github.com/jingraham/neurips19-graph-protein-design
+    d = edge_index[0] - edge_index[1]
+
+    frequency = torch.exp(
+        torch.arange(0, num_embeddings, 2, dtype=torch.float32, device=dev) * -(np.log(10000.0) / num_embeddings))
+    angles = d.unsqueeze(-1) * frequency
+    E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
+    return E
+
+
+def _orientations(X_ca):
+    """ Compute forward and backward vectors per residue.
+
+    Args
+    ----
+    X_ca : torch.FloatTensor
+        Tensor specifying atomic backbone coordinates for CA atoms.
+        Shape: num_res x 3
+
+    Returns
+    -------
+    torch.FloatTensor
+        Pairs of forward, backward vectors per residue.
+        Shape: num_res x 2 x 3
+    """
+    # From https://github.com/drorlab/gvp-pytorch
+    forward = _normalize(X_ca[1:] - X_ca[:-1])
+    backward = _normalize(X_ca[:-1] - X_ca[1:])
+    forward = F.pad(forward, [0, 0, 0, 1])
+    backward = F.pad(backward, [0, 0, 1, 0])
+    return torch.cat([forward.unsqueeze(-2), backward.unsqueeze(-2)], -2)
+
+
+def _sidechains(X):
+    """ Compute vectors pointing in the approximate direction of the sidechain.
+
+    Args
+    ----
+    X : torch.FloatTensor
+        Tensor specifying atomic backbone coordinates.
+        Shape: num_res x 4 x 3
+
+    Returns
+    -------
+    vec : torch.FloatTensor
+        Sidechain vectors.
+        Shape: num_res x 3
+    """
+    # From https://github.com/drorlab/gvp-pytorch
+    n, origin, c = X[:, 0], X[:, 1], X[:, 2]
+    c, n = _normalize(c - origin), _normalize(n - origin)
+    bisector = _normalize(c + n)
+    perp = _normalize(torch.cross(c, n))
+    vec = -bisector * math.sqrt(1 / 3) - perp * math.sqrt(2 / 3)
+    return vec
+
+
+def _jing_featurize(protein, dev='cpu'):
+    """ Featurize individual proteins for use in torch_geometric Data objects,
+    as done in https://github.com/drorlab/gvp-pytorch
+
+    Args
+    ----
+    protein : dict
+        Dictionary of protein features
+
+        - :code:`name` - PDB ID of the protein
+        - :code:`coords` - list of dicts specifying backbone atom coordinates
+        in the format of that outputted by :code:`parseCoords.py`
+        - :code:`seq` - protein sequence
+        - :code:`chain_idx` - an integer per residue such that each unique integer represents a unique chain
+
+    Returns
+    -------
+    torch_geometric.data.Data
+        Data object containing
+        - :code:`x` - CA atomic coordinates
+        - :code:`seq` - sequence of protein
+        - :code:`name` - PDB ID of protein
+        - :code:`node_s` - Node scalar features
+        - :code:`node_v` - Node vector features
+        - :code:`edge_s` - Edge scalar features
+        - :code:`edge_v` - Edge vector features
+        - :code:`edge_index` - Sparse representation of edge
+        - :code:`mask` - Residue mask specifying residues with incomplete coordinate sets
+    """
+    name = protein['name']
+    with torch.no_grad():
+        coords = torch.as_tensor(protein['coords'], device=dev, dtype=torch.float32)
+        seq = torch.as_tensor(protein['seq'], device=dev, dtype=torch.long)
+
+        mask = torch.isfinite(coords.sum(dim=(1, 2)))
+        coords[~mask] = np.inf
+
+        X_ca = coords[:, 1]
+        edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True)  # TODO: make param
+
+        pos_embeddings = _positional_embeddings(edge_index)
+        # generate mask for interchain interactions
+        pos_chain = (protein['chain_idx'][edge_index.view(-1)]).view(2, -1)
+        pos_mask = (pos_chain[0] != pos_chain[1])
+        # zero out all interchain positional embeddings
+        pos_embeddings = pos_mask.unsqueeze(-1) * pos_embeddings
+
+        E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]
+        rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev)  # TODO: make param
+
+        dihedrals = _dihedrals(coords)
+        orientations = _orientations(X_ca)
+        sidechains = _sidechains(coords)
+
+        node_s = dihedrals
+        node_v = torch.cat([orientations, sidechains.unsqueeze(-2)], dim=-2)
+        edge_s = torch.cat([rbf, pos_embeddings], dim=-1)
+        edge_v = _normalize(E_vectors).unsqueeze(-2)
+
+        node_s, node_v, edge_s, edge_v = map(torch.nan_to_num, (node_s, node_v, edge_s, edge_v))
+
+    data = torch_geometric.data.Data(x=X_ca,
+                                     seq=seq,
+                                     name=name,
+                                     node_s=node_s,
+                                     node_v=node_v,
+                                     edge_s=edge_s,
+                                     edge_v=edge_v,
+                                     edge_index=edge_index,
+                                     mask=mask)
+    return data
+
+
+"""
+Batching functions
+"""
+
+
 def convert(tensor):
     """Converts given tensor from numpy to pytorch."""
     return torch.from_numpy(tensor)
+
+
+def _package(b_idx):
+    """Package the given datapoints into tensors based on provided indices.
+
+    Tensors are extracted from the data and padded. Coordinates are featurized
+    and the length of TERMs and chain IDs are added to the data.
+
+    Args
+    ----
+    b_idx : list of tuples (dicts, int)
+        The feature dictionaries, as well as an int for the sum of the lengths of all TERMs,
+        for each datapoint to package.
+
+    Returns
+    -------
+    dict
+        Collection of batched features required for running TERMinator. This contains:
+
+        - :code:`msas` - the multiple sequence alignment
+
+        - :code:`features` - the TERM features
+
+        - :code:`ppoe` - ???
+
+        - :code:`seq_lens` - the lengths of the sequences
+
+        - :code:`focuses` - ???
+
+        - :code:`contact_idxs` - contact indices
+
+        - :code:`src_key_mask` - ???
+
+        - :code:`X` - coordinates
+
+        - :code:`x_mask` - ???
+
+        - :code:`seqs` - the sequences
+
+        - :code:`ids` - the PDB id??
+
+        - :code:`chain_idx` - the chain IDs
+    """
+    # wrap up all the tensors with proper padding and masks
+    batch = [data[0] for data in b_idx]
+    focus_lens = [data[1] for data in b_idx]
+    features, msas, focuses, seq_lens, coords = [], [], [], [], []
+    term_lens = []
+    seqs = []
+    ids = []
+    chain_lens = []
+    ppoe = []
+    contact_idxs = []
+    gvp_data = []
+
+    for _, data in enumerate(batch):
+        # have to transpose these two because then we can use pad_sequence for padding
+        features.append(convert(data['features']).transpose(0, 1))
+        msas.append(convert(data['msas']).transpose(0, 1))
+
+        ppoe.append(convert(data['ppoe']))
+        focuses.append(convert(data['focuses']))
+        contact_idxs.append(convert(data['contact_idxs']))
+        seq_lens.append(data['seq_len'])
+        term_lens.append(data['term_lens'].tolist())
+        coords.append(data['coords'])
+        seqs.append(convert(data['sequence']))
+        ids.append(data['pdb'])
+        chain_lens.append(data['chain_lens'])
+
+        chain_idx = []
+        for i, c_len in enumerate(data['chain_lens']):
+            chain_idx.append(torch.ones(c_len) * i)
+        chain_idx = torch.cat(chain_idx, dim=0)
+        gvp_data.append(
+            _jing_featurize({
+                'name': data['pdb'],
+                'coords': data['coords'],
+                'seq': data['sequence'],
+                'chain_idx': chain_idx
+            }))
+
+    # transpose back after padding
+    features = pad_sequence(features, batch_first=True).transpose(1, 2)
+    msas = pad_sequence(msas, batch_first=True).transpose(1, 2).long()
+
+    # we can pad these using standard pad_sequence
+    ppoe = pad_sequence(ppoe, batch_first=True)
+    focuses = pad_sequence(focuses, batch_first=True)
+    contact_idxs = pad_sequence(contact_idxs, batch_first=True)
+    src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
+    seqs = pad_sequence(seqs, batch_first=True)
+
+    # we do some padding so that tensor reshaping during batchifyTERM works
+    # TODO(alex): explain this since I have no idea what's going on
+    max_aa = focuses.size(-1)
+    for lens in term_lens:
+        max_term_len = max(lens)
+        diff = max_aa - sum(lens)
+        lens += [max_term_len] * (diff // max_term_len)
+        lens.append(diff % max_term_len)
+
+    # featurize coordinates same way as ingraham et al
+    X, x_mask, _ = _ingraham_featurize(coords)
+
+    # pad with -1 so we can store term_lens in a tensor
+    seq_lens = torch.tensor(seq_lens)
+    max_all_term_lens = max([len(term) for term in term_lens])
+    for i, _ in enumerate(term_lens):
+        term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
+    term_lens = torch.tensor(term_lens)
+
+    # generate chain_idx from chain_lens
+    chain_idx = []
+    for c_lens in chain_lens:
+        arrs = []
+        for i, chain_len in enumerate(c_lens):
+            arrs.append(torch.ones(chain_len) * i)
+        chain_idx.append(torch.cat(arrs, dim=-1))
+    chain_idx = pad_sequence(chain_idx, batch_first=True)
+
+    return {
+        'msas': msas,
+        'features': features.float(),
+        'ppoe': ppoe.float(),
+        'seq_lens': seq_lens,
+        'focuses': focuses,
+        'contact_idxs': contact_idxs,
+        'src_key_mask': src_key_mask,
+        'term_lens': term_lens,
+        'X': X,
+        'x_mask': x_mask,
+        'seqs': seqs,
+        'ids': ids,
+        'chain_idx': chain_idx,
+        'gvp_data': gvp_data
+    }
+
+
+"""
+Non-lazy data loading functions
+"""
 
 
 def load_file(in_folder, pdb_id, min_protein_len=30):
@@ -56,7 +470,7 @@ def load_file(in_folder, pdb_id, min_protein_len=30):
     return data, total_term_length, seq_len
 
 
-class TERMDataset():
+class TERMDataset(Dataset):
     """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure.
 
     Attributes
@@ -276,6 +690,7 @@ class TERMDataLoader(Sampler):
             sequence residues included below `max_seq_tokens`. Exactly one of :code:`max_term_res`
             and :code:`max_seq_tokens` must be None.
         """
+        super().__init__(dataset)
         self.size = len(dataset)
         self.dataset, self.total_term_lengths, self.seq_lengths = zip(*dataset)
         assert not (max_term_res is None
@@ -377,6 +792,7 @@ class TERMDataLoader(Sampler):
             clusters.append(batch)
         self.clusters = clusters
 
+    # pylint: disable=no-self-use
     def _package(self, b_idx):
         """Package the given datapoints into tensors based on provided indices.
 
@@ -385,8 +801,9 @@ class TERMDataLoader(Sampler):
 
         Args
         ----
-        b_idx : list of int
-            The indices corresponding to the datapoints to be batched together.
+        b_idx : list of tuples (dicts, int, int)
+            The feature dictionaries, the sum of the lengths of all TERMs, and the sum of all sequence lengths
+            for each datapoint to package.
 
         Returns
         -------
@@ -417,88 +834,7 @@ class TERMDataLoader(Sampler):
 
             - :code:`chain_idx` - the chain IDs
         """
-        # wrap up all the tensors with proper padding and masks
-
-        batch = [data[0] for data in b_idx]
-
-        focus_lens = [data[1] for data in b_idx]
-        features, msas, focuses, seq_lens, coords = [], [], [], [], []
-        term_lens = []
-        seqs = []
-        ids = []
-        chain_lens = []
-        ppoe = []
-        contact_idxs = []
-
-        for _, data in enumerate(batch):
-            # have to transpose these two because then we can use pad_sequence for padding
-            features.append(convert(data['features']).transpose(0, 1))
-            msas.append(convert(data['msas']).transpose(0, 1))
-
-            ppoe.append(convert(data['ppoe']))
-            focuses.append(convert(data['focuses']))
-            contact_idxs.append(convert(data['contact_idxs']))
-            seq_lens.append(data['seq_len'])
-            term_lens.append(data['term_lens'].tolist())
-            coords.append(data['coords'])
-            seqs.append(convert(data['sequence']))
-            ids.append(data['pdb'])
-            chain_lens.append(data['chain_lens'])
-
-        # transpose back after padding
-        features = pad_sequence(features, batch_first=True).transpose(1, 2)
-        msas = pad_sequence(msas, batch_first=True).transpose(1, 2).long()
-
-        # we can pad these using standard pad_sequence
-        ppoe = pad_sequence(ppoe, batch_first=True)
-        focuses = pad_sequence(focuses, batch_first=True)
-        contact_idxs = pad_sequence(contact_idxs, batch_first=True)
-        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
-        seqs = pad_sequence(seqs, batch_first=True)
-
-        # we do some padding so that tensor reshaping during batchifyTERM works
-        # TODO(alex): explain this since I have no idea what's going on
-        max_aa = focuses.size(-1)
-        for lens in term_lens:
-            max_term_len = max(lens)
-            diff = max_aa - sum(lens)
-            lens += [max_term_len] * (diff // max_term_len)
-            lens.append(diff % max_term_len)
-
-        # featurize coordinates same way as ingraham et al
-        X, x_mask, _ = self._featurize(coords, 'cpu')
-
-        # pad with -1 so we can store term_lens in a tensor
-        seq_lens = torch.tensor(seq_lens)
-        max_all_term_lens = max([len(term) for term in term_lens])
-        for i, _ in enumerate(term_lens):
-            term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
-        term_lens = torch.tensor(term_lens)
-
-        # generate chain_idx from chain_lens
-        chain_idx = []
-        for c_lens in chain_lens:
-            arrs = []
-            for i, chain_len in enumerate(c_lens):
-                arrs.append(torch.ones(chain_len) * i)
-            chain_idx.append(torch.cat(arrs, dim=-1))
-        chain_idx = pad_sequence(chain_idx, batch_first=True)
-
-        return {
-            'msas': msas,
-            'features': features.float(),
-            'ppoe': ppoe.float(),
-            'seq_lens': seq_lens,
-            'focuses': focuses,
-            'contact_idxs': contact_idxs,
-            'src_key_mask': src_key_mask,
-            'term_lens': term_lens,
-            'X': X,
-            'x_mask': x_mask,
-            'seqs': seqs,
-            'ids': ids,
-            'chain_idx': chain_idx
-        }
+        return _package([b[0:2] for b in b_idx])
 
     def __len__(self):
         """Returns length of dataset, i.e. number of batches.
@@ -517,48 +853,6 @@ class TERMDataLoader(Sampler):
             np.random.shuffle(self.clusters)
         for batch in self.clusters:
             yield batch
-
-    # pylint: disable=no-self-use
-    def _featurize(self, batch, device):
-        """ Pack and pad coords in batch into torch tensors
-
-        Args
-        ----
-        batch : list of dict
-            list of protein backbone coordinate dictionaries,
-            in the format of that outputted by :code:`parseCoords.py`
-        device : str
-            device to place torch tensors
-
-        Returns
-        -------
-        X : torch.Tensor
-            Batched coordinates tensor
-        mask : torch.Tensor
-            Mask for X
-        lengths : np.ndarray
-            Array of lengths of batched proteins
-        """
-        B = len(batch)
-        lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
-        l_max = max(lengths)
-        X = np.zeros([B, l_max, 4, 3])
-
-        # Build the batch
-        for i, x in enumerate(batch):
-            l = x.shape[0]
-            x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
-            X[i, :, :, :] = x_pad
-
-        # Mask
-        isnan = np.isnan(X)
-        mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
-        X[isnan] = 0.
-
-        # Conversion
-        X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
-        mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
-        return X, mask, lengths
 
 
 # needs to be outside of object for pickling reasons (?)
@@ -830,6 +1124,7 @@ class TERMLazyDataLoader(Sampler):
             keep the first match and choose `n-1` from the rest.
             If :code:`term_dropout='all'`, choose `n` matches from all matches.
         """
+        super().__init__(dataset)
         self.dataset = dataset
         self.size = len(dataset)
         self.filepaths, self.total_term_lengths, self.seq_lengths = zip(*dataset)
@@ -855,8 +1150,6 @@ class TERMLazyDataLoader(Sampler):
         self.term_dropout = term_dropout
 
         assert not (shuffle and semi_shuffle), "Lazy Dataloader shuffle and semi shuffle cannot both be set"
-        # an assert for myself but i'm not sure if this is provably true
-        # assert semi_shuffle_cluster_size % batch_size != 0, "having cluster size a multiple of batch size will lead to data shuffles that are worse for training"
 
         # initialize clusters
         self._cluster()
@@ -937,6 +1230,7 @@ class TERMLazyDataLoader(Sampler):
             clusters.append(batch)
         self.clusters = clusters
 
+    # pylint: disable=no-self-use
     def _package(self, b_idx):
         """Package the given datapoints into tensors based on provided indices.
 
@@ -945,8 +1239,9 @@ class TERMLazyDataLoader(Sampler):
 
         Args
         ----
-        b_idx : list of int
-            The indices corresponding to the datapoints to be batched together.
+        b_idx : list of (str, int, int)
+            The path to the feature files, the sum of the lengths of all TERMs, and the sum of all sequence lengths
+            for each datapoint to package.
 
         Returns
         -------
@@ -982,44 +1277,25 @@ class TERMLazyDataLoader(Sampler):
             random.shuffle(b_idx_copy)
             b_idx = b_idx_copy
 
+        # load the files specified by filepaths
         batch = []
         for data in b_idx:
             filepath = data[0]
             with open(filepath, 'rb') as fp:
-                batch.append(pickle.load(fp))
-                if 'ppoe' not in batch[-1].keys():
+                batch.append((pickle.load(fp), data[1]))
+                if 'ppoe' not in batch[-1][0].keys():
                     print(filepath)
 
-        focus_lens = [data[1] for data in b_idx]
-        features, msas, focuses, seq_lens, coords = [], [], [], [], []
-        term_lens = []
-        seqs = []
-        ids = []
-        chain_lens = []
-        ppoe = []
-        contact_idxs = []
+        # package batch
+        packaged_batch = _package(batch)
 
-        for data in batch:
-            # have to transpose these two because then we can use pad_sequence for padding
-            features.append(convert(data['features']).transpose(0, 1))
-            msas.append(convert(data['msas']).transpose(0, 1))
-
-            ppoe.append(convert(data['ppoe']))
-            focuses.append(convert(data['focuses']))
-            contact_idxs.append(convert(data['contact_idxs']))
-            seq_lens.append(data['seq_len'])
-            term_lens.append(data['term_lens'].tolist())
-            coords.append(data['coords'])
-            seqs.append(convert(data['sequence']))
-            ids.append(data['pdb'])
-            chain_lens.append(data['chain_lens'])
-
-        # transpose back after padding
-        features = pad_sequence(features, batch_first=True).transpose(1, 2)
-        msas = pad_sequence(msas, batch_first=True).transpose(1, 2).long()
+        features = packaged_batch["features"]
+        msas = packaged_batch["msas"]
+        # apply TERM matches cutoff
         if self.term_matches_cutoff:
             features = features[:, :self.term_matches_cutoff]
             msas = msas[:, :self.term_matches_cutoff]
+        # apply TERM matches dropout
         if self.term_dropout:
             # sample a random number of alignments to keep
             n_batch, n_align, n_terms, n_features = features.shape
@@ -1050,56 +1326,10 @@ class TERMLazyDataLoader(Sampler):
                 features = torch.gather(features, 1, sample_idx_features)
                 msas = torch.gather(msas, 1, sample_idx_msas)
 
-        # we can pad these using standard pad_sequence
-        ppoe = pad_sequence(ppoe, batch_first=True)
-        focuses = pad_sequence(focuses, batch_first=True)
-        contact_idxs = pad_sequence(contact_idxs, batch_first=True)
-        src_key_mask = pad_sequence([torch.zeros(l) for l in focus_lens], batch_first=True, padding_value=1).bool()
-        seqs = pad_sequence(seqs, batch_first=True)
+        packaged_batch["features"] = features
+        packaged_batch["msas"] = msas
 
-        # we do some padding so that tensor reshaping during batchifyTERM works
-        # TODO(alex): explain this
-        max_aa = focuses.size(-1)
-        for lens in term_lens:
-            max_term_len = max(lens)
-            diff = max_aa - sum(lens)
-            lens += [max_term_len] * (diff // max_term_len)
-            lens.append(diff % max_term_len)
-
-        # featurize coordinates same way as ingraham et al
-        X, x_mask, _ = self._featurize(coords, 'cpu')
-
-        # pad with -1 so we can store term_lens in a tensor
-        seq_lens = torch.tensor(seq_lens)
-        max_all_term_lens = max([len(term) for term in term_lens])
-        for i, _ in enumerate(term_lens):
-            term_lens[i] += [-1] * (max_all_term_lens - len(term_lens[i]))
-        term_lens = torch.tensor(term_lens)
-
-        # generate chain_idx from chain_lens
-        chain_idx = []
-        for c_lens in chain_lens:
-            arrs = []
-            for i, c_len in enumerate(c_lens):
-                arrs.append(torch.ones(c_len) * i)
-            chain_idx.append(torch.cat(arrs, dim=-1))
-        chain_idx = pad_sequence(chain_idx, batch_first=True)
-
-        return {
-            'msas': msas,
-            'features': features.float(),
-            'ppoe': ppoe.float(),
-            'seq_lens': seq_lens,
-            'focuses': focuses,
-            'contact_idxs': contact_idxs,
-            'src_key_mask': src_key_mask,
-            'term_lens': term_lens,
-            'X': X,
-            'x_mask': x_mask,
-            'seqs': seqs,
-            'ids': ids,
-            'chain_idx': chain_idx
-        }
+        return packaged_batch
 
     def __len__(self):
         """Returns length of dataset, i.e. number of batches.
@@ -1116,170 +1346,5 @@ class TERMLazyDataLoader(Sampler):
         if self.shuffle or self.semi_shuffle:
             self._cluster()
             np.random.shuffle(self.clusters)
-        for batch in self.clusters:
-            yield batch
-
-    # pylint: disable=no-self-use
-    def _featurize(self, batch, device):
-        """ Pack and pad coords in batch into torch tensors
-
-        Args
-        ----
-        batch : list of dict
-            list of protein backbone coordinate dictionaries,
-            in the format of that outputted by :code:`parseCoords.py`
-        device : str
-            device to place torch tensors
-
-        Returns
-        -------
-        X : torch.Tensor
-            Batched coordinates tensor
-        mask : torch.Tensor
-            Mask for X
-        lengths : np.ndarray
-            Array of lengths of batched proteins
-        """
-        B = len(batch)
-        lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
-        l_max = max(lengths)
-        X = np.zeros([B, l_max, 4, 3])
-
-        # Build the batch
-        for i, x in enumerate(batch):
-            l = x.shape[0]
-            x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
-            X[i, :, :, :] = x_pad
-
-        # Mask
-        isnan = np.isnan(X)
-        mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
-        X[isnan] = 0.
-
-        # Conversion
-        X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
-        mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
-        return X, mask, lengths
-
-
-class TERMLazyDistributedSampler(DistributedSampler):
-    """Sampler for TERMLazyDataloader designed for distributed learning.
-
-    Attributes
-    ----------
-    sampler : TERMLazyDataLoader
-        DataLoader wrapped in this class for use when loading data.
-    size : int
-        Length of dataset
-    filepaths : list
-        Length of files in dataset
-    lengths : list
-        Length of TERM lengths in dataset
-    batch_size : int or None, default=4
-        Size of batches created. If variable sized batches are desired, set to None.
-    clusters : list
-        List of clusters to use as batches.
-    """
-    def __init__(self,
-                 dataset,
-                 num_replicas,
-                 rank,
-                 shuffle=False,
-                 batch_shuffle=False,
-                 seed=0,
-                 drop_last=False,
-                 batch_size=4,
-                 max_total_data_lens=55000):
-        """Initializes wrapper LazyDataLoader and selects datapoints based on replica number.
-
-        Given the provided dataset, the sampler starts with the :code:`rank` index and skips
-        by :code:`num_replicas`. It then processes those datapoints as the LazyDataLoader would,
-        by clustering them into batches of similar size and storing the clusters.
-
-        Args
-        ----
-        dataset : LazyDataset
-            Dataset to batch.
-        num_replicas : int
-            Number of replicas.
-        rank : int
-            Rank of this replica, should be between :code:`0` and :code:`num_replicas - 1`.
-        batch_size : int or None, default=4
-            Size of batches created. If variable sized batches are desired, set to None.
-        shuffle : bool, default=False
-            Shuffle the data completely before creating batches.
-        batch_shuffle : bool, default=True
-            If set to :code:`True`, shuffle samples within a batch.
-        seed : int, default=0
-            Random seed used to shuffle the sampler if :code:`shuffle = True`.
-        drop_last : bool, default=False
-            If set to :code:`True`, drop the last samples if they don't form a complete batch.
-        max_total_data_lens: int or None, default=55000
-            When :code:`batch_size=None`,
-            batch by fitting as many datapoints as possible with the total number of
-            TERM residues included below `max_term_res`.
-            Calibrated using :code:`nn.DataParallel` on two V100 GPUs.
-        """
-        super().__init__(dataset, num_replicas, rank, shuffle=shuffle, seed=seed, drop_last=drop_last)
-        self.sampler = TERMLazyDataLoader(dataset,
-                                          batch_size=batch_size,
-                                          shuffle=shuffle,
-                                          batch_shuffle=batch_shuffle,
-                                          drop_last=drop_last,
-                                          max_term_res=max_total_data_lens)
-        self.size = len(dataset)
-        self.filepaths, self.lengths = zip(*dataset)
-        self.batch_size = batch_size
-        sorted_idx = np.argsort(self.lengths)
-
-        indices = list(range(len(self.filepaths)))
-        if not self.drop_last:
-            indices += indices[:(self.size - len(indices))]
-        else:
-            indices = indices[:self.size]
-        indices = indices[self.rank:self.size:self.num_replicas]
-        self.filepaths = self.filepaths[indices]
-        self.lengths = self.lengths[indices]
-
-        # Cluster into batches of similar sizes
-        clusters, batch = [], []
-
-        # if batch_size is None, fit as many proteins we can into a batch
-        # without overloading the GPU
-        if max_total_data_lens > 0 and batch_size is None:
-            current_batch_lens = []
-            total_data_len = 0
-            for count, idx in enumerate(sorted_idx):
-                current_batch_lens.append(self.lengths[idx])
-                total_data_len = max(current_batch_lens) * len(current_batch_lens)
-                if count != 0 and total_data_len > max_total_data_lens:
-                    clusters.append(batch)
-                    batch = [idx]
-                    current_batch_lens = [self.lengths[idx]]
-                else:
-                    batch.append(idx)
-                    # current_batch_lens.append(self.lengths[idx])
-
-        else:  # used fixed batch size
-            for count, idx in enumerate(sorted_idx):
-                if count != 0 and count % self.batch_size == 0:
-                    clusters.append(batch)
-                    batch = [idx]
-                else:
-                    batch.append(idx)
-
-        if len(batch) > 0 and not drop_last:
-            clusters.append(batch)
-        self.clusters = clusters
-
-    def _package(self, b_idx):
-        # pylint: disable=protected-access
-        self.sampler._package(b_idx)
-
-    def __iter__(self):
-        """Iterate through batches."""
-        if self.shuffle:
-            rng = np.random.RandomState(seed=self.seed + self.epoch)
-            rng.shuffle(self.clusters)
         for batch in self.clusters:
             yield batch
