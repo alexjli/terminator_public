@@ -1,8 +1,5 @@
-import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-
-from terminator.models.layers.utils import inf_nan_hook_fn
 
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf
@@ -14,7 +11,7 @@ def conv1xN(channels, N):
 
 class Conv1DResidual(nn.Module):
     def __init__(self, hparams):
-        super(Conv1DResidual, self).__init__()
+        super().__init__()
 
         hdim = hparams['term_hidden_dim']
         self.bn1 = nn.BatchNorm2d(hdim)
@@ -22,11 +19,6 @@ class Conv1DResidual(nn.Module):
         self.conv1 = conv1xN(hdim, hparams['conv_filter'])
         self.bn2 = nn.BatchNorm2d(hdim)
         self.conv2 = conv1xN(hdim, hparams['conv_filter'])
-
-        # self.bn1.register_forward_hook(inf_nan_hook_fn)
-        # self.conv1.register_forward_hook(inf_nan_hook_fn)
-        # self.bn2.register_forward_hook(inf_nan_hook_fn)
-        # self.conv2.register_forward_hook(inf_nan_hook_fn)
 
     def forward(self, X):
         identity = X
@@ -48,7 +40,7 @@ class Conv1DResidual(nn.Module):
 
 class Conv1DResNet(nn.Module):
     def __init__(self, hparams):
-        super(Conv1DResNet, self).__init__()
+        super().__init__()
         self.hparams = hparams
 
         blocks = [self._make_layer(hparams) for _ in range(hparams['matches_blocks'])]
@@ -83,13 +75,14 @@ def conv3x3(channels):
 
 class Conv2DResidual(nn.Module):
     def __init__(self, hparams):
-        super(Conv2DResidual, self).__init__()
+        super().__init__()
+        del hparams
 
-        self.bn1 = nn.BatchNorm2d(2)  # hparams['hidden_dim'])
+        self.bn1 = nn.BatchNorm2d(2) 
         self.relu = nn.ReLU(inplace=True)
-        self.conv1 = conv3x3(2)  # hparams['hidden_dim'])
-        self.bn2 = nn.BatchNorm2d(2)  # hparams['hidden_dim'])
-        self.conv2 = conv3x3(2)  # hparams['hidden_dim'])
+        self.conv1 = conv3x3(2) 
+        self.bn2 = nn.BatchNorm2d(2) 
+        self.conv2 = conv3x3(2) 
 
     def forward(self, X):
         identity = X
@@ -112,10 +105,8 @@ class Conv2DResidual(nn.Module):
 
 class Conv2DResNet(nn.Module):
     def __init__(self, hparams):
-        super(Conv2DResNet, self).__init__()
+        super().__init__()
         self.hparams = hparams
-
-        hidden_dim = hparams['term_hidden_dim']
 
         self.embed = nn.Conv2d(1, 2, kernel_size=(3, 3), padding=(1, 1))
         blocks = [self._make_layer(hparams) for _ in range(1)]

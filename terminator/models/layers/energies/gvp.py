@@ -33,7 +33,7 @@ class EdgeLayer(nn.Module):
                     GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), (self.so, self.vo), activations=(None, None)))
             else:
                 module_list.append(GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), edge_dims))
-                for i in range(n_layers - 2):
+                for _ in range(n_layers - 2):
                     module_list.append(GVP_(edge_dims, edge_dims))
                 module_list.append(GVP_(edge_dims, edge_dims, activations=(None, None)))
         self.message_func = nn.Sequential(*module_list)
@@ -50,7 +50,7 @@ class EdgeLayer(nn.Module):
         else:
             hid_dims = 4 * edge_dims[0], 2 * edge_dims[1]
             ff_func.append(GVP_(edge_dims, hid_dims))
-            for i in range(n_feedforward - 2):
+            for _ in range(n_feedforward - 2):
                 ff_func.append(GVP_(hid_dims, hid_dims))
             ff_func.append(GVP_(hid_dims, edge_dims, activations=(None, None)))
         self.ff_func = nn.Sequential(*ff_func)
