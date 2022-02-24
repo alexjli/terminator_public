@@ -3,6 +3,8 @@ import torch.nn.functional as F
 from torch.cuda.amp import autocast
 from tqdm import tqdm
 
+# pylint: disable=no-member
+
 
 def _to_dev(data_dict, dev):
     """ Push all tensor objects in the dictionary to the given device.
@@ -58,12 +60,12 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
                     etab, E_idx = model(data, max_seq_len)
                     loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
                     if model.hparams['regularize_etab'] != 0:
-                        loss += model.hparams['regularize_etab']*etab.norm()
+                        loss += model.hparams['regularize_etab'] * etab.norm()
             else:
                 etab, E_idx = model(data, max_seq_len)
                 loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
                 if model.hparams['regularize_etab'] != 0:
-                    loss += model.hparams['regularize_etab']*etab.norm()
+                    loss += model.hparams['regularize_etab'] * etab.norm()
         except Exception as e:
             print(ids)
             raise e

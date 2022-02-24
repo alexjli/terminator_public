@@ -10,6 +10,7 @@ from torch import nn
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter_add
 
+# pylint: disable=no-member
 
 def tuple_sum(*args):
     '''
@@ -52,7 +53,6 @@ def randn(n, dims, device="cpu"):
              V.shape = (n, n_vector, 3)
     '''
     return torch.randn(n, dims[0], device=device), torch.randn(n, dims[1], 3, device=device)
-
 
 
 def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):

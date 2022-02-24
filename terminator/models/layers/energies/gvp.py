@@ -1,14 +1,12 @@
 import functools
 
-import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
-from torch.distributions import Categorical
-from torch_scatter import scatter_mean
 
-from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split,
-                   tuple_cat, tuple_index, tuple_sum)
+from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split, tuple_cat, tuple_index, tuple_sum)
+
+# pylint: disable=no-member
 
 
 class EdgeLayer(nn.Module):

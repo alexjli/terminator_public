@@ -6,16 +6,13 @@ import sys
 
 from setuptools import find_packages, setup
 
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
-
-short_description = "Neuronal version of dTERMen".split("\n")[0]
+short_description = "Neuronal version of dTERMen".split('\n', maxsplit=1)[0]
 
 # from https://github.com/pytest-dev/pytest-runner#conditional-requirement
 needs_pytest = {'pytest', 'test', 'ptr'}.intersection(sys.argv)
 pytest_runner = ['pytest-runner'] if needs_pytest else []
+
+# pylint: disable=bare-except, unspecified-encoding
 
 try:
     with open("README.md", "r") as handle:
@@ -57,5 +54,4 @@ setup(
 
     # Manual control if final package is compressible or not, set False to prevent the .egg from being made
     # zip_safe=False,
-
 )

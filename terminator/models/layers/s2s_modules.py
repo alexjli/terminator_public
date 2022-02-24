@@ -5,6 +5,8 @@ import torch.nn.functional as F
 
 from .utils import merge_duplicate_edges
 
+# pylint: disable=no-member
+
 
 class PositionWiseFeedForward(nn.Module):
     def __init__(self, num_hidden, num_ff):

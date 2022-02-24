@@ -6,10 +6,8 @@ from torch.nn.utils.rnn import pad_sequence
 
 # pylint: disable=no-member
 
+# batchify functions
 
-"""
-    batchify functions
-"""
 
 
 def pad_sequence_12(sequences, padding_value=0):
@@ -74,10 +72,8 @@ def batchify(batched_flat_terms, term_lens):
     return batchify_terms
 
 
-"""
-    gather and cat functions
-"""
-""" struct level """
+# gather and cat functions
+# struct level
 
 
 def gather_edges(edges, neighbor_idx):
@@ -227,7 +223,7 @@ def gather_pairEs(pairEs, neighbor_idx):
     return pairE_features
 
 
-""" term level """
+# term level
 
 
 def gather_term_nodes(nodes, neighbor_idx):
@@ -354,9 +350,8 @@ def cat_term_edge_endpoints(h_edges, h_nodes, E_idx):
     return h_nn
 
 
-"""
-    merge edge fns
-"""
+
+# merge edge fns
 
 
 def merge_duplicate_edges(h_E_update, E_idx):
@@ -580,9 +575,7 @@ def merge_duplicate_pairE_sparse(h_E, E_idx):
     return merged_etab
 
 
-"""
-    edge aggregation fns
-"""
+# edge aggregation fns
 
 
 def aggregate_edges(edge_embeddings, E_idx, max_seq_len):

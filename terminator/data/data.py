@@ -21,10 +21,7 @@ from tqdm import tqdm
 
 # pylint: disable=no-member, not-callable
 
-
-"""
-Ingraham featurization functions
-"""
+# Ingraham featurization functions
 
 
 def _ingraham_featurize(batch, device="cpu"):
@@ -70,9 +67,9 @@ def _ingraham_featurize(batch, device="cpu"):
     return X, mask, lengths
 
 
-"""
-Jing featurization functions
-"""
+
+# Jing featurization functions
+
 
 
 def _normalize(tensor, dim=-1):
@@ -286,9 +283,8 @@ def _jing_featurize(protein, dev='cpu'):
     return data
 
 
-"""
-Batching functions
-"""
+
+# Batching functions
 
 
 def convert(tensor):
@@ -433,9 +429,8 @@ def _package(b_idx):
     }
 
 
-"""
-Non-lazy data loading functions
-"""
+# Non-lazy data loading functions
+
 
 
 def load_file(in_folder, pdb_id, min_protein_len=30):

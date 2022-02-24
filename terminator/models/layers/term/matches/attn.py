@@ -6,11 +6,10 @@ information in TERM matches.
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
-from terminator.models.layers.s2s_modules import (Normalize,
-                                                  PositionWiseFeedForward)
+from terminator.models.layers.s2s_modules import (Normalize, PositionWiseFeedForward)
 
 # pylint: disable=no-member
 
