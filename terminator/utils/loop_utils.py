@@ -3,15 +3,17 @@ import torch.nn.functional as F
 from torch.cuda.amp import autocast
 from tqdm import tqdm
 
+# pylint: disable=no-member
+
 
 def _to_dev(data_dict, dev):
     """ Push all tensor objects in the dictionary to the given device.
 
     Args
     ----
-    data_dict : dict 
+    data_dict : dict
         Dictionary of input features to TERMinator
-    dev : str 
+    dev : str
         Device to load tensors onto
     """
     for key, value in data_dict.items():
@@ -45,7 +47,7 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
         dump = []
 
     progress = tqdm(total=len(dataloader))
-    for i, data in enumerate(dataloader):
+    for data in dataloader:
         # a small hack for DataParallel to know which device got which proteins
         data['scatter_idx'] = torch.arange(len(data['seq_lens']))
         _to_dev(data, dev)
@@ -58,12 +60,12 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
                     etab, E_idx = model(data, max_seq_len)
                     loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
                     if model.hparams['regularize_etab'] != 0:
-                        loss += model.hparams['regularize_etab']*etab.norm()
+                        loss += model.hparams['regularize_etab'] * etab.norm()
             else:
                 etab, E_idx = model(data, max_seq_len)
                 loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
                 if model.hparams['regularize_etab'] != 0:
-                    loss += model.hparams['regularize_etab']*etab.norm()
+                    loss += model.hparams['regularize_etab'] * etab.norm()
         except Exception as e:
             print(ids)
             raise e
@@ -102,8 +104,7 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
 
         progress.update(1)
         progress.refresh()
-        progress.set_description_str('avg loss {} | avg prob {} | eff 0.{},0.{}'.format(
-            avg_loss, avg_prob, term_mask_eff, res_mask_eff))
+        progress.set_description_str(f'avg loss {avg_loss} | avg prob {avg_prob} | eff 0.{term_mask_eff},0.{res_mask_eff}')
 
     progress.close()
     epoch_loss = running_loss / (global_count)
@@ -115,22 +116,20 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
     torch.set_grad_enabled(True)  # just to be safe
     if test:
         return epoch_loss, avg_prob, dump
-    else:
-        return epoch_loss, avg_prob
+    return epoch_loss, avg_prob
 
 
 # TODO: fix this
 def nlpl(etab, E_idx, ref_seqs, x_mask):
     ''' Negative log psuedo-likelihood
         Returns negative log psuedolikelihoods per residue, with padding residues masked'''
-    etab_device = etab.device
     n_batch, L, k, _ = etab.shape
     etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
 
     # X is encoded as 20 so lets just add an extra row/col of zeros
     pad = (0, 1, 0, 1)
     etab = F.pad(etab, pad, "constant", 0)
-    isnt_x_aa = (ref_seqs != 20).float().to(etab_device)
+    isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
 
     # separate selfE and pairE since we have to treat selfE differently
     self_etab = etab[:, :, 0:1]
@@ -160,8 +159,8 @@ def nlpl(etab, E_idx, ref_seqs, x_mask):
 
     # convert to nlpl
     log_seqs_probs *= full_mask  # zero out positions that don't have residues or where the native sequence is X
-    nlpl = -torch.sum(log_seqs_probs) / n_res
-    return nlpl, avg_prob, n_res
+    nlpl_return = -torch.sum(log_seqs_probs) / n_res
+    return nlpl_return, avg_prob, n_res
 
 
 # TODO: do we zero out the energy between a non-X residue and an X residue?
@@ -180,7 +179,6 @@ def nlcpl(etab, E_idx, ref_seqs, x_mask):
 
         Returns: log likelihoods per residue, as well as tensor mask
     '''
-    etab_device = etab.device
     n_batch, L, k, _ = etab.shape
     etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
 
@@ -218,12 +216,6 @@ def nlcpl(etab, E_idx, ref_seqs, x_mask):
     # get pair_nrgs_u_jn from pair_nrgs_im_u
     E_idx_imu_to_ujn = E_idx_jn.unsqueeze(-1).expand(pair_nrgs_im_u.shape)
     pair_nrgs_u_jn = torch.gather(pair_nrgs_im_u, 1, E_idx_imu_to_ujn)
-    """
-    # concat the two to get a full edge etab
-    edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
-    # get the avg nrg for 22 possible aa identities at each position
-    aa_nrgs = torch.sum(edge_nrgs, dim = 2)
-    """
 
     # start building this wacky energy table
     self_nrgs_im_expand = self_nrgs_im_expand.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
@@ -255,5 +247,5 @@ def nlcpl(etab, E_idx, ref_seqs, x_mask):
 
     # convert to nlcpl
     log_edge_probs *= full_mask  # zero out positions that don't have residues or where the native sequence is X
-    nlcpl = -torch.sum(log_edge_probs) / n_edges
-    return nlcpl, avg_prob, n_edges
+    nlcpl_return = -torch.sum(log_edge_probs) / n_edges
+    return nlcpl_return, avg_prob, n_edges

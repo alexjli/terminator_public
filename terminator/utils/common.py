@@ -58,16 +58,5 @@ def seq_to_ints(sequence):
 def ints_to_seq(int_list):
     return [int_to_AA[i] for i in int_list]
 
-
-"""# wrapper for AA_to_int
-def aa_to_int(residue):
-    return AA_to_int[residue]
-
-
-# wrapper for AA_to_int
-def int_to_aa(i):
-    return int_to_AA[i]"""
-
-
 def aa_three_to_one(residue):
     return int_to_AA[AA_to_int[residue]]

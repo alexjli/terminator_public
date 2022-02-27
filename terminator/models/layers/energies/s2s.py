@@ -8,13 +8,9 @@ import torch
 from torch import nn
 
 from terminator.models.layers.graph_features import MultiChainProteinFeatures
-from terminator.models.layers.s2s_modules import (EdgeMPNNLayer,
-                                                  EdgeTransformerLayer,
-                                                  NodeMPNNLayer,
+from terminator.models.layers.s2s_modules import (EdgeMPNNLayer, EdgeTransformerLayer, NodeMPNNLayer,
                                                   NodeTransformerLayer)
-from terminator.models.layers.utils import (cat_edge_endpoints,
-                                            cat_neighbors_nodes, gather_edges,
-                                            gather_nodes,
+from terminator.models.layers.utils import (cat_edge_endpoints, cat_neighbors_nodes, gather_edges, gather_nodes,
                                             merge_duplicate_pairE)
 
 # pylint: disable=no-member, not-callable

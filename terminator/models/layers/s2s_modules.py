@@ -1,14 +1,16 @@
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 from .utils import merge_duplicate_edges
 
+# pylint: disable=no-member
+
 
 class PositionWiseFeedForward(nn.Module):
     def __init__(self, num_hidden, num_ff):
-        super(PositionWiseFeedForward, self).__init__()
+        super().__init__()
         self.W_in = nn.Linear(num_hidden, num_ff, bias=True)
         self.W_out = nn.Linear(num_ff, num_hidden, bias=True)
 
@@ -20,7 +22,7 @@ class PositionWiseFeedForward(nn.Module):
 
 class Normalize(nn.Module):
     def __init__(self, features, epsilon=1e-6):
-        super(Normalize, self).__init__()
+        super().__init__()
         self.gain = nn.Parameter(torch.ones(features))
         self.bias = nn.Parameter(torch.zeros(features))
         self.epsilon = epsilon
@@ -41,7 +43,7 @@ class Normalize(nn.Module):
 
 class NodeTransformerLayer(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
-        super(TransformerLayer, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         self.num_hidden = num_hidden
         self.num_in = num_in
@@ -85,7 +87,7 @@ class NodeTransformerLayer(nn.Module):
 
 class EdgeTransformerLayer(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4, dropout=0.1):
-        super(EdgeTransformerLayer, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         self.num_hidden = num_hidden
         self.num_in = num_in
@@ -113,7 +115,8 @@ class EdgeTransformerLayer(nn.Module):
 
 class NodeMPNNLayer(nn.Module):
     def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
-        super(NodeMPNNLayer, self).__init__()
+        super().__init__()
+        del num_heads
         self.num_hidden = num_hidden
         self.num_in = num_in
         self.scale = scale
@@ -152,7 +155,8 @@ class NodeMPNNLayer(nn.Module):
 
 class EdgeMPNNLayer(nn.Module):
     def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=30):
-        super(EdgeMPNNLayer, self).__init__()
+        super().__init__()
+        del num_heads
         self.num_hidden = num_hidden
         self.num_in = num_in
         self.scale = scale
@@ -187,7 +191,7 @@ class EdgeMPNNLayer(nn.Module):
 
 class NeighborAttention(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4):
-        super(NeighborAttention, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         self.num_hidden = num_hidden
 
@@ -196,7 +200,6 @@ class NeighborAttention(nn.Module):
         self.W_K = nn.Linear(num_in, num_hidden, bias=False)
         self.W_V = nn.Linear(num_in, num_hidden, bias=False)
         self.W_O = nn.Linear(num_hidden, num_hidden, bias=False)
-        return
 
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
@@ -255,7 +258,7 @@ class NeighborAttention(nn.Module):
             h_V_t:            Node update
         """
         # Dimensions
-        n_batch, n_nodes, n_neighbors = h_E.shape[:3]
+        n_batch, _, n_neighbors = h_E.shape[:3]
         n_heads = self.num_heads
         d = self.num_hidden / n_heads
 
@@ -292,7 +295,7 @@ class NeighborAttention(nn.Module):
 
 class EdgeEndpointAttention(nn.Module):
     def __init__(self, num_hidden, num_in, num_heads=4):
-        super(EdgeEndpointAttention, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         self.num_hidden = num_hidden
 

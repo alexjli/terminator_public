@@ -252,7 +252,8 @@ DEFAULT_HPARAMS = {
     'max_term_res': 55000,
     'max_seq_tokens': None,
     'term_dropout': None,
-    'num_features': len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len']),  #
+    'num_features':
+    len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len']),  #
     'regularize_etab': 0,
     'finetune': False
 }

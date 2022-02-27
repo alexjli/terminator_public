@@ -1,4 +1,4 @@
-import torch.nn as nn
+from torch import nn
 
 # resnet based on https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 # and https://arxiv.org/pdf/1603.05027.pdf
@@ -10,7 +10,7 @@ def conv1xN(channels, N):
 
 class Conv1DResidual(nn.Module):
     def __init__(self, hparams):
-        super(Conv1DResidual, self).__init__()
+        super().__init__()
 
         hdim = hparams['term_hidden_dim']
         self.bn1 = nn.BatchNorm2d(hdim)
@@ -33,7 +33,7 @@ class Conv1DResidual(nn.Module):
 
 class Conv1DResNet(nn.Module):
     def __init__(self, hparams):
-        super(Conv1DResNet, self).__init__()
+        super().__init__()
         self.hparams = hparams
 
         blocks = [self._make_layer(hparams) for _ in range(hparams['matches_blocks'])]

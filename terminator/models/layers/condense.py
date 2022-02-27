@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 from .term.matches.attn import TERMMatchTransformerEncoder
@@ -13,7 +13,6 @@ from .term.graph.s2s import TERMGraphTransformerEncoder
 from .utils import aggregate_edges, batchify, cat_term_edge_endpoints
 
 # pylint: disable=no-member
-
 
 NUM_AA = 21
 NUM_FEATURES = len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len'])
@@ -486,7 +485,7 @@ class CondenseTERM(nn.Module):
         """
         local_dev = embeddings.device
         cv = self.hparams['cov_features']
-        if cv == 'shared_learned' or cv == 'cnn':
+        if cv in ['shared_learned', 'cnn']:
             # generate covariation features
             embeddings = embeddings.transpose(1, 3).transpose(1, 2)
         elif cv in ['aa_learned', 'aa_counts', "all_raw", "all_learned"]:
@@ -508,8 +507,8 @@ class CondenseTERM(nn.Module):
         E_idx_slice = torch.arange(max_term_len).unsqueeze(0).expand([max_term_len, max_term_len])
         shift_E_idx_slice = (E_idx_slice + torch.arange(max_term_len).unsqueeze(1)) % max_term_len
         batch_rel_E_idx = shift_E_idx_slice.view([1, 1, max_term_len,
-                                            max_term_len]).expand([num_batch, max_num_terms, -1,
-                                                                   -1]).contiguous().to(local_dev)
+                                                  max_term_len]).expand([num_batch, max_num_terms, -1,
+                                                                         -1]).contiguous().to(local_dev)
         # use gather to rearrange the edge features
         edge_features = torch.gather(
             edge_features, -2,
@@ -700,8 +699,12 @@ class CondenseTERM(nn.Module):
         edge_features, batch_rel_E_idx, batch_abs_E_idx = self._edges(embeddings, features, X, term_lens,
                                                                       batched_focuses, batchify_src_key_mask)
         # run TERM MPNN
-        node_embeddings, edge_embeddings = self._term_mpnn(batchify_terms, edge_features, batch_rel_E_idx,
-                                                           src_key_mask, term_lens=term_lens, contact_idx=contact_idx)
+        node_embeddings, edge_embeddings = self._term_mpnn(batchify_terms,
+                                                           edge_features,
+                                                           batch_rel_E_idx,
+                                                           src_key_mask,
+                                                           term_lens=term_lens,
+                                                           contact_idx=contact_idx)
         # aggregate nodes and edges using batch_abs_E_idx
         agg_nodes = self._agg_nodes(node_embeddings, batched_focuses, seq_lens, n_batches, max_seq_len)
         agg_edges = aggregate_edges(edge_embeddings, batch_abs_E_idx, max_seq_len)

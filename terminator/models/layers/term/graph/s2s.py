@@ -8,11 +8,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from terminator.models.layers.s2s_modules import (Normalize,
-                                                  PositionWiseFeedForward)
-from terminator.models.layers.utils import (gather_term_nodes,
-                                            cat_term_neighbors_nodes,
-                                            cat_term_edge_endpoints,
+from terminator.models.layers.s2s_modules import (Normalize, PositionWiseFeedForward)
+from terminator.models.layers.utils import (gather_term_nodes, cat_term_neighbors_nodes, cat_term_edge_endpoints,
                                             merge_duplicate_term_edges)
 
 # pylint: disable=no-member
@@ -412,6 +409,7 @@ class TERMNodeMPNNLayer(nn.Module):
     dense: PositionWiseFeedForward
         Transformer position-wise FFN
     """
+
     # pylint: disable=unused-argument
     # num_heads is not used, but exists for compatibility with options for the Attention equivalent
     def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None, scale=None):
@@ -481,7 +479,6 @@ class TERMNodeMPNNLayer(nn.Module):
         else:
             dh = torch.sum(h_message, dim=-2) / self.scale
 
-
         h_V = self.norm[0](h_V + self.dropout(dh))
 
         # Position-wise feedforward
@@ -507,6 +504,7 @@ class TERMEdgeMPNNLayer(nn.Module):
     dense: PositionWiseFeedForward
         Transformer position-wise FFN
     """
+
     # pylint: disable=unused-argument
     # num_heads is not used, but exists for compatibility with options for the Attention equivalent
     def __init__(self, num_hidden, num_in, dropout=0.1, num_heads=None):
@@ -627,9 +625,7 @@ class TERMGraphTransformerEncoder(nn.Module):
 
         # Encoder layers
         self.edge_encoder = nn.ModuleList([
-            edge_layer(hidden_dim,
-                       hidden_dim * 3 + (2 * hidden_dim if hparams['contact_idx'] else 0),
-                       dropout=dropout)
+            edge_layer(hidden_dim, hidden_dim * 3 + (2 * hidden_dim if hparams['contact_idx'] else 0), dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
         self.node_encoder = nn.ModuleList([

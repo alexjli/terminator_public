@@ -54,10 +54,8 @@ class TERMinator(nn.Module):
         else:
             self.top = PairEnergies(hparams).to(self.dev)
 
-        print(
-            (f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} '
-             f'and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}')
-        )
+        print((f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} '
+               f'and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}'))
 
         # Initialization
         for p in self.parameters():

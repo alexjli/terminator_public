@@ -10,6 +10,7 @@ from torch import nn
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter_add
 
+# pylint: disable=no-member
 
 def tuple_sum(*args):
     '''
@@ -54,7 +55,6 @@ def randn(n, dims, device="cpu"):
     return torch.randn(n, dims[0], device=device), torch.randn(n, dims[1], 3, device=device)
 
 
-
 def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):
     '''
     L2 norm of tensor clamped above a minimum value `eps`.
@@ -89,6 +89,7 @@ def _merge(s, v):
     v = torch.reshape(v, v.shape[:-2] + (3 * v.shape[-2], ))
     return torch.cat([s, v], -1)
 
+# pylint: disable=using-constant-test
 
 class GVP(nn.Module):
     '''
@@ -103,7 +104,7 @@ class GVP(nn.Module):
                         (vector_act will be used as sigma^+ in vector gating if `True`)
     '''
     def __init__(self, in_dims, out_dims, h_dim=None, activations=(F.relu, torch.sigmoid), vector_gate=False):
-        super(GVP, self).__init__()
+        super().__init__()
         self.si, self.vi = in_dims
         self.so, self.vo = out_dims
         self.vector_gate = vector_gate
@@ -161,7 +162,7 @@ class _VDropout(nn.Module):
     vector channel are dropped together.
     '''
     def __init__(self, drop_rate):
-        super(_VDropout, self).__init__()
+        super().__init__()
         self.drop_rate = drop_rate
         self.dummy_param = nn.Parameter(torch.empty(0))
 
@@ -183,7 +184,7 @@ class Dropout(nn.Module):
     Takes tuples (s, V) as input and as output.
     '''
     def __init__(self, drop_rate):
-        super(Dropout, self).__init__()
+        super().__init__()
         self.sdropout = nn.Dropout(drop_rate)
         self.vdropout = _VDropout(drop_rate)
 
@@ -193,7 +194,7 @@ class Dropout(nn.Module):
                   or single `torch.Tensor`
                   (will be assumed to be scalar channels)
         '''
-        if type(x) is torch.Tensor:
+        if isinstance(x, torch.Tensor):
             return self.sdropout(x)
         s, v = x
         return self.sdropout(s), self.vdropout(v)
@@ -205,7 +206,7 @@ class LayerNorm(nn.Module):
     Takes tuples (s, V) as input and as output.
     '''
     def __init__(self, dims):
-        super(LayerNorm, self).__init__()
+        super().__init__()
         self.s, self.v = dims
         self.scalar_norm = nn.LayerNorm(self.s)
 
@@ -221,7 +222,7 @@ class LayerNorm(nn.Module):
         vn = _norm_no_nan(v, axis=-1, keepdims=True, sqrt=False)
         vn = torch.sqrt(torch.mean(vn, dim=-2, keepdim=True))
         return self.scalar_norm(s), v / vn
-
+# pylint: disable=arguments-differ
 
 class GVPConv(MessagePassing):
     '''
@@ -252,7 +253,7 @@ class GVPConv(MessagePassing):
                  aggr="mean",
                  activations=(F.relu, torch.sigmoid),
                  vector_gate=False):
-        super(GVPConv, self).__init__(aggr=aggr)
+        super().__init__(aggr=aggr)
         self.si, self.vi = in_dims
         self.so, self.vo = out_dims
         self.se, self.ve = edge_dims
@@ -266,7 +267,7 @@ class GVPConv(MessagePassing):
                     GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), (self.so, self.vo), activations=(None, None)))
             else:
                 module_list.append(GVP_((2 * self.si + self.se, 2 * self.vi + self.ve), out_dims))
-                for i in range(n_layers - 2):
+                for _ in range(n_layers - 2):
                     module_list.append(GVP_(out_dims, out_dims))
                 module_list.append(GVP_(out_dims, out_dims, activations=(None, None)))
         self.message_func = nn.Sequential(*module_list)
@@ -320,7 +321,7 @@ class GVPConvLayer(nn.Module):
                  activations=(F.relu, torch.sigmoid),
                  vector_gate=False):
 
-        super(GVPConvLayer, self).__init__()
+        super().__init__()
         self.conv = GVPConv(node_dims,
                             node_dims,
                             edge_dims,
@@ -338,7 +339,7 @@ class GVPConvLayer(nn.Module):
         else:
             hid_dims = 4 * node_dims[0], 2 * node_dims[1]
             ff_func.append(GVP_(node_dims, hid_dims))
-            for i in range(n_feedforward - 2):
+            for _ in range(n_feedforward - 2):
                 ff_func.append(GVP_(hid_dims, hid_dims))
             ff_func.append(GVP_(hid_dims, node_dims, activations=(None, None)))
         self.ff_func = nn.Sequential(*ff_func)

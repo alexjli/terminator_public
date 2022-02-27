@@ -41,8 +41,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset,
-                                  TERMLazyDataLoader)
+from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset, TERMLazyDataLoader)
 from terminator.models.TERMinator import TERMinator
 from terminator.utils.loop_utils import run_epoch
 
@@ -155,7 +154,7 @@ def main(args):
     print(terminator)
     print("hparams", terminator.hparams)
 
-    if hparams['finetune']: # freeze all but the last output layer
+    if hparams['finetune']:  # freeze all but the last output layer
         for (name, module) in terminator.named_children():
             if name == "top":
                 for (n, m) in module.named_children():

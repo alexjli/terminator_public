@@ -5,7 +5,7 @@ its backbone coordinates. Adapted from https://github.com/jingraham/neurips19-gr
 """
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 from .utils import gather_edges, gather_nodes
@@ -16,7 +16,7 @@ from .utils import gather_edges, gather_nodes
 class PositionalEncodings(nn.Module):
     """ Module to generate differential positional encodings for protein graph edges """
     def __init__(self, num_embeddings):
-        super(PositionalEncodings, self).__init__()
+        super().__init__()
         self.num_embeddings = num_embeddings
 
     def forward(self, E_idx):
@@ -180,24 +180,6 @@ class ProteinFeatures(nn.Module):
         Q = torch.cat((xyz, w), -1)
         Q = F.normalize(Q, dim=-1)
 
-        # Axis of rotation
-        # Replace bad rotation matrices with identity
-        # I = torch.eye(3).view((1,1,1,3,3))
-        # I = I.expand(*(list(R.shape[:3]) + [-1,-1]))
-        # det = (
-        #     R[:,:,:,0,0] * (R[:,:,:,1,1] * R[:,:,:,2,2] - R[:,:,:,1,2] * R[:,:,:,2,1])
-        #     - R[:,:,:,0,1] * (R[:,:,:,1,0] * R[:,:,:,2,2] - R[:,:,:,1,2] * R[:,:,:,2,0])
-        #     + R[:,:,:,0,2] * (R[:,:,:,1,0] * R[:,:,:,2,1] - R[:,:,:,1,1] * R[:,:,:,2,0])
-        # )
-        # det_mask = torch.abs(det.unsqueeze(-1).unsqueeze(-1))
-        # R = det_mask * R + (1 - det_mask) * I
-
-        # DEBUG
-        # https://math.stackexchange.com/questions/2074316/calculating-rotation-axis-from-rotation-matrix
-        # Columns of this are in rotation plane
-        # A = R - I
-        # v1, v2 = A[:,:,:,:,0], A[:,:,:,:,1]
-        # axis = F.normalize(torch.cross(v1, v2), dim=-1)
         return Q
 
     def _contacts(self, D_neighbors, mask_neighbors, cutoff=8):
@@ -443,7 +425,7 @@ class IndexDiffEncoding(nn.Module):
 
     Similar to ProteinFeatures, but zeros out features between interchain interactions """
     def __init__(self, num_embeddings):
-        super(IndexDiffEncoding, self).__init__()
+        super().__init__()
         self.num_embeddings = num_embeddings
 
     def forward(self, E_idx, chain_idx):
