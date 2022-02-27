@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .term.matches.attn import TERMMatchTransformerEncoder
-from .term.matches.cnn import Conv1DResNet, Conv2DResNet
+from .term.matches.cnn import Conv1DResNet
 from .term.struct.s2s import TERMGraphTransformerEncoder
 from .utils import aggregate_edges, batchify, cat_term_edge_endpoints
 
@@ -224,13 +224,12 @@ class EdgeFeatures(nn.Module):
             Dimensionality of input feature vectors
         hidden_dim : int
             Hidden dimension
-        feature_mode : string from :code:`['shared_learned', 'all_raw', 'aa_learned', 'aa_count', 'cnn']`
+        feature_mode : string from :code:`['shared_learned', 'all_raw', 'aa_learned', 'aa_count']`
             Generate initial covariation matrix by computing covariation on
                 - :code:`'shared_learned'`: inputted match features without preprocessing
                 - :code:`'all_raw'`: raw counts as well as inputted match features
                 - :code:`'aa_learned'`: features in learned embedding for residue identity
                 - :code:`'aa_count'`: raw residue identity counts
-                - :code:`'cnn'`: convolving over inputted matches. This isn't actually convariation features, rather a 2D feature generator.
         compress : string from ['project', 'ffn', 'ablate']
             Method to compress covariance matrix to vector. Flatten, then
                 - :code:`'project'`: project to proper dimensionality with a linear layer
@@ -259,8 +258,6 @@ class EdgeFeatures(nn.Module):
             self.one_hot = torch.eye(NUM_AA)
             self.embedding = lambda x: self.one_hot[x]
             in_dim = NUM_AA
-        elif feature_mode == "cnn":  # this will explode your gpu but keeping it here anyway as a potential option
-            self.cnn = Conv2DResNet(hparams)
         else:
             raise ValueError(f"{feature_mode} is not a valid feature mode for EdgeFeatures")
 
@@ -315,8 +312,6 @@ class EdgeFeatures(nn.Module):
         else:
             cov_mat = matches
 
-        if feature_mode == 'cnn':
-            cov_mat = self.cnn(cov_mat)
         n_batch, n_term, n_aa = cov_mat.shape[:3]
         cov_features = cov_mat.view([n_batch, n_term, n_aa, n_aa, -1])
         return self.W(cov_features)
