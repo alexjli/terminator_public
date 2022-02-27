@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from .term.matches.attn import TERMMatchTransformerEncoder
 from .term.matches.cnn import Conv1DResNet
-from .term.struct.s2s import TERMGraphTransformerEncoder
+from .term.graph.s2s import TERMGraphTransformerEncoder
 from .utils import aggregate_edges, batchify, cat_term_edge_endpoints
 
 # pylint: disable=no-member
