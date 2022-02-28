@@ -44,15 +44,10 @@ See :code:`python generateDataset.py --help` for more info.
 import argparse
 import functools
 import glob
-import json
 import multiprocessing as mp
 import os
-import pickle
 import sys
-import time
 import traceback
-
-import numpy as np
 
 # for autosummary import purposes
 sys.path.insert(0, os.path.dirname(__file__))
@@ -114,14 +109,14 @@ def generateDatasetParallel(in_folder,
         if not os.path.exists(full_folder_path):
             os.mkdir(full_folder_path)
 
-        for idx, file in enumerate(glob.glob(folder + '/*.red.pdb')):
+        for _, file in enumerate(glob.glob(folder + '/*.red.pdb')):
             name = file[:-len(".red.pdb")]
             if not update:
                 out_file = os.path.join(out_folder, name)
                 if os.path.exists(out_file + '.features'):
                     continue
 
-            res = pool.apply_async(process_func, args=(file, out_folder), error_callback=_raise_error)
+            pool.apply_async(process_func, args=(file, out_folder), error_callback=_raise_error)
 
     pool.close()
     pool.join()
