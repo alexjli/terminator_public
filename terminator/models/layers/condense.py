@@ -1,4 +1,4 @@
-""" TERM Information Condensor and submodules """
+" TERM Information Condensor and submodules """
 
 import math
 
@@ -196,6 +196,7 @@ def covariation_features(matches, term_lens, rmsds, mask):
         mask_edges = mask @ mask.transpose(-2, -1)
         mask_edges = mask_edges.unsqueeze(-1).unsqueeze(-1)
         cov_mat *= mask_edges
+    
     return cov_mat
 
 
@@ -505,12 +506,13 @@ class CondenseTERM(nn.Module):
 
         # edge features don't have the self edge as the first element in the row
         # so we need to rearrange the edges so they are
-        # we'll use a shifted E_idx to do this (shift the row left until the self edge is the first)
+        # we'll use a shifted E_idx to do this
         num_batch = edge_features.shape[0]
         max_num_terms = max([len(l) for l in term_lens])
         max_term_len = edge_features.shape[2]
-        E_idx_slice = torch.arange(max_term_len).unsqueeze(0).expand([max_term_len, max_term_len])
-        shift_E_idx_slice = (E_idx_slice + torch.arange(max_term_len).unsqueeze(1)) % max_term_len
+        shift_E_idx_slice = torch.arange(max_term_len).unsqueeze(0).repeat([max_term_len, 1])
+        for i in range(max_term_len):
+            shift_E_idx_slice[i][:i+1] = i - torch.arange(i+1)
         batch_rel_E_idx = shift_E_idx_slice.view([1, 1, max_term_len,
                                                   max_term_len]).expand([num_batch, max_num_terms, -1,
                                                                          -1]).contiguous().to(local_dev)
@@ -563,7 +565,7 @@ class CondenseTERM(nn.Module):
             Updated TERM residue interaction embeddings
             Shape: n_batches x n_terms x max_term_len x max_term_len x n_hidden
         """
-        batchify_src_key_mask = batchify(src_key_mask, term_lens)
+        batchify_src_key_mask = batchify(~src_key_mask, term_lens)
         if self.hparams['contact_idx']:
             assert contact_idx is not None
             assert term_lens is not None
