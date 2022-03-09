@@ -1,4 +1,16 @@
-""" Loss functions for TERMinator """
+""" Loss functions for TERMinator, and a customizable loss function constructor built from the included components.
+
+In order to use the customizable loss function constructor :code:`construct_loss_fn`, loss functions
+must have the signature :code:`loss(etab, E_idx, data)`, where
+- :code:`loss` is the name of the loss fn
+- :code:`etab` is the outputted etab from TERMinator
+- :code:`E_idx` is the edge index outputted from TERMinator
+- :code:`data` is the training data dictionary
+Additionally, the function must return two outputs :code:`loss_contribution, norm_count`, where
+- :code:`loss_contribution` is the computed loss contribution by the function
+- :code:`norm_count` is a normalizing constant associated with the loss (e.g. when averaging across losses in batches,
+the average loss will be :math:`\\frac{\\sum_i loss_contribution}{\\sum_i norm_count}`)
+"""
 import sys
 
 import torch
@@ -9,8 +21,8 @@ import torch.linalg
 
 
 def nlpl(etab, E_idx, data):
-    ''' Negative log psuedo-likelihood
-        Returns negative log psuedolikelihoods per residue, with padding residues masked'''
+    """ Negative log psuedo-likelihood
+        Returns negative log psuedolikelihoods per residue, with padding residues masked """
     ref_seqs = data['seqs']
     x_mask = data['x_mask']
     n_batch, L, k, _ = etab.shape
@@ -47,11 +59,11 @@ def nlpl(etab, E_idx, data):
     # convert to nlpl
     log_seqs_probs *= full_mask  # zero out positions that don't have residues or where the native sequence is X
     nlpl_return = -torch.sum(log_seqs_probs) / n_res
-    return nlpl_return, n_res
+    return nlpl_return, int(n_res)
 
 
 def nlcpl(etab, E_idx, data):
-    ''' Negative log composite psuedo-likelihood
+    """ Negative log composite psuedo-likelihood
         Averaged nlcpl per residue, across batches
         p(a_i,m ; a_j,n) =
             softmax [
@@ -64,7 +76,7 @@ def nlcpl(etab, E_idx, data):
                 ]
 
         Returns: log likelihoods per residue, as well as tensor mask
-    '''
+    """
     ref_seqs = data['seqs']
     x_mask = data['x_mask']
     n_batch, L, k, _ = etab.shape
@@ -131,14 +143,14 @@ def nlcpl(etab, E_idx, data):
     # convert to nlcpl
     log_edge_probs *= full_mask  # zero out positions that don't have residues or where the native sequence is X
     nlcpl_return = -torch.sum(log_edge_probs) / n_edges
-    return nlcpl_return, n_edges
+    return nlcpl_return, int(n_edges)
 
 # pylint: disable=unused-argument
 def etab_norm_penalty(etab, E_idx, data):
     """ Take the norm of all etabs and scale it by the total number of residues involved """
     seq_lens = data['seq_lens']
     etab_norm = torch.linalg.norm(etab.view([-1]))
-    return etab_norm / seq_lens.sum()
+    return etab_norm / seq_lens.sum(), int(seq_lens.sum())
 
 
 def _get_loss_fn(fn_name):
@@ -150,7 +162,24 @@ def _get_loss_fn(fn_name):
 
 
 def construct_loss_fn(hparams):
-    """ Construct a combined loss function based on the hparams """
+    """ Construct a combined loss function based on the inputted hparams
+
+    Args
+    ----
+    hparams : dict
+        The fully constructed hparams (see :code:`scripts/models/train/default_hparams.py`). It should
+        contain an entry for 'loss_config' in the format {loss_fn_name : scaling_factor}. For example,
+        .. code-block :
+            {
+                'nlcpl': 1,
+                'etab_norm_penalty': 0.01
+            }
+
+    Returns
+    -------
+    _loss_fn
+        The constructed loss function
+    """
     loss_config = hparams['loss_config']
     def _loss_fn(etab, E_idx, data):
         """ The returned loss function """

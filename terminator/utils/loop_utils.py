@@ -22,6 +22,33 @@ def _to_dev(data_dict, dev):
             data_dict['gvp_data'] = [data.to(dev) for data in data_dict['gvp_data']]
 
 
+def _ld_item_values(ld):
+    """ Convert all 0-dim tensors in a loss dictionary into python native types.
+
+    Args
+    ----
+    ld : dict
+        Dictionary with keys :code:`loss_fn_name` and values of dictionaries with
+        - :code:`loss` corresponding to the loss value
+        - :code:`count` corresponding to the normalizing factor
+        - :code:`scaling_factor` corresponding to the scaling coefficient in the loss function
+
+    Returns
+    -------
+    ld_copy
+        Updated loss dictionary with all 0-dim tensors converted to python native types.
+    """
+    ld_copy = ld.copy()
+    for sub_ld in ld_copy.values():
+        for key, val in sub_ld.items():
+            if isinstance(val, torch.Tensor):
+                if len(val.shape) == 0:
+                    sub_ld[key] = val.item()
+                else:
+                    raise RuntimeError("loss dictionary contains non-0-dim tensor value")
+    return ld_copy
+
+
 def _compute_loss(loss_dict):
     """ Compute the total loss given a loss dictionary
 
@@ -61,7 +88,8 @@ def _sum_loss_dicts(total_ld, batch_ld):
         Combined loss dictionary with the same structure as the input dictionaries
     """
     def _weighted_loss_sum(ld1, ld2):
-        c1, c2 = ld1["count"], ld2["count2"]
+        """ Compute the weighted loss between two loss dictionaries """
+        c1, c2 = ld1["count"], ld2["count"]
         return (ld1["loss"] * c1 + ld2["loss"] * c2)/(c1 + c2)
     # combine the two loss dictionaries
     combined_ld = total_ld.copy()
@@ -108,10 +136,8 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
     -------
     epoch_loss : float
         Loss on the run epoch
-    avg_prob : float
-        Average probability of native residue pairs, averaged across all kNN edges
     dump : list of dicts, conditionally present
-        Outputs the model. Present when :code:`test=True`
+        Outputs of the model. Present when :code:`test=True`
     """
     # arg checking
     if test:
@@ -151,12 +177,13 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
             print(ids)
             raise e
 
-        running_loss_dict = _sum_loss_dicts(running_loss_dict, batch_loss_dict)
-
         if grad:
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+        running_loss_dict = _sum_loss_dicts(running_loss_dict,
+                                            _ld_item_values(batch_loss_dict))
 
         if test:
             n_batch, l, n = etab.shape[:3]
@@ -166,13 +193,18 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
                 'ids': ids
             })
 
-        avg_loss = _compute_loss(running_loss_dict)
         term_mask_eff = int((~data['src_key_mask']).sum().item() / data['src_key_mask'].numel() * 100)
         res_mask_eff = int(data['x_mask'].sum().item() / data['x_mask'].numel() * 100)
 
+        # compactify what's printed to stdout
+        loss_breakdown = {}
+        for loss_fn_name, subloss_dict in running_loss_dict.items():
+            loss_breakdown[loss_fn_name] = round(subloss_dict["loss"], 2)
+        avg_loss = round(_compute_loss(running_loss_dict), 2)
+
         progress.update(1)
         progress.refresh()
-        progress.set_description_str(f'avg loss {avg_loss} | eff 0.{term_mask_eff},0.{res_mask_eff}')
+        progress.set_description_str(f'avg loss {avg_loss} {loss_breakdown} | eff 0.{term_mask_eff}, 0.{res_mask_eff}')
 
     progress.close()
     epoch_loss = _compute_loss(running_loss_dict)

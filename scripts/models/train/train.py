@@ -58,6 +58,18 @@ torch.set_printoptions(profile="full")
 
 
 def _setup_hparams(args):
+    """ Setup the hparams dictionary using defaults and return it
+
+    Args
+    ----
+    args : argparse.Namespace
+        Parsed arguments
+
+    Returns
+    -------
+    hparams : dict
+        Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+    """
     # load hparams
     hparams = json.load(open(args.hparams, 'r'))
     for key, default_val in DEFAULT_HPARAMS.items():
@@ -76,6 +88,20 @@ def _setup_hparams(args):
 
 
 def _setup_dataloaders(args, hparams):
+    """ Setup dataloaders needed for training
+
+    Args
+    ----
+    args : argparse.Namespace
+        Parsed arguments
+    hparams : dict
+        Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+
+    Returns
+    -------
+    train_dataloader, val_dataloader, test_dataloader : torch.utils.data.DataLoader
+        DataLoaders for the train, validation, and test datasets
+    """
     kwargs = {}
     kwargs['num_workers'] = 16
 
@@ -150,6 +176,27 @@ def _setup_dataloaders(args, hparams):
 
 
 def _load_checkpoint(run_dir):
+    """ If a training checkpoint exists, load the checkpoint. Otherwise, setup checkpointing initial values.
+
+    Args
+    ----
+    run_dir : str
+        Path to directory containing the training run checkpoint, as well the tensorboard output.
+
+    Returns
+    -------
+    dict
+        Dictionary containing
+        - "best_checkpoint_state": the best checkpoint state during the run
+        - "last_checkpoint_state": the most recent checkpoint state during the run
+        - "best_checkpoint": the best model parameter set during the run
+        - "best_validation": the best validation loss during the run
+        - "last_optim_state": the most recent state of the optimizer
+        - "start_epoch": what epoch to resume training from
+        - "writer": SummaryWriter for tensorboard
+        - "training_curves": pairs of (train_loss, val_loss) representing the training and validation curves
+    """
+
     if os.path.isfile(os.path.join(run_dir, 'net_best_checkpoint.pt')):
         best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'))
         last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'))
@@ -179,6 +226,24 @@ def _load_checkpoint(run_dir):
 
 
 def _setup_model(hparams, checkpoint, dev):
+    """ Setup a TERMinator model using hparams, a checkpoint if provided, and a computation device.
+
+    Args
+    ----
+    hparams : dict
+        Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+    checkpoint : OrderedDict or None
+        Model parameters
+    dev : str
+        Computation device to use
+
+    Returns
+    -------
+    terminator : TERMinator or nn.DataParallel(TERMinator)
+        Potentially parallelized TERMinator to use for training
+    terminator_module : TERMinator
+        Inner TERMinator, unparallelized
+    """
     terminator = TERMinator(hparams=hparams, device=dev)
     if checkpoint is not None:
         terminator.load_state_dict(checkpoint)
