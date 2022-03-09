@@ -2,13 +2,13 @@
 
 In order to use the customizable loss function constructor :code:`construct_loss_fn`, loss functions
 must have the signature :code:`loss(etab, E_idx, data)`, where
-- :code:`loss` is the name of the loss fn
-- :code:`etab` is the outputted etab from TERMinator
-- :code:`E_idx` is the edge index outputted from TERMinator
-- :code:`data` is the training data dictionary
+    - :code:`loss` is the name of the loss fn
+    - :code:`etab` is the outputted etab from TERMinator
+    - :code:`E_idx` is the edge index outputted from TERMinator
+    - :code:`data` is the training data dictionary
 Additionally, the function must return two outputs :code:`loss_contribution, norm_count`, where
-- :code:`loss_contribution` is the computed loss contribution by the function
-- :code:`norm_count` is a normalizing constant associated with the loss (e.g. when averaging across losses in batches,
+    - :code:`loss_contribution` is the computed loss contribution by the function
+    - :code:`norm_count` is a normalizing constant associated with the loss (e.g. when averaging across losses in batches,
 the average loss will be :math:`\\frac{\\sum_i loss_contribution}{\\sum_i norm_count}`)
 """
 import sys
