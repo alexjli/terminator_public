@@ -474,6 +474,8 @@ class TERMNodeMPNNLayer(nn.Module):
         if mask_attend is not None:
             h_message = mask_attend.unsqueeze(-1) * h_message
 
+        # note: this inherently decreases the magnitudes of messages for smaller TERMs
+        # that wasn't intentional, but maybe that's a good thing
         if self.scale is None:
             dh = torch.mean(h_message, dim=-2)
         else:
@@ -629,7 +631,7 @@ class TERMGraphTransformerEncoder(nn.Module):
             for _ in range(num_encoder_layers)
         ])
         self.node_encoder = nn.ModuleList([
-            node_layer(hidden_dim, num_in=hidden_dim * 2, num_heads=num_heads, dropout=dropout)
+            node_layer(hidden_dim, num_in=hidden_dim * 2 + (2 * hidden_dim if hparams['contact_idx'] else 0), num_heads=num_heads, dropout=dropout)
             for _ in range(num_encoder_layers)
         ])
 
@@ -681,7 +683,11 @@ class TERMGraphTransformerEncoder(nn.Module):
                 h_EV_edges = cat_term_edge_endpoints(h_EV_edges, contact_idx, E_idx)
             h_E = edge_layer(h_E, h_EV_edges, E_idx, mask_E=mask_attend, mask_attend=mask_attend)
 
-            h_EV_nodes = cat_term_neighbors_nodes(h_V, h_E, E_idx)
+            if self.hparams['contact_idx']:
+                h_EI = cat_term_edge_endpoints(h_E, contact_idx, E_idx)
+            else:
+                h_EI = h_E
+            h_EV_nodes = cat_term_neighbors_nodes(h_V, h_EI, E_idx)
             h_V = node_layer(h_V, h_EV_nodes, mask_V=mask, mask_attend=mask_attend)
 
         h_E = self.W_out(h_E)
