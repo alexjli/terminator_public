@@ -40,10 +40,10 @@ class TERMinator(nn.Module):
         super().__init__()
         self.dev = device
         self.hparams = hparams
-        self.bot = CondenseTERM(hparams, device=self.dev)
 
         if self.hparams["use_terms"]:
             self.hparams['energies_input_dim'] = self.hparams['term_hidden_dim']
+            self.bot = CondenseTERM(hparams, device=self.dev)
         else:
             self.hparams['energies_input_dim'] = 0
 
@@ -257,6 +257,7 @@ class TERMinator(nn.Module):
             etab, E_idx = self._from_gvp_outputs(h_E, E_idx, data['seq_lens'], max_seq_len)
         else:
             etab, E_idx = self.top(node_embeddings, edge_embeddings, data['X'], data['x_mask'], data['chain_idx'])
+
         if self.hparams['k_cutoff']:
             k = E_idx.shape[-1]
             k_cutoff = self.hparams['k_cutoff']
