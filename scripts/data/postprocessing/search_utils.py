@@ -29,7 +29,7 @@ def find_pdb_path(pdb, root):
     for pdb_path in glob.glob(pattern):
         if os.path.exists(pdb_path):
             return pdb_path
-    raise ValueError(f"{pdb} not found in $RAW_DATA")
+    raise ValueError(f"{pdb} PDB file not found in {root}")
 
 
 def find_dtermen_folder(pdb, root):
@@ -56,4 +56,4 @@ def find_dtermen_folder(pdb, root):
     pdb_folder = os.path.join(root, pdb)
     if os.path.isdir(pdb_folder):
         return pdb_folder
-    raise ValueError(f"{pdb} not found in $INPUT_DATA")
+    raise ValueError(f"{pdb} dTERMen run not found in {root}")
