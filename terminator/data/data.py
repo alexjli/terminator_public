@@ -787,8 +787,7 @@ class TERMDataLoader(Sampler):
             clusters.append(batch)
         self.clusters = clusters
 
-    # pylint: disable=no-self-use
-    def _package(self, b_idx):
+    def package(self, b_idx):
         """Package the given datapoints into tensors based on provided indices.
 
         Tensors are extracted from the data and padded. Coordinates are featurized
@@ -1225,8 +1224,7 @@ class TERMLazyDataLoader(Sampler):
             clusters.append(batch)
         self.clusters = clusters
 
-    # pylint: disable=no-self-use
-    def _package(self, b_idx):
+    def package(self, b_idx):
         """Package the given datapoints into tensors based on provided indices.
 
         Tensors are extracted from the data and padded. Coordinates are featurized
