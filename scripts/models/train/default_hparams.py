@@ -202,6 +202,17 @@ Parameters
 
     num_features : int, default=9
         The number of non-sequence TERM-based features included per TERM residue.
+
+    loss_config : dict of str (loss component) -> float (scaling factor)
+        Dictionary that describes how to construct a loss function. An example dictionary follows:
+        .. code-block :
+            {
+                'nlcpl': 1,
+                'etab_norm_penalty': 0.01
+            }
+
+    finetune : bool
+        Whether or not to train the model in finetuning mode (i.e. freezing all weights but the output layer)
 """
 DEFAULT_HPARAMS = {
     'model': 'multichain',
@@ -254,6 +265,8 @@ DEFAULT_HPARAMS = {
     'term_dropout': None,
     'num_features':
     len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len']),  #
-    'regularize_etab': 0,
+    'loss_config': {
+        'nlpcl': 1
+    },
     'finetune': False
 }

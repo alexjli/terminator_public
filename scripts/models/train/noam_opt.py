@@ -64,6 +64,9 @@ class NoamOpt:
         return getattr(self.optimizer, name)
 
 
-def get_std_opt(parameters, d_model, lr_multiplier=1, regularization=1e-3):
-    return NoamOpt(d_model, 2 * lr_multiplier, 4000,
-                   torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=regularization))
+def get_std_opt(parameters, d_model, lr_multiplier=1, regularization=1e-3, state=None):
+    optim = NoamOpt(d_model, 2 * lr_multiplier, 4000,
+                    torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=regularization))
+    if state is not None:
+        optim.load_state_dict(state)
+    return optim

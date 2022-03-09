@@ -1,6 +1,5 @@
+""" Utilities for running training and evaluation loops """
 import torch
-import torch.nn.functional as F
-from torch.cuda.amp import autocast
 from tqdm import tqdm
 
 # pylint: disable=no-member
@@ -23,16 +22,106 @@ def _to_dev(data_dict, dev):
             data_dict['gvp_data'] = [data.to(dev) for data in data_dict['gvp_data']]
 
 
-def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0", scaler=None):
+def _compute_loss(loss_dict):
+    """ Compute the total loss given a loss dictionary
+
+    Args
+    ----
+    loss_dict : dict
+        Dictionary with keys :code:`loss_fn_name` and values of dictionaries with
+        - :code:`loss` corresponding to the loss value
+        - :code:`count` corresponding to the normalizing factor
+        - :code:`scaling_factor` corresponding to the scaling coefficient in the loss function
+
+    Returns
+    -------
+    loss : torch.Tensor of size 1
+        Computed loss
+    """
+    loss = 0
+    for subloss_dict in loss_dict.values():
+        loss += subloss_dict["loss"] * subloss_dict["scaling_factor"]
+    return loss
+
+
+def _sum_loss_dicts(total_ld, batch_ld):
+    """ Add all values in :code:`batch_ld` into the corresponding values in :code:`total_ld`
+
+    Args
+    ----
+    total_ld, batch_ld : dict
+        Dictionary with keys :code:`loss_fn_name` and values of dictionaries with
+        - :code:`loss` corresponding to the loss value
+        - :code:`count` corresponding to the normalizing factor
+        - :code:`scaling_factor` corresponding to the scaling coefficient in the loss function
+
+    Returns
+    -------
+    combined_ld : dict
+        Combined loss dictionary with the same structure as the input dictionaries
+    """
+    def _weighted_loss_sum(ld1, ld2):
+        c1, c2 = ld1["count"], ld2["count2"]
+        return (ld1["loss"] * c1 + ld2["loss"] * c2)/(c1 + c2)
+    # combine the two loss dictionaries
+    combined_ld = total_ld.copy()
+    for loss_fn_name, batch_subld in batch_ld.items():
+        if loss_fn_name not in combined_ld.keys():
+            combined_ld[loss_fn_name] = batch_subld
+        else:
+            combined_subld = combined_ld[loss_fn_name]
+            assert combined_subld["scaling_factor"] == batch_subld["scaling_factor"]
+            combined_subld["loss"] = _weighted_loss_sum(combined_subld, batch_subld)
+            combined_subld["count"] += batch_subld["count"]
+    return combined_ld
+
+
+def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0"):
+    """ Run :code:`model` on one epoch of :code:`dataloader`
+
+    Args
+    ----
+    model : terminator.model.TERMinator.TERMinator
+        An instance of TERMinator
+    dataloader : torch.utils.data.DataLoader
+        A torch DataLoader that wraps either terminator.data.data.TERMDataLoader or terminator.data.data.TERMLazyDataLoader
+    loss_fn : function
+        Loss function with signature :code:`loss_fn(etab, E_idx, data)` and returns :code`loss, batch_count`,
+        where
+        - :code:`etab, E_idx` is the outputted Potts Model
+        - :code:`data` is the input data produced by :code:`dataloader`
+        - :code:`hparams` is the model hyperparameters
+        - :code:`loss` is the loss value
+        - :code:`batch_count` is the averaging factor
+    optimizer : torch optimizer or None
+        An optimizer for :code:`model`. Used when :code:`grad=True, test=False`
+    scheduler : torch scheduler or None
+        The associted scheduler for the given optimizer
+    grad : bool
+        Whether or not to compute gradients. :code:`True` to train the model, :code:`False` to use model in evaluation mode.
+    test : bool
+        Whether or not to save the outputs of the model. Requires :code:`grad=False`.
+    dev : str, default="cuda:0"
+        What device to compute on
+
+    Returns
+    -------
+    epoch_loss : float
+        Loss on the run epoch
+    avg_prob : float
+        Average probability of native residue pairs, averaged across all kNN edges
+    dump : list of dicts, conditionally present
+        Outputs the model. Present when :code:`test=True`
+    """
     # arg checking
     if test:
         assert not grad, "grad should not be on for test set"
     if grad:
         assert optimizer is not None, "require an optimizer if using grads"
+    if scheduler is not None:
+        assert optimizer is not None, "using a scheduler requires an optimizer"
 
-    running_loss = 0
-    running_prob = 0
-    global_count = 0
+    running_loss_dict = {}
 
     # set grads properly
     if grad:
@@ -55,39 +144,19 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
         ids = data['ids']
 
         try:
-            if scaler:
-                with autocast():
-                    etab, E_idx = model(data, max_seq_len)
-                    loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
-                    if model.hparams['regularize_etab'] != 0:
-                        loss += model.hparams['regularize_etab'] * etab.norm()
-            else:
-                etab, E_idx = model(data, max_seq_len)
-                loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
-                if model.hparams['regularize_etab'] != 0:
-                    loss += model.hparams['regularize_etab'] * etab.norm()
+            etab, E_idx = model(data, max_seq_len)
+            batch_loss_dict = loss_fn(etab, E_idx, data)
+            loss = _compute_loss(batch_loss_dict)
         except Exception as e:
             print(ids)
             raise e
 
-        if torch.cuda.device_count() > 1:
-            loss = (loss * batch_count).sum() / batch_count.sum()
-            prob = (prob * batch_count).sum() / batch_count.sum()
-            batch_count = batch_count.sum()
-
-        running_loss += loss.item() * batch_count.item()
-        running_prob += prob.item() * batch_count.item()
-        global_count += batch_count.item()
+        running_loss_dict = _sum_loss_dicts(running_loss_dict, batch_loss_dict)
 
         if grad:
-            if scaler:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
         if test:
             n_batch, l, n = etab.shape[:3]
@@ -97,155 +166,21 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
                 'ids': ids
             })
 
-        avg_loss = running_loss / (global_count)
-        avg_prob = running_prob / (global_count)
+        avg_loss = _compute_loss(running_loss_dict)
         term_mask_eff = int((~data['src_key_mask']).sum().item() / data['src_key_mask'].numel() * 100)
         res_mask_eff = int(data['x_mask'].sum().item() / data['x_mask'].numel() * 100)
 
         progress.update(1)
         progress.refresh()
-        progress.set_description_str(f'avg loss {avg_loss} | avg prob {avg_prob} | eff 0.{term_mask_eff},0.{res_mask_eff}')
+        progress.set_description_str(f'avg loss {avg_loss} | eff 0.{term_mask_eff},0.{res_mask_eff}')
 
     progress.close()
-    epoch_loss = running_loss / (global_count)
-    avg_prob = running_prob / (global_count)
+    epoch_loss = _compute_loss(running_loss_dict)
 
-    if scheduler:
+    if scheduler is not None:
         scheduler.step(epoch_loss)
 
     torch.set_grad_enabled(True)  # just to be safe
     if test:
-        return epoch_loss, avg_prob, dump
-    return epoch_loss, avg_prob
-
-
-# TODO: fix this
-def nlpl(etab, E_idx, ref_seqs, x_mask):
-    ''' Negative log psuedo-likelihood
-        Returns negative log psuedolikelihoods per residue, with padding residues masked'''
-    n_batch, L, k, _ = etab.shape
-    etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
-
-    # X is encoded as 20 so lets just add an extra row/col of zeros
-    pad = (0, 1, 0, 1)
-    etab = F.pad(etab, pad, "constant", 0)
-    isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
-
-    # separate selfE and pairE since we have to treat selfE differently
-    self_etab = etab[:, :, 0:1]
-    pair_etab = etab[:, :, 1:]
-    # idx matrix to gather the identity at all other residues given a residue of focus
-    E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k - 1), 1, E_idx[:, :, 1:])
-    E_aa = E_aa.view(list(E_idx[:, :, 1:].shape) + [1, 1]).expand(-1, -1, -1, 21, -1)
-    # gather the 22 energies for each edge based on E_aa
-    pair_nrgs = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
-    # gather 22 self energies by taking the diagonal of the etab
-    self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-    # concat the two to get a full edge etab
-    edge_nrgs = torch.cat((self_nrgs, pair_nrgs), dim=2)
-    # get the avg nrg for 22 possible aa identities at each position
-    aa_nrgs = torch.sum(edge_nrgs, dim=2)
-
-    # convert energies to probabilities
-    log_all_aa_probs = torch.log_softmax(-aa_nrgs, dim=2)
-    # get the probability of the sequence
-    log_seqs_probs = torch.gather(log_all_aa_probs, 2, ref_seqs.unsqueeze(-1)).squeeze(-1)
-
-    full_mask = x_mask * isnt_x_aa
-    n_res = torch.sum(x_mask * isnt_x_aa)
-
-    # get average psuedolikelihood per residue
-    avg_prob = (torch.exp(log_seqs_probs) * full_mask).sum() / n_res
-
-    # convert to nlpl
-    log_seqs_probs *= full_mask  # zero out positions that don't have residues or where the native sequence is X
-    nlpl_return = -torch.sum(log_seqs_probs) / n_res
-    return nlpl_return, avg_prob, n_res
-
-
-# TODO: do we zero out the energy between a non-X residue and an X residue?
-def nlcpl(etab, E_idx, ref_seqs, x_mask):
-    ''' Negative log composite psuedo-likelihood
-        Averaged nlcpl per residue, across batches
-        p(a_i,m ; a_j,n) =
-            softmax [
-                E_s(a_i,m) + E_s(a_j,n)
-                + E_p(a_i,m ; a_j,n)
-                + sum_(u != m,n) [
-                    E_p(a_i,m; A_u)
-                    + E_p(A_u, a_j,n)
-                    ]
-                ]
-
-        Returns: log likelihoods per residue, as well as tensor mask
-    '''
-    n_batch, L, k, _ = etab.shape
-    etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
-
-    # X is encoded as 20 so lets just add an extra row/col of zeros
-    pad = (0, 1, 0, 1)
-    etab = F.pad(etab, pad, "constant", 0)  # TODO: should i be padding w something else?
-
-    isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
-
-    # separate selfE and pairE since we have to treat selfE differently
-    self_etab = etab[:, :, 0:1]
-    pair_etab = etab[:, :, 1:]
-
-    # gather 22 self energies by taking the diagonal of the etab
-    self_nrgs_im = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-    self_nrgs_im_expand = self_nrgs_im.expand(-1, -1, k - 1, -1)
-
-    # E_idx for all but self
-    E_idx_jn = E_idx[:, :, 1:]
-
-    # self Es gathered from E_idx_others
-    E_idx_jn_expand = E_idx_jn.unsqueeze(-1).expand(-1, -1, -1, 21)
-    self_nrgs_jn = torch.gather(self_nrgs_im_expand, 1, E_idx_jn_expand)
-
-    # idx matrix to gather the identity at all other residues given a residue of focus
-    E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k - 1), 1, E_idx_jn)
-    # expand the matrix so we can gather pair energies
-    E_aa = E_aa.view(list(E_idx_jn.shape) + [1, 1]).expand(-1, -1, -1, 21, -1)
-    # gather the 22 energies for each edge based on E_aa
-    pair_nrgs_jn = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
-    # sum_(u != n,m) E_p(a_i,n; A_u)
-    sum_pair_nrgs_jn = torch.sum(pair_nrgs_jn, dim=2)
-    pair_nrgs_im_u = sum_pair_nrgs_jn.unsqueeze(2).expand(-1, -1, k - 1, -1) - pair_nrgs_jn
-
-    # get pair_nrgs_u_jn from pair_nrgs_im_u
-    E_idx_imu_to_ujn = E_idx_jn.unsqueeze(-1).expand(pair_nrgs_im_u.shape)
-    pair_nrgs_u_jn = torch.gather(pair_nrgs_im_u, 1, E_idx_imu_to_ujn)
-
-    # start building this wacky energy table
-    self_nrgs_im_expand = self_nrgs_im_expand.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
-    self_nrgs_jn_expand = self_nrgs_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1)
-    pair_nrgs_im_expand = pair_nrgs_im_u.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
-    pair_nrgs_jn_expand = pair_nrgs_u_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1)
-
-    composite_nrgs = (self_nrgs_im_expand + self_nrgs_jn_expand + pair_etab + pair_nrgs_im_expand +
-                      pair_nrgs_jn_expand)
-
-    # convert energies to probabilities
-    composite_nrgs_reshape = composite_nrgs.view(n_batch, L, k - 1, 21 * 21, 1)
-    log_composite_prob_dist = torch.log_softmax(-composite_nrgs_reshape, dim=-2).view(n_batch, L, k - 1, 21, 21)
-    # get the probability of the sequence
-    im_probs = torch.gather(log_composite_prob_dist, 4, E_aa).squeeze(-1)
-    ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1, 1]).expand(-1, -1, k - 1, 1)
-    log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
-
-    # reshape masks
-    x_mask = x_mask.unsqueeze(-1)
-    isnt_x_aa = isnt_x_aa.unsqueeze(-1)
-    full_mask = x_mask * isnt_x_aa
-    n_edges = torch.sum(full_mask.expand(log_edge_probs.shape))
-
-    # get average composite psuedolikelihood per residue per batch
-    edge_probs = torch.exp(log_edge_probs) * full_mask
-    # per residue prob for entire batch rather than averaged over proteins
-    avg_prob = torch.sum(edge_probs) / n_edges
-
-    # convert to nlcpl
-    log_edge_probs *= full_mask  # zero out positions that don't have residues or where the native sequence is X
-    nlcpl_return = -torch.sum(log_edge_probs) / n_edges
-    return nlcpl_return, avg_prob, n_edges
+        return epoch_loss, dump
+    return epoch_loss, None
