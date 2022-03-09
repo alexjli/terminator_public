@@ -20,9 +20,15 @@ fi
 DATASET=$1
 DATANAME=${1##*/}
 HPARAMS=$2
-OUTPUTDIR=$3
+RUNDIR=$3
 RUNNAME=${3##*/}
-echo "$DATANAME $RUNNAME"
+OUTPUTDIR=$4
+echo "$DATANAME $RUNNAME $OUTPUTDIR"
+
+if [[ ! -d $RUNDIR ]];
+then
+  mkdir $RUNDIR
+fi
 
 if [[ ! -d $OUTPUTDIR ]];
 then
@@ -34,6 +40,7 @@ sed \
   -e "s|DATANAME|${DATANAME}|g" \
   -e 's|RUNNO|0|g' \
   -e "s|HPARAMS|${HPARAMS}|g" \
+  -e "s|RUNDIR|${RUNDIR}|g" \
   -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
   -e "s|RUNNAME|${RUNNAME}|g" \
   <run_train.sh \
