@@ -196,7 +196,7 @@ def covariation_features(matches, term_lens, rmsds, mask):
         mask_edges = mask @ mask.transpose(-2, -1)
         mask_edges = mask_edges.unsqueeze(-1).unsqueeze(-1)
         cov_mat *= mask_edges
-    
+
     return cov_mat
 
 
@@ -377,19 +377,20 @@ class CondenseTERM(nn.Module):
             # project target ppoe to hidden dim
             self.W_ppoe = nn.Linear(NUM_TARGET_FEATURES, h_dim)
         elif hparams['matches'] == 'ablate':
-            self.matches = None
+            pass  # we don't need this module if it's ablated
         else:
             raise ValueError(f"arg for matches condenser {hparams['matches']} doesn't look right")
 
-        # TERM MPNN
+        # construct TERM MPNN
+        # if contact idxs are enabled, include the CIE
         if hparams['contact_idx']:
             self.cie = ContactIndexEncoding(hparams=self.hparams)
-        self.term_mpnn = TERMGraphTransformerEncoder(hparams=self.hparams)
-
         # to linearize TERM transformer
         if hparams['term_mpnn_linear']:
             self.W_v = nn.Linear(2 * h_dim, h_dim)
             self.W_e = nn.Linear(3 * h_dim, h_dim)
+        else:
+            self.term_mpnn = TERMGraphTransformerEncoder(hparams=self.hparams)
 
         if torch.cuda.is_available():
             self.dev = device
