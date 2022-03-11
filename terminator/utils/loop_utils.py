@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch.cuda.amp import autocast
+from torch import linalg as LA
 from tqdm import tqdm
 
 # pylint: disable=no-member
@@ -59,13 +60,13 @@ def run_epoch(model, dataloader, optimizer=None, scheduler=None, grad=False, tes
                 with autocast():
                     etab, E_idx = model(data, max_seq_len)
                     loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
-                    if model.hparams['regularize_etab'] != 0:
-                        loss += model.hparams['regularize_etab'] * etab.norm()
+                    if model.module.hparams['regularize_etab'] != 0:
+                        loss += model.module.hparams['regularize_etab'] * torch.mean(LA.norm(etab, dim=(1,2,3)) / data['seq_lens'])
             else:
                 etab, E_idx = model(data, max_seq_len)
                 loss, prob, batch_count = nlcpl(etab, E_idx, data['seqs'], data['x_mask'])
-                if model.hparams['regularize_etab'] != 0:
-                    loss += model.hparams['regularize_etab'] * etab.norm()
+                if model.module.hparams['regularize_etab'] != 0:
+                    loss += model.module.hparams['regularize_etab'] * torch.mean(LA.norm(etab, dim=(1,2,3)) / data['seq_lens'])
         except Exception as e:
             print(ids)
             raise e
