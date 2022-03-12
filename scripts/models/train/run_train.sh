@@ -17,4 +17,5 @@ python train.py \
   --dataset=DATASET \
   --hparams=HPARAMS \
   --run_dir=RUNDIR \
-  --out_dir=OUTPUTDIR
+  --out_dir=OUTPUTDIR \
+  --lazy

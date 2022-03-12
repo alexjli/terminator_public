@@ -287,7 +287,7 @@ if __name__ == '__main__':
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
     parser.add_argument('--dev', help='device to train on', default='cuda:0')
     parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
-    parser.add_argument('--lazy', help="use lazy data loading", type=bool, default=True)
+    parser.add_argument('--lazy', help="use lazy data loading", type=bool, default=False, action='store_true')
     args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder
