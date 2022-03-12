@@ -46,7 +46,7 @@ def extractBackbone(filename, outpath):
 
     for line_num, line in enumerate(entry_lines):
         data = line.strip()
-        if data == 'TER' or data == 'END':
+        if data[:3] == 'TER' or data[:3] == 'END':
             valid_entry_lines.append(line_num)
             continue
         try:

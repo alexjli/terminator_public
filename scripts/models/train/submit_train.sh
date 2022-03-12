@@ -23,6 +23,7 @@ HPARAMS=$2
 RUNDIR=$3
 RUNNAME=${3##*/}
 OUTPUTDIR=$4
+HOURS=$5
 echo "$DATANAME $RUNNAME $OUTPUTDIR"
 
 if [[ ! -d $RUNDIR ]];
@@ -43,6 +44,7 @@ sed \
   -e "s|RUNDIR|${RUNDIR}|g" \
   -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
   -e "s|RUNNAME|${RUNNAME}|g" \
+  -e "s|HOURS|${HOURS}|g" \
   <run_train.sh \
   >bash_files/run_${DATANAME}_${RUNNAME}_run0.sh
 jid0=$(sbatch --parsable bash_files/run_${DATANAME}_${RUNNAME}_run0.sh)

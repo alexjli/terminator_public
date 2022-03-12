@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH --mincpu=32
 #SBATCH --gres=gpu:volta:1
-#SBATCH --time=60:00:00
+#SBATCH --time=HOURS:00:00
 #SBATCH --mem=50G
 #SBATCH -o RUNDIR/train-output_runRUNNO.out
 #SBATCH -e RUNDIR/train-error_runRUNNO.out

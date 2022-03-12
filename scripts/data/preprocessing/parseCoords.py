@@ -30,7 +30,7 @@ def parseCoords(filename, save=True):
     with open(filename, 'r') as fp:
         for line in fp:
             data = line.strip()
-            if data == 'TER' or data == 'END':
+            if data[:3] == 'TER' or data[:3] == 'END':
                 continue
             try:
                 element = data[13:16].strip()

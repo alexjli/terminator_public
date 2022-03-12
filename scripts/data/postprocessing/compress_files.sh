@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --partition=sched_mem1TB_centos7
 #SBATCH --time=06:00:00
 #SBATCH -n 16
 #SBATCH --mem=0
