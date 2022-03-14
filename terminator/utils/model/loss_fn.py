@@ -156,6 +156,27 @@ def etab_norm_penalty(etab, E_idx, data):
     return etab_norm / seq_lens.sum(), int(seq_lens.sum())
 
 
+# pylint: disable=unused-argument
+def pair_self_energy_ratio(etab, E_idx, data):
+    """ Return the ratio of the scaled norm of pair energies vs self energies in an etab """
+    self_etab = etab[:, :, 0:1]
+    pair_etab = etab[:, :, 1:]
+
+    # gather 22 self energies by taking the diagonal of the etab
+    self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
+    # there are inherently more pair energies than self energies
+    # this should be the ratio of that
+    pair_nrg_norm_factor = pair_etab.numel() / self_nrgs.numel()
+    # normalize each norm with the appropriate norm factors
+    self_nrgs_avg_norm = torch.linalg.norm(self_nrgs.view([-1]))
+    pair_nrgs_avg_norm = torch.linalg.norm(pair_etab.view([-1])) / pair_nrg_norm_factor
+
+    return pair_nrgs_avg_norm / self_nrgs_avg_norm
+
+
+# Loss function construction
+
+
 def _get_loss_fn(fn_name):
     """ Retrieve a loss function from this file given the function name """
     try:
