@@ -153,7 +153,9 @@ def _setup_dataloaders(args, hparams):
                                              batch_size=hparams['train_batch_size'],
                                              shuffle=hparams['shuffle'],
                                              semi_shuffle=hparams['semi_shuffle'],
-                                             sort_data=hparams['sort_data'])
+                                             sort_data=hparams['sort_data'],
+                                             max_term_res=hparams['max_term_res'],
+                                             max_seq_tokens=hparams['max_seq_tokens'])
         val_batch_sampler = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_batch_sampler = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -213,7 +215,7 @@ def _load_checkpoint(run_dir):
         last_optim_state = None
         start_epoch = 0
         writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'))
-        training_curves = []
+        training_curves = {"train_loss": [], "val_loss": []}
 
     return {"best_checkpoint_state": best_checkpoint_state,
             "last_checkpoint_state": last_checkpoint_state,
@@ -305,16 +307,17 @@ def main(args):
         for epoch in range(start_epoch, args.epochs):
             print('epoch', epoch)
 
-            epoch_loss, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev)
-            print('epoch loss', epoch_loss)
+            epoch_loss, epoch_ld, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev)
+            print('epoch loss', epoch_loss, 'epoch_ld', epoch_ld)
             writer.add_scalar('training loss', epoch_loss, epoch)
 
             # validate
-            val_loss, _ = run_epoch(terminator, val_dataloader, loss_fn, grad=False, dev=dev)
-            print('val loss', val_loss)
+            val_loss, val_ld, _ = run_epoch(terminator, val_dataloader, loss_fn, grad=False, dev=dev)
+            print('val loss', val_loss, 'val ld', val_ld)
             writer.add_scalar('val loss', val_loss, epoch)
 
-            training_curves.append([epoch_loss, val_loss])
+            training_curves["train_loss"].append((epoch_loss, epoch_ld))
+            training_curves["val_loss"].append((val_loss, val_ld))
 
             # save a state checkpoint
             checkpoint_state = {
@@ -341,8 +344,8 @@ def main(args):
 
     # test
     terminator_module.load_state_dict(best_checkpoint)
-    test_loss, dump = run_epoch(terminator, test_dataloader, loss_fn, grad=False, test=True, dev=dev)
-    print(f"test loss {test_loss}")
+    test_loss, test_ld, dump = run_epoch(terminator, test_dataloader, loss_fn, grad=False, test=True, dev=dev)
+    print(f"test loss {test_loss} test loss dict {test_ld}")
     # dump outputs
     if args.out_dir:
         if not os.path.isdir(args.out_dir):
@@ -369,7 +372,7 @@ if __name__ == '__main__':
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
     parser.add_argument('--dev', help='device to train on', default='cuda:0')
     parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
-    parser.add_argument('--lazy', help="use lazy data loading", type=bool, default=True)
+    parser.add_argument('--lazy', help="use lazy data loading", default=False, action='store_true')
     parsed_args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder
