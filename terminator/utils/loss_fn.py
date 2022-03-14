@@ -19,6 +19,8 @@ import torch.linalg
 
 # pylint: disable=no-member
 
+NOT_LOSS_FNS = ["_get_loss_fn", "construct_loss_fn"]
+
 
 def nlpl(etab, E_idx, data):
     """ Negative log psuedo-likelihood
@@ -145,6 +147,7 @@ def nlcpl(etab, E_idx, data):
     nlcpl_return = -torch.sum(log_edge_probs) / n_edges
     return nlcpl_return, int(n_edges)
 
+
 # pylint: disable=unused-argument
 def etab_norm_penalty(etab, E_idx, data):
     """ Take the norm of all etabs and scale it by the total number of residues involved """
@@ -156,9 +159,11 @@ def etab_norm_penalty(etab, E_idx, data):
 def _get_loss_fn(fn_name):
     """ Retrieve a loss function from this file given the function name """
     try:
+        if fn_name in NOT_LOSS_FNS:  # prevent recursive and unexpected behavior
+            raise NameError
         return getattr(sys.modules[__name__], fn_name)
     except NameError as ne:
-        raise ValueError(f"{fn_name} not found in {__name__}") from ne
+        raise ValueError(f"Loss fn {fn_name} not found in {__name__}") from ne
 
 
 def construct_loss_fn(hparams):
@@ -181,6 +186,7 @@ def construct_loss_fn(hparams):
         The constructed loss function
     """
     loss_config = hparams['loss_config']
+
     def _loss_fn(etab, E_idx, data):
         """ The returned loss function """
         loss_dict = {}
@@ -189,4 +195,5 @@ def construct_loss_fn(hparams):
             loss, count = subloss_fn(etab, E_idx, data)
             loss_dict[loss_fn_name] = {"loss": loss, "count": count, "scaling_factor": scaling_factor}
         return loss_dict
+
     return _loss_fn
