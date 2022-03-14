@@ -136,6 +136,8 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
     -------
     epoch_loss : float
         Loss on the run epoch
+    running_loss_dict : dict
+        Loss breakdown into component sublosses and scaling factors of epoch_loss
     dump : list of dicts, conditionally present
         Outputs of the model. Present when :code:`test=True`
     """
@@ -214,5 +216,5 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
 
     torch.set_grad_enabled(True)  # just to be safe
     if test:
-        return epoch_loss, dump
-    return epoch_loss, None
+        return epoch_loss, running_loss_dict, dump
+    return epoch_loss, running_loss_dict, None
