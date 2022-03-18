@@ -8,6 +8,7 @@ RUN_HPARAMS=$(readlink -f $3)
 RUNDIR=$(readlink -f $4)
 RUNNAME=${3##*/}
 OUTPUTDIR=$(readlink -f $5)
+HOURS=$6
 echo "$DATANAME $RUNNAME $OUTPUTDIR"
 
 # compute what directory this file is in
@@ -47,6 +48,7 @@ sed \
   -e "s|RUNDIR|${RUNDIR}|g" \
   -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
   -e "s|RUNNAME|${RUNNAME}|g" \
+  -e "s|HOURS|${HOURS}|g" \
   <run_train.sh \
   >bash_files/run_${DATANAME}_${RUNNAME}_run0.sh
 jid0=$(sbatch --parsable bash_files/run_${DATANAME}_${RUNNAME}_run0.sh)
