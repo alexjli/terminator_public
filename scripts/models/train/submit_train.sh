@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# collect args
+DATASET=$(readlink -f $1)
+DATANAME=${1##*/}
+MODEL_HPARAMS=$(readlink -f $2)
+RUN_HPARAMS=$(readlink -f $3)
+RUNDIR=$(readlink -f $4)
+RUNNAME=${3##*/}
+OUTPUTDIR=$(readlink -f $5)
+HOURS=$6
+echo "$DATANAME $RUNNAME $OUTPUTDIR"
+
 # compute what directory this file is in
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
@@ -12,25 +23,17 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
 cd $DIR
 
+# create the folder to store the submission script
 if [[ ! -d bash_files ]];
 then
   mkdir bash_files
 fi
 
-DATASET=$1
-DATANAME=${1##*/}
-HPARAMS=$2
-RUNDIR=$3
-RUNNAME=${3##*/}
-OUTPUTDIR=$4
-HOURS=$5
-echo "$DATANAME $RUNNAME $OUTPUTDIR"
-
+# create the run dir and output dir
 if [[ ! -d $RUNDIR ]];
 then
   mkdir $RUNDIR
 fi
-
 if [[ ! -d $OUTPUTDIR ]];
 then
   mkdir $OUTPUTDIR
@@ -40,7 +43,8 @@ sed \
   -e "s|DATASET|${DATASET}|g" \
   -e "s|DATANAME|${DATANAME}|g" \
   -e 's|RUNNO|0|g' \
-  -e "s|HPARAMS|${HPARAMS}|g" \
+  -e "s|MODEL_HPARAMS|${MODEL_HPARAMS}|g" \
+  -e "s|RUN_HPARAMS|${RUN_HPARAMS}|g" \
   -e "s|RUNDIR|${RUNDIR}|g" \
   -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
   -e "s|RUNNAME|${RUNNAME}|g" \

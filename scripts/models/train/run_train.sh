@@ -9,13 +9,14 @@
 
 CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
-conda activate terminator
+conda activate terminator-nightly
 ulimit -s unlimited
 ulimit -n 10000
 
 python train.py \
   --dataset=DATASET \
-  --hparams=HPARAMS \
+  --model_hparams=MODEL_HPARAMS \
+  --run_hparams=RUN_HPARAMS \
   --run_dir=RUNDIR \
   --out_dir=OUTPUTDIR \
   --lazy

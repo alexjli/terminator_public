@@ -20,7 +20,7 @@ class TERMinator(nn.Module):
     dev: str
         Device representing where the model is held
     hparams: dict
-        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+        Dictionary of parameter settings (see :code:`terminator/utils/model/default_hparams.py`)
     bot: CondenseTERM
         TERM information condenser network
     top: PairEnergies (or appropriate variant thereof)
@@ -33,7 +33,7 @@ class TERMinator(nn.Module):
         Args
         ----
         hparams : dict
-            Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+            Dictionary of parameter settings (see :code:`terminator/utils/model/default_hparams.py`)
         device : str
             Device to place model on
         """
@@ -54,8 +54,9 @@ class TERMinator(nn.Module):
         else:
             self.top = PairEnergies(hparams).to(self.dev)
 
-        print((f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]} '
-               f'and GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}'))
+        if self.hparams['use_terms']:
+            print(f'TERM information condenser hidden dimensionality is {self.bot.hparams["term_hidden_dim"]}')
+        print(f'GNN Potts Model Encoder hidden dimensionality is {self.top.hparams["energies_hidden_dim"]}')
 
         # Initialization
         for p in self.parameters():

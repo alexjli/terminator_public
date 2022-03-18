@@ -1,1 +1,0 @@
-{"cov_features": "all_raw", "cov_compress": "ffn", "term_use_mpnn": true, "matches": "transformer", "energies_gvp": true, "train_batch_size": 16, "num_pair_stats": 0, "num_sing_stats": 0, "contact_idx": true}

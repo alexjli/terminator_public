@@ -5,7 +5,8 @@ Usage:
 
         python train.py \\
             --dataset <dataset_dir> \\
-            --hparams <hparams_file> \\
+            --model_hparams <model_hparams_file_path> \\
+            --run_hparams <run_hparams_file_path> \\
             --run_dir <run_dir> \\
             [--train <train_split_file>] \\
             [--validation <val_split_file>] \\
@@ -30,30 +31,25 @@ import json
 import os
 import pickle
 import sys
-import time
 
-import numpy as np
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
 
-from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset, TERMLazyDataLoader)
+from terminator.data.data import (TERMLazyDataset, TERMBatchSampler, TERMDataset, TERMLazyBatchSampler)
 from terminator.models.TERMinator import TERMinator
-from terminator.utils.loop_utils import run_epoch
+from terminator.utils.model.loop_utils import run_epoch
+from terminator.utils.model.loss_fn import construct_loss_fn
 
 # for autosummary import purposes
+# pylint: disable=wrong-import-order,wrong-import-position
 sys.path.insert(0, os.path.dirname(__file__))
-from default_hparams import DEFAULT_HPARAMS
-from noam_opt import get_std_opt
+from terminator.utils.model.default_hparams import DEFAULT_MODEL_HPARAMS, DEFAULT_TRAIN_HPARAMS
+from terminator.utils.model.optim import get_std_opt
 
-try:
-    import horovod.torch as hvd
-except ImportError:
-    pass
+# pylint: disable=unspecified-encoding
+
 
 torch.set_printoptions(threshold=10000)
 torch.set_printoptions(linewidth=1000)
@@ -62,28 +58,61 @@ torch.set_printoptions(sci_mode=False)
 torch.set_printoptions(profile="full")
 
 
-def main(args):
-    dev = args.dev
-    run_dir = args.run_dir
-    if not os.path.isdir(run_dir):
-        os.makedirs(run_dir)
-    train_dataloader, val_dataloader, test_dataloader = None, None, None
+def _setup_hparams(args):
+    """ Setup the hparams dictionary using defaults and return it
+
+    Args
+    ----
+    args : argparse.Namespace
+        Parsed arguments
+
+    Returns
+    -------
+    model_hparams : dict
+        Fully configured model hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
+    run_hparams : dict
+        Fully configured training run hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
+    """
+    def _load_hparams(hparam_path, default_hparams, output_name):
+        # load hparams
+        hparams = json.load(open(hparam_path, 'r'))
+        for key, default_val in default_hparams.items():
+            if key not in hparams:
+                hparams[key] = default_val
+
+        hparams_path = os.path.join(args.run_dir, output_name)
+        if os.path.isfile(hparams_path):
+            previous_hparams = json.load(open(hparams_path, 'r'))
+            if previous_hparams != hparams:
+                raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
+        else:
+            json.dump(hparams, open(hparams_path, 'w'))
+
+        return hparams
+
+    model_hparams = _load_hparams(args.model_hparams, DEFAULT_MODEL_HPARAMS, 'model_hparams.json')
+    run_hparams = _load_hparams(args.run_hparams, DEFAULT_TRAIN_HPARAMS, 'run_hparams.json')
+
+    return model_hparams, run_hparams
+
+
+def _setup_dataloaders(args, run_hparams):
+    """ Setup dataloaders needed for training
+
+    Args
+    ----
+    args : argparse.Namespace
+        Parsed arguments
+    run_hparams : dict
+        Fully configured hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
+
+    Returns
+    -------
+    train_dataloader, val_dataloader, test_dataloader : torch.utils.data.DataLoader
+        DataLoaders for the train, validation, and test datasets
+    """
     kwargs = {}
     kwargs['num_workers'] = 16
-
-    # load hparams
-    hparams = json.load(open(args.hparams, 'r'))
-    for key in DEFAULT_HPARAMS:
-        if key not in hparams:
-            hparams[key] = DEFAULT_HPARAMS[key]
-
-    hparams_path = os.path.join(run_dir, 'hparams.json')
-    if os.path.isfile(hparams_path):
-        previous_hparams = json.load(open(hparams_path, 'r'))
-        if previous_hparams != hparams:
-            raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
-    else:
-        json.dump(hparams, open(hparams_path, 'w'))
 
     # set up dataloaders
     train_ids = []
@@ -99,74 +128,154 @@ def main(args):
         for line in f:
             test_ids += [line[:-1]]
     if args.lazy:
-        train_dataset = LazyDataset(args.dataset, pdb_ids=train_ids)
-        val_dataset = LazyDataset(args.dataset, pdb_ids=validation_ids)
-        test_dataset = LazyDataset(args.dataset, pdb_ids=test_ids)
+        train_dataset = TERMLazyDataset(args.dataset, pdb_ids=train_ids)
+        val_dataset = TERMLazyDataset(args.dataset, pdb_ids=validation_ids)
+        test_dataset = TERMLazyDataset(args.dataset, pdb_ids=test_ids)
 
-        train_batch_sampler = TERMLazyDataLoader(train_dataset,
-                                                 batch_size=hparams['train_batch_size'],
-                                                 shuffle=hparams['shuffle'],
-                                                 semi_shuffle=hparams['semi_shuffle'],
-                                                 sort_data=hparams['sort_data'],
-                                                 term_matches_cutoff=hparams['term_matches_cutoff'],
-                                                 max_term_res=hparams['max_term_res'],
-                                                 max_seq_tokens=hparams['max_seq_tokens'],
-                                                 term_dropout=hparams['term_dropout'])
-        test_term_matches_cutoff = hparams[
-            'test_term_matches_cutoff'] if 'test_term_matches_cutoff' in hparams else hparams['term_matches_cutoff']
-        val_batch_sampler = TERMLazyDataLoader(val_dataset,
-                                               batch_size=1,
-                                               shuffle=False,
-                                               term_matches_cutoff=test_term_matches_cutoff)
-        test_batch_sampler = TERMLazyDataLoader(test_dataset,
-                                                batch_size=1,
-                                                shuffle=False,
-                                                term_matches_cutoff=test_term_matches_cutoff)
+        train_batch_sampler = TERMLazyBatchSampler(train_dataset,
+                                                   batch_size=run_hparams['train_batch_size'],
+                                                   shuffle=run_hparams['shuffle'],
+                                                   semi_shuffle=run_hparams['semi_shuffle'],
+                                                   sort_data=run_hparams['sort_data'],
+                                                   term_matches_cutoff=run_hparams['term_matches_cutoff'],
+                                                   max_term_res=run_hparams['max_term_res'],
+                                                   max_seq_tokens=run_hparams['max_seq_tokens'],
+                                                   term_dropout=run_hparams['term_dropout'])
+        if 'test_term_matches_cutoff' in run_hparams:
+            test_term_matches_cutoff = run_hparams['test_term_matches_cutoff']
+        else:
+            test_term_matches_cutoff = run_hparams['term_matches_cutoff']
+        val_batch_sampler = TERMLazyBatchSampler(val_dataset,
+                                                 batch_size=1,
+                                                 shuffle=False,
+                                                 term_matches_cutoff=test_term_matches_cutoff)
+        test_batch_sampler = TERMLazyBatchSampler(test_dataset,
+                                                  batch_size=1,
+                                                  shuffle=False,
+                                                  term_matches_cutoff=test_term_matches_cutoff)
     else:
         train_dataset = TERMDataset(args.dataset, pdb_ids=train_ids)
         val_dataset = TERMDataset(args.dataset, pdb_ids=validation_ids)
         test_dataset = TERMDataset(args.dataset, pdb_ids=test_ids)
 
-        train_batch_sampler = TERMDataLoader(train_dataset,
-                                             batch_size=hparams['train_batch_size'],
-                                             shuffle=hparams['shuffle'],
-                                             semi_shuffle=hparams['semi_shuffle'],
-                                             sort_data=hparams['sort_data'])
-        val_batch_sampler = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
-        test_batch_sampler = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
+        train_batch_sampler = TERMBatchSampler(train_dataset,
+                                               batch_size=run_hparams['train_batch_size'],
+                                               shuffle=run_hparams['shuffle'],
+                                               semi_shuffle=run_hparams['semi_shuffle'],
+                                               sort_data=run_hparams['sort_data'],
+                                               max_term_res=run_hparams['max_term_res'],
+                                               max_seq_tokens=run_hparams['max_seq_tokens'])
+        val_batch_sampler = TERMBatchSampler(val_dataset, batch_size=1, shuffle=False)
+        test_batch_sampler = TERMBatchSampler(test_dataset, batch_size=1, shuffle=False)
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_sampler=train_batch_sampler,
-                                  collate_fn=train_batch_sampler._package,
+                                  collate_fn=train_batch_sampler.package,
                                   pin_memory=True,
                                   **kwargs)
     val_dataloader = DataLoader(val_dataset,
                                 batch_sampler=val_batch_sampler,
-                                collate_fn=val_batch_sampler._package,
+                                collate_fn=val_batch_sampler.package,
                                 pin_memory=True,
                                 **kwargs)
     test_dataloader = DataLoader(test_dataset,
                                  batch_sampler=test_batch_sampler,
-                                 collate_fn=test_batch_sampler._package,
+                                 collate_fn=test_batch_sampler.package,
                                  **kwargs)
 
-    terminator = TERMinator(hparams=hparams, device=dev)
-    print(terminator)
-    print("hparams", terminator.hparams)
+    return train_dataloader, val_dataloader, test_dataloader
 
-    if hparams['finetune']:  # freeze all but the last output layer
+
+def _load_checkpoint(run_dir):
+    """ If a training checkpoint exists, load the checkpoint. Otherwise, setup checkpointing initial values.
+
+    Args
+    ----
+    run_dir : str
+        Path to directory containing the training run checkpoint, as well the tensorboard output.
+
+    Returns
+    -------
+    dict
+        Dictionary containing
+        - "best_checkpoint_state": the best checkpoint state during the run
+        - "last_checkpoint_state": the most recent checkpoint state during the run
+        - "best_checkpoint": the best model parameter set during the run
+        - "best_validation": the best validation loss during the run
+        - "last_optim_state": the most recent state of the optimizer
+        - "start_epoch": what epoch to resume training from
+        - "writer": SummaryWriter for tensorboard
+        - "training_curves": pairs of (train_loss, val_loss) representing the training and validation curves
+    """
+
+    if os.path.isfile(os.path.join(run_dir, 'net_best_checkpoint.pt')):
+        best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'))
+        last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'))
+        best_checkpoint = best_checkpoint_state['state_dict']
+        best_validation = best_checkpoint_state['val_loss']
+        last_optim_state = last_checkpoint_state["optimizer_state"]
+        start_epoch = last_checkpoint_state['epoch'] + 1
+        writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'), purge_step=start_epoch + 1)
+        training_curves = last_checkpoint_state["training_curves"]
+    else:
+        best_checkpoint_state, last_checkpoint_state = None, None
+        best_checkpoint = None
+        best_validation = 10e8
+        last_optim_state = None
+        start_epoch = 0
+        writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'))
+        training_curves = {"train_loss": [], "val_loss": []}
+
+    return {"best_checkpoint_state": best_checkpoint_state,
+            "last_checkpoint_state": last_checkpoint_state,
+            "best_checkpoint": best_checkpoint,
+            "best_validation": best_validation,
+            "last_optim_state": last_optim_state,
+            "start_epoch": start_epoch,
+            "writer": writer,
+            "training_curves": training_curves}
+
+
+def _setup_model(model_hparams, run_hparams, checkpoint, dev):
+    """ Setup a TERMinator model using hparams, a checkpoint if provided, and a computation device.
+
+    Args
+    ----
+    model_hparams : dict
+        Fully configured model hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
+    run_hparams : dict
+        Fully configured training run hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
+    checkpoint : OrderedDict or None
+        Model parameters
+    dev : str
+        Computation device to use
+
+    Returns
+    -------
+    terminator : TERMinator or nn.DataParallel(TERMinator)
+        Potentially parallelized TERMinator to use for training
+    terminator_module : TERMinator
+        Inner TERMinator, unparallelized
+    """
+    terminator = TERMinator(hparams=model_hparams, device=dev)
+    if checkpoint is not None:
+        terminator.load_state_dict(checkpoint)
+    print(terminator)
+    print("terminator hparams", terminator.hparams)
+
+    if run_hparams['finetune']:  # freeze all but the last output layer
         for (name, module) in terminator.named_children():
             if name == "top":
                 for (n, m) in module.named_children():
                     if n == "W_out":
                         m.requires_grad = True
-                        print("top.{} unfrozen".format(n))
+                        print(f"top.{n} unfrozen")
                     else:
                         m.requires_grad = False
-                        print("top.{} frozen".format(n))
+                        print(f"top.{n} frozen")
             else:
                 module.requires_grad = False
-                print("{} frozen".format(name))
+                print(f"{name} frozen")
 
     if torch.cuda.device_count() > 1 and dev != "cpu":
         terminator = nn.DataParallel(terminator)
@@ -174,100 +283,87 @@ def main(args):
     else:
         terminator_module = terminator
     terminator.to(dev)
-    """
-    optimizer = optim.Adam(terminator.parameters())
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor = 0.8, patience = 5, verbose = True)
-    """
-    optimizer = get_std_opt(terminator.parameters(),
-                            d_model=hparams['energies_hidden_dim'],
-                            regularization=hparams['regularization'])
-    scheduler = None
 
-    save = []
+    return terminator, terminator_module
 
+
+def main(args):
+    """ Train TERMinator """
+    dev = args.dev
+    run_dir = args.run_dir
+    if not os.path.isdir(run_dir):
+        os.makedirs(run_dir)
+
+    # setup dataloaders
+    model_hparams, run_hparams = _setup_hparams(args)
+    train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, run_hparams)
     # load checkpoint
-    if os.path.isfile(os.path.join(run_dir, 'net_best_checkpoint.pt')):
-        best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'))
-        last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'))
-        best_checkpoint = best_checkpoint_state['state_dict']
-        best_validation = best_checkpoint_state['val_prob']
-        start_epoch = last_checkpoint_state['epoch'] + 1
-        terminator_module.load_state_dict(last_checkpoint_state['state_dict'])
-        optimizer.load_state_dict(last_checkpoint_state['optimizer_state'])
-        with open(os.path.join(run_dir, 'training_curves.pk'), 'rb') as fp:
-            save = pickle.load(fp)
-        writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'), purge_step=start_epoch + 1)
-    else:
-        best_checkpoint = None
-        best_validation = -1
-        start_epoch = 0
-        writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'))
+    checkpoint_dict = _load_checkpoint(run_dir)
+    best_validation = checkpoint_dict["best_validation"]
+    best_checkpoint = checkpoint_dict["best_checkpoint"]
+    start_epoch = checkpoint_dict["start_epoch"]
+    last_optim_state = checkpoint_dict["last_optim_state"]
+    writer = checkpoint_dict["writer"]
+    training_curves = checkpoint_dict["training_curves"]
+
+    # construct terminator, loss fn, and optimizer
+    terminator, terminator_module = _setup_model(model_hparams, run_hparams, best_checkpoint, dev)
+    loss_fn = construct_loss_fn(run_hparams)
+    optimizer = get_std_opt(terminator.parameters(),
+                            d_model=model_hparams['energies_hidden_dim'],
+                            regularization=run_hparams['regularization'],
+                            state=last_optim_state)
 
     try:
-        # torch.autograd.set_detect_anomaly(True)
         for epoch in range(start_epoch, args.epochs):
             print('epoch', epoch)
 
-            epoch_loss, avg_prob = run_epoch(terminator, train_dataloader, optimizer=optimizer, grad=True, dev=dev)
-
-            print('epoch loss', epoch_loss, '| approx epoch prob', avg_prob)
+            epoch_loss, epoch_ld, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev)
+            print('epoch loss', epoch_loss, 'epoch_ld', epoch_ld)
             writer.add_scalar('training loss', epoch_loss, epoch)
-            writer.add_scalar('approx training prob', avg_prob, epoch)
 
             # validate
-            val_loss, val_prob = run_epoch(terminator, val_dataloader, scheduler=scheduler, grad=False, dev=dev)
-
-            print('val loss', val_loss, '| approx val prob', val_prob)
+            val_loss, val_ld, _ = run_epoch(terminator, val_dataloader, loss_fn, grad=False, dev=dev)
+            print('val loss', val_loss, 'val ld', val_ld)
             writer.add_scalar('val loss', val_loss, epoch)
-            writer.add_scalar('val prob', val_prob, epoch)
-            save.append([epoch_loss, val_loss])
 
-            if val_prob > best_validation:
-                best_validation = val_prob
+            training_curves["train_loss"].append((epoch_loss, epoch_ld))
+            training_curves["val_loss"].append((val_loss, val_ld))
+
+            # save a state checkpoint
+            checkpoint_state = {
+                'epoch': epoch,
+                'state_dict': terminator_module.state_dict(),
+                'best_model': (val_loss < best_validation),
+                'val_loss': best_validation,
+                'optimizer_state': optimizer.state_dict(),
+                'training_curves': training_curves
+            }
+            torch.save(checkpoint_state, os.path.join(run_dir, 'net_last_checkpoint.pt'))
+            if val_loss < best_validation:
+                best_validation = val_loss
                 best_checkpoint = copy.deepcopy(terminator_module.state_dict())
-                checkpoint_state = {
-                    'epoch': epoch,
-                    'state_dict': best_checkpoint,
-                    'best_model': True,
-                    'val_prob': best_validation,
-                    'optimizer_state': optimizer.state_dict()
-                }
                 torch.save(checkpoint_state, os.path.join(run_dir, 'net_best_checkpoint.pt'))
-                torch.save(checkpoint_state, os.path.join(run_dir, 'net_last_checkpoint.pt'))
-            else:
-                checkpoint_state = {
-                    'epoch': epoch,
-                    'state_dict': terminator_module.state_dict(),
-                    'best_model': False,
-                    'val_prob': val_prob,
-                    'optimizer_state': optimizer.state_dict()
-                }
-                torch.save(checkpoint_state, os.path.join(run_dir, 'net_last_checkpoint.pt'))
-
-            with open(os.path.join(run_dir, 'training_curves.pk'), 'wb') as fp:
-                pickle.dump(save, fp)
 
     except KeyboardInterrupt:
         pass
 
-    print(save)
+    # save model params
+    print(training_curves)
     torch.save(terminator_module.state_dict(), os.path.join(run_dir, 'net_last.pt'))
     torch.save(best_checkpoint, os.path.join(run_dir, 'net_best.pt'))
-    with open(os.path.join(run_dir, 'training_curves.pk'), 'wb') as fp:
-        pickle.dump(save, fp)
 
     # test
     terminator_module.load_state_dict(best_checkpoint)
-    test_loss, test_prob, dump = run_epoch(terminator, test_dataloader, grad=False, test=True, dev=dev)
-    print(f"test loss {test_loss} test prob {test_prob}")
-
+    test_loss, test_ld, dump = run_epoch(terminator, test_dataloader, loss_fn, grad=False, test=True, dev=dev)
+    print(f"test loss {test_loss} test loss dict {test_ld}")
+    # dump outputs
     if args.out_dir:
         if not os.path.isdir(args.out_dir):
             os.mkdir(args.out_dir)
         net_out_path = os.path.join(args.out_dir, "net.out")
     else:
         net_out_path = os.path.join(run_dir, "net.out")
-
     # save etab outputs for dTERMen runs
     with open(net_out_path, 'wb') as fp:
         pickle.dump(dump, fp)
@@ -278,7 +374,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
     parser.add_argument('--dataset', help='input folder .features files in proper directory structure.', required=True)
-    parser.add_argument('--hparams', help='hparams file path', required=True)
+    parser.add_argument('--model_hparams', help='file path for model hparams', required=True)
+    parser.add_argument('--run_hparams', help='file path for run hparams', required=True)
     parser.add_argument('--run_dir', help='path to place folder to store model files', required=True)
     parser.add_argument('--train', help='file with training dataset split')
     parser.add_argument('--validation', help='file with validation dataset split')
@@ -287,15 +384,15 @@ if __name__ == '__main__':
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
     parser.add_argument('--dev', help='device to train on', default='cuda:0')
     parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
-    parser.add_argument('--lazy', help="use lazy data loading", action='store_true')
-    args = parser.parse_args()
+    parser.add_argument('--lazy', help="use lazy data loading", default=False, action='store_true')
+    parsed_args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder
-    if args.train is None:
-        args.train = os.path.join(args.dataset, 'train.in')
-    if args.validation is None:
-        args.validation = os.path.join(args.dataset, 'validation.in')
-    if args.test is None:
-        args.test = os.path.join(args.dataset, 'test.in')
+    if parsed_args.train is None:
+        parsed_args.train = os.path.join(parsed_args.dataset, 'train.in')
+    if parsed_args.validation is None:
+        parsed_args.validation = os.path.join(parsed_args.dataset, 'validation.in')
+    if parsed_args.test is None:
+        parsed_args.test = os.path.join(parsed_args.dataset, 'test.in')
 
-    main(args)
+    main(parsed_args)

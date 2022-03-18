@@ -24,7 +24,7 @@ class AblatedPairEnergies(nn.Module):
     dev: str
         Device representing where the model is held
     hparams: dict
-        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+        Dictionary of parameter settings (see :code:`terminator/utils/model/default_hparams.py`)
     features : MultiChainProteinFeatures
         Module that featurizes a protein backbone (including multimeric proteins)
     W : nn.Linear
@@ -100,7 +100,7 @@ class PairEnergies(nn.Module):
     dev: str
         Device representing where the model is held
     hparams: dict
-        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+        Dictionary of parameter settings (see :code:`terminator/utils/model/default_hparams.py`)
     features : MultiChainProteinFeatures
         Module that featurizes a protein backbone (including multimeric proteins)
     W_v : nn.Linear

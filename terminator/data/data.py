@@ -585,7 +585,7 @@ class TERMDataset(Dataset):
         return self.dataset[data_idx]
 
 
-class TERMDataLoader(Sampler):
+class TERMBatchSampler(Sampler):
     """BatchSampler/Dataloader helper class for TERM data using TERMDataset.
 
     Attributes
@@ -787,8 +787,7 @@ class TERMDataLoader(Sampler):
             clusters.append(batch)
         self.clusters = clusters
 
-    # pylint: disable=no-self-use
-    def _package(self, b_idx):
+    def package(self, b_idx):
         """Package the given datapoints into tensors based on provided indices.
 
         Tensors are extracted from the data and padded. Coordinates are featurized
@@ -883,7 +882,7 @@ def read_lens(in_folder, pdb_id, min_protein_len=30):
     return pdb_id, total_term_length, seq_len
 
 
-class LazyDataset(Dataset):
+class TERMLazyDataset(Dataset):
     """TERM Dataset that loads all feature files into a Pytorch Dataset-like structure.
 
     Unlike TERMDataset, this just loads feature filenames, not actual features.
@@ -1007,12 +1006,12 @@ class LazyDataset(Dataset):
         return self.dataset[data_idx]
 
 
-class TERMLazyDataLoader(Sampler):
-    """BatchSampler/Dataloader helper class for TERM data using LazyDataset.
+class TERMLazyBatchSampler(Sampler):
+    """BatchSampler/Dataloader helper class for TERM data using TERMLazyDataset.
 
     Attributes
     ----------
-    dataset : LazyDataset
+    dataset : TERMLazyDataset
         Dataset to batch.
     size : int
         Length of dataset
@@ -1077,7 +1076,7 @@ class TERMLazyDataLoader(Sampler):
 
         Args
         ----
-        dataset : LazyDataset
+        dataset : TERMLazyDataset
             Dataset to batch.
         batch_size : int or None, default=4
             Size of batches created. If variable sized batches are desired, set to None.
@@ -1225,8 +1224,7 @@ class TERMLazyDataLoader(Sampler):
             clusters.append(batch)
         self.clusters = clusters
 
-    # pylint: disable=no-self-use
-    def _package(self, b_idx):
+    def package(self, b_idx):
         """Package the given datapoints into tensors based on provided indices.
 
         Tensors are extracted from the data and padded. Coordinates are featurized
