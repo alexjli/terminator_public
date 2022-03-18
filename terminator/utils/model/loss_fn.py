@@ -161,17 +161,16 @@ def pair_self_energy_ratio(etab, E_idx, data):
     """ Return the ratio of the scaled norm of pair energies vs self energies in an etab """
     self_etab = etab[:, :, 0:1]
     pair_etab = etab[:, :, 1:]
+    n_batches = etab.shape[0]
 
     # gather 22 self energies by taking the diagonal of the etab
     self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-    # there are inherently more pair energies than self energies
-    # this should be the ratio of that
-    pair_nrg_norm_factor = pair_etab.numel() / self_nrgs.numel()
-    # normalize each norm with the appropriate norm factors
-    self_nrgs_avg_norm = torch.linalg.norm(self_nrgs.view([-1]))
-    pair_nrgs_avg_norm = torch.linalg.norm(pair_etab.view([-1])) / pair_nrg_norm_factor
+    # compute an "avg" by taking the mean of the magnitude of the values
+    # then sqrt to get approx right scale for the energies
+    self_nrgs_avg = self_nrgs.square().mean().sqrt()
+    pair_nrgs_avg = pair_etab.square().mean().sqrt()
 
-    return pair_nrgs_avg_norm / self_nrgs_avg_norm
+    return pair_nrgs_avg / self_nrgs_avg, n_batches
 
 
 # Loss function construction
