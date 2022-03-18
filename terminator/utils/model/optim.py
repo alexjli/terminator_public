@@ -1,13 +1,10 @@
-"""
-NoamOpt
+"""Optimizers for TERMinator
+
+Currently only includes the Noam optimizer,
 based on https://github.com/jingraham/neurips19-graph-protein-design
 """
 
-import numpy as np
 import torch
-from torch import optim
-from torch.utils.data import DataLoader
-
 
 class NoamOpt:
     "Optim wrapper that implements rate."
