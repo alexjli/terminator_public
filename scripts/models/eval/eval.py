@@ -31,6 +31,9 @@ from torch.utils.data import DataLoader
 from terminator.data.data import TERMLazyDataset, TERMLazyBatchSampler
 from terminator.models.TERMinator import TERMinator
 from terminator.utils.model.loop_utils import run_epoch
+from terminator.utils.model.loss_fn import construct_loss_fn
+
+# pylint: disable=unspecified-encoding
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Eval TERMinator Psuedoperplexity')
@@ -56,50 +59,51 @@ if __name__ == '__main__':
     test_batch_sampler = TERMLazyBatchSampler(test_dataset, batch_size=1, shuffle=False)
     test_dataloader = DataLoader(test_dataset,
                                  batch_sampler=test_batch_sampler,
-                                 collate_fn=test_batch_sampler._package)
+                                 collate_fn=test_batch_sampler.package)
 
-    with open(os.path.join(args.model_dir, "hparams.json")) as fp:
-        hparams = json.load(fp)
+    with open(os.path.join(args.model_dir, "model_hparams.json")) as fp:
+        model_hparams = json.load(fp)
+    with open(os.path.join(args.model_dir, "run_hparams.json")) as fp:
+        run_hparams = json.load(fp)
 
     # backwards compatability
-    if "cov_features" not in hparams.keys():
-        hparams["cov_features"] = False
-    if "term_use_mpnn" not in hparams.keys():
-        hparams["term_use_mpnn"] = False
-    if "matches" not in hparams.keys():
-        hparams["matches"] = "resnet"
-    if "struct2seq_linear" not in hparams.keys():
-        hparams['struct2seq_linear'] = False
-    if "energies_gvp" not in hparams.keys():
-        hparams['energies_gvp'] = False
-    if "num_sing_stats" not in hparams.keys():
-        hparams['num_sing_stats'] = 0
-    if "num_pair_stats" not in hparams.keys():
-        hparams['num_pair_stats'] = 0
-    if "contact_idx" not in hparams.keys():
-        hparams['contact_idx'] = False
-    if "fe_dropout" not in hparams.keys():
-        hparams['fe_dropout'] = 0.1
-    if "fe_max_len" not in hparams.keys():
-        hparams['fe_max_len'] = 1000
-    if "cie_dropout" not in hparams.keys():
-        hparams['cie_dropout'] = 0.1
+    if "cov_features" not in model_hparams.keys():
+        model_hparams["cov_features"] = False
+    if "term_use_mpnn" not in model_hparams.keys():
+        model_hparams["term_use_mpnn"] = False
+    if "matches" not in model_hparams.keys():
+        model_hparams["matches"] = "resnet"
+    if "struct2seq_linear" not in model_hparams.keys():
+        model_hparams['struct2seq_linear'] = False
+    if "energies_gvp" not in model_hparams.keys():
+        model_hparams['energies_gvp'] = False
+    if "num_sing_stats" not in model_hparams.keys():
+        model_hparams['num_sing_stats'] = 0
+    if "num_pair_stats" not in model_hparams.keys():
+        model_hparams['num_pair_stats'] = 0
+    if "contact_idx" not in model_hparams.keys():
+        model_hparams['contact_idx'] = False
+    if "fe_dropout" not in model_hparams.keys():
+        model_hparams['fe_dropout'] = 0.1
+    if "fe_max_len" not in model_hparams.keys():
+        model_hparams['fe_max_len'] = 1000
+    if "cie_dropout" not in model_hparams.keys():
+        model_hparams['cie_dropout'] = 0.1
 
-    terminator = TERMinator(hparams=hparams, device=dev)
+    terminator = TERMinator(hparams=model_hparams, device=dev)
     terminator = nn.DataParallel(terminator)
 
     best_checkpoint_state = torch.load(os.path.join(args.model_dir, 'net_best_checkpoint.pt'), map_location=dev)
     best_checkpoint = best_checkpoint_state['state_dict']
     terminator.module.load_state_dict(best_checkpoint)
     terminator.to(dev)
-
-    test_sum = 0
-    test_weights = 0
-
     terminator.eval()
+
+    loss_fn = construct_loss_fn(run_hparams)
+
     # test
-    test_loss, test_prob, dump = run_epoch(terminator, test_dataloader, grad=False, test=True, dev=dev)
-    print(f"test loss {test_loss} test prob {test_prob}")
+    test_loss, test_ld, dump = run_epoch(terminator, test_dataloader, loss_fn, grad=False, test=True, dev=dev)
+    print(f"test loss {test_loss} test_ld {test_ld}")
 
     # save etab outputs for dTERMen runs
     with open(os.path.join(args.output_dir, 'net.out'), 'wb') as fp:
