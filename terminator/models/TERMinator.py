@@ -20,7 +20,7 @@ class TERMinator(nn.Module):
     dev: str
         Device representing where the model is held
     hparams: dict
-        Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+        Dictionary of parameter settings (see :code:`terminator/utils/model/default_hparams.py`)
     bot: CondenseTERM
         TERM information condenser network
     top: PairEnergies (or appropriate variant thereof)
@@ -33,7 +33,7 @@ class TERMinator(nn.Module):
         Args
         ----
         hparams : dict
-            Dictionary of parameter settings (see :code:`scripts/models/train/default_hparams.py`)
+            Dictionary of parameter settings (see :code:`terminator/utils/model/default_hparams.py`)
         device : str
             Device to place model on
         """

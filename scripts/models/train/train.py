@@ -69,9 +69,9 @@ def _setup_hparams(args):
     Returns
     -------
     model_hparams : dict
-        Fully configured model hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+        Fully configured model hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
     run_hparams : dict
-        Fully configured training run hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+        Fully configured training run hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
     """
     def _load_hparams(hparam_path, default_hparams, output_name):
         # load hparams
@@ -104,7 +104,7 @@ def _setup_dataloaders(args, run_hparams):
     args : argparse.Namespace
         Parsed arguments
     run_hparams : dict
-        Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+        Fully configured hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
 
     Returns
     -------
@@ -242,9 +242,9 @@ def _setup_model(model_hparams, run_hparams, checkpoint, dev):
     Args
     ----
     model_hparams : dict
-        Fully configured model hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+        Fully configured model hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
     run_hparams : dict
-        Fully configured training run hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+        Fully configured training run hparams dictionary (see :code:`terminator/utils/model/default_hparams.py`)
     checkpoint : OrderedDict or None
         Model parameters
     dev : str

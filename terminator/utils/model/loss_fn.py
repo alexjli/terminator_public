@@ -192,7 +192,7 @@ def construct_loss_fn(hparams):
     Args
     ----
     hparams : dict
-        The fully constructed hparams (see :code:`scripts/models/train/default_hparams.py`). It should
+        The fully constructed hparams (see :code:`terminator/utils/model/default_hparams.py`). It should
         contain an entry for 'loss_config' in the format {loss_fn_name : scaling_factor}. For example,
         .. code-block :
             {
