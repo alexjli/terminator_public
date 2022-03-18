@@ -20,25 +20,17 @@ See :code:`python eval.py --help` for more info.
 """
 
 import argparse
-import copy
 import json
 import os
 import pickle
-import sys
-import time
 
-import numpy as np
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
 
-from terminator.data.data import LazyDataset, TERMLazyDataLoader
+from terminator.data.data import TERMLazyDataset, TERMLazyBatchSampler
 from terminator.models.TERMinator import TERMinator
-from terminator.utils.loop_utils import run_epoch
+from terminator.utils.model.loop_utils import run_epoch
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Eval TERMinator Psuedoperplexity')
@@ -60,8 +52,8 @@ if __name__ == '__main__':
     else:
         test_ids = None
 
-    test_dataset = LazyDataset(args.dataset, pdb_ids=test_ids)
-    test_batch_sampler = TERMLazyDataLoader(test_dataset, batch_size=1, shuffle=False)
+    test_dataset = TERMLazyDataset(args.dataset, pdb_ids=test_ids)
+    test_batch_sampler = TERMLazyBatchSampler(test_dataset, batch_size=1, shuffle=False)
     test_dataloader = DataLoader(test_dataset,
                                  batch_sampler=test_batch_sampler,
                                  collate_fn=test_batch_sampler._package)

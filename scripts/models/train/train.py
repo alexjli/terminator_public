@@ -37,7 +37,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset, TERMLazyDataLoader)
+from terminator.data.data import (TERMLazyDataset, TERMBatchSampler, TERMDataset, TERMLazyBatchSampler)
 from terminator.models.TERMinator import TERMinator
 from terminator.utils.model.loop_utils import run_epoch
 from terminator.utils.model.loss_fn import construct_loss_fn
@@ -46,7 +46,7 @@ from terminator.utils.model.loss_fn import construct_loss_fn
 # pylint: disable=wrong-import-order,wrong-import-position
 sys.path.insert(0, os.path.dirname(__file__))
 from terminator.utils.model.default_hparams import DEFAULT_MODEL_HPARAMS, DEFAULT_TRAIN_HPARAMS
-from noam_opt import get_std_opt
+from terminator.utils.model.optim import get_std_opt
 
 # pylint: disable=unspecified-encoding
 
@@ -128,45 +128,45 @@ def _setup_dataloaders(args, run_hparams):
         for line in f:
             test_ids += [line[:-1]]
     if args.lazy:
-        train_dataset = LazyDataset(args.dataset, pdb_ids=train_ids)
-        val_dataset = LazyDataset(args.dataset, pdb_ids=validation_ids)
-        test_dataset = LazyDataset(args.dataset, pdb_ids=test_ids)
+        train_dataset = TERMLazyDataset(args.dataset, pdb_ids=train_ids)
+        val_dataset = TERMLazyDataset(args.dataset, pdb_ids=validation_ids)
+        test_dataset = TERMLazyDataset(args.dataset, pdb_ids=test_ids)
 
-        train_batch_sampler = TERMLazyDataLoader(train_dataset,
-                                                 batch_size=run_hparams['train_batch_size'],
-                                                 shuffle=run_hparams['shuffle'],
-                                                 semi_shuffle=run_hparams['semi_shuffle'],
-                                                 sort_data=run_hparams['sort_data'],
-                                                 term_matches_cutoff=run_hparams['term_matches_cutoff'],
-                                                 max_term_res=run_hparams['max_term_res'],
-                                                 max_seq_tokens=run_hparams['max_seq_tokens'],
-                                                 term_dropout=run_hparams['term_dropout'])
+        train_batch_sampler = TERMLazyBatchSampler(train_dataset,
+                                                   batch_size=run_hparams['train_batch_size'],
+                                                   shuffle=run_hparams['shuffle'],
+                                                   semi_shuffle=run_hparams['semi_shuffle'],
+                                                   sort_data=run_hparams['sort_data'],
+                                                   term_matches_cutoff=run_hparams['term_matches_cutoff'],
+                                                   max_term_res=run_hparams['max_term_res'],
+                                                   max_seq_tokens=run_hparams['max_seq_tokens'],
+                                                   term_dropout=run_hparams['term_dropout'])
         if 'test_term_matches_cutoff' in run_hparams:
             test_term_matches_cutoff = run_hparams['test_term_matches_cutoff']
         else:
             test_term_matches_cutoff = run_hparams['term_matches_cutoff']
-        val_batch_sampler = TERMLazyDataLoader(val_dataset,
-                                               batch_size=1,
-                                               shuffle=False,
-                                               term_matches_cutoff=test_term_matches_cutoff)
-        test_batch_sampler = TERMLazyDataLoader(test_dataset,
-                                                batch_size=1,
-                                                shuffle=False,
-                                                term_matches_cutoff=test_term_matches_cutoff)
+        val_batch_sampler = TERMLazyBatchSampler(val_dataset,
+                                                 batch_size=1,
+                                                 shuffle=False,
+                                                 term_matches_cutoff=test_term_matches_cutoff)
+        test_batch_sampler = TERMLazyBatchSampler(test_dataset,
+                                                  batch_size=1,
+                                                  shuffle=False,
+                                                  term_matches_cutoff=test_term_matches_cutoff)
     else:
         train_dataset = TERMDataset(args.dataset, pdb_ids=train_ids)
         val_dataset = TERMDataset(args.dataset, pdb_ids=validation_ids)
         test_dataset = TERMDataset(args.dataset, pdb_ids=test_ids)
 
-        train_batch_sampler = TERMDataLoader(train_dataset,
-                                             batch_size=run_hparams['train_batch_size'],
-                                             shuffle=run_hparams['shuffle'],
-                                             semi_shuffle=run_hparams['semi_shuffle'],
-                                             sort_data=run_hparams['sort_data'],
-                                             max_term_res=run_hparams['max_term_res'],
-                                             max_seq_tokens=run_hparams['max_seq_tokens'])
-        val_batch_sampler = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
-        test_batch_sampler = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
+        train_batch_sampler = TERMBatchSampler(train_dataset,
+                                               batch_size=run_hparams['train_batch_size'],
+                                               shuffle=run_hparams['shuffle'],
+                                               semi_shuffle=run_hparams['semi_shuffle'],
+                                               sort_data=run_hparams['sort_data'],
+                                               max_term_res=run_hparams['max_term_res'],
+                                               max_seq_tokens=run_hparams['max_seq_tokens'])
+        val_batch_sampler = TERMBatchSampler(val_dataset, batch_size=1, shuffle=False)
+        test_batch_sampler = TERMBatchSampler(test_dataset, batch_size=1, shuffle=False)
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_sampler=train_batch_sampler,
