@@ -5,7 +5,8 @@ Usage:
 
         python train.py \\
             --dataset <dataset_dir> \\
-            --hparams <hparams_file> \\
+            --model_hparams <model_hparams_file_path> \\
+            --run_hparams <run_hparams_file_path> \\
             --run_dir <run_dir> \\
             [--train <train_split_file>] \\
             [--validation <val_split_file>] \\
@@ -38,13 +39,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 from terminator.data.data import (LazyDataset, TERMDataLoader, TERMDataset, TERMLazyDataLoader)
 from terminator.models.TERMinator import TERMinator
-from terminator.utils.loop_utils import run_epoch
-from terminator.utils.loss_fn import construct_loss_fn
+from terminator.utils.model.loop_utils import run_epoch
+from terminator.utils.model.loss_fn import construct_loss_fn
 
 # for autosummary import purposes
 # pylint: disable=wrong-import-order,wrong-import-position
 sys.path.insert(0, os.path.dirname(__file__))
-from default_hparams import DEFAULT_HPARAMS
+from terminator.utils.model.default_hparams import DEFAULT_MODEL_HPARAMS, DEFAULT_TRAIN_HPARAMS
 from noam_opt import get_std_opt
 
 # pylint: disable=unspecified-encoding
@@ -67,34 +68,42 @@ def _setup_hparams(args):
 
     Returns
     -------
-    hparams : dict
-        Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+    model_hparams : dict
+        Fully configured model hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+    run_hparams : dict
+        Fully configured training run hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
     """
-    # load hparams
-    hparams = json.load(open(args.hparams, 'r'))
-    for key, default_val in DEFAULT_HPARAMS.items():
-        if key not in hparams:
-            hparams[key] = default_val
+    def _load_hparams(hparam_path, default_hparams, output_name):
+        # load hparams
+        hparams = json.load(open(hparam_path, 'r'))
+        for key, default_val in default_hparams.items():
+            if key not in hparams:
+                hparams[key] = default_val
 
-    hparams_path = os.path.join(args.run_dir, 'hparams.json')
-    if os.path.isfile(hparams_path):
-        previous_hparams = json.load(open(hparams_path, 'r'))
-        if previous_hparams != hparams:
-            raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
-    else:
-        json.dump(hparams, open(hparams_path, 'w'))
+        hparams_path = os.path.join(args.run_dir, output_name)
+        if os.path.isfile(hparams_path):
+            previous_hparams = json.load(open(hparams_path, 'r'))
+            if previous_hparams != hparams:
+                raise Exception('Given hyperparameters do not agree with previous hyperparameters.')
+        else:
+            json.dump(hparams, open(hparams_path, 'w'))
 
-    return hparams
+        return hparams
+
+    model_hparams = _load_hparams(args.model_hparams, DEFAULT_MODEL_HPARAMS, 'model_hparams.json')
+    run_hparams = _load_hparams(args.run_hparams, DEFAULT_TRAIN_HPARAMS, 'run_hparams.json')
+
+    return model_hparams, run_hparams
 
 
-def _setup_dataloaders(args, hparams):
+def _setup_dataloaders(args, run_hparams):
     """ Setup dataloaders needed for training
 
     Args
     ----
     args : argparse.Namespace
         Parsed arguments
-    hparams : dict
+    run_hparams : dict
         Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
 
     Returns
@@ -124,18 +133,18 @@ def _setup_dataloaders(args, hparams):
         test_dataset = LazyDataset(args.dataset, pdb_ids=test_ids)
 
         train_batch_sampler = TERMLazyDataLoader(train_dataset,
-                                                 batch_size=hparams['train_batch_size'],
-                                                 shuffle=hparams['shuffle'],
-                                                 semi_shuffle=hparams['semi_shuffle'],
-                                                 sort_data=hparams['sort_data'],
-                                                 term_matches_cutoff=hparams['term_matches_cutoff'],
-                                                 max_term_res=hparams['max_term_res'],
-                                                 max_seq_tokens=hparams['max_seq_tokens'],
-                                                 term_dropout=hparams['term_dropout'])
-        if 'test_term_matches_cutoff' in hparams:
-            test_term_matches_cutoff = hparams['test_term_matches_cutoff']
+                                                 batch_size=run_hparams['train_batch_size'],
+                                                 shuffle=run_hparams['shuffle'],
+                                                 semi_shuffle=run_hparams['semi_shuffle'],
+                                                 sort_data=run_hparams['sort_data'],
+                                                 term_matches_cutoff=run_hparams['term_matches_cutoff'],
+                                                 max_term_res=run_hparams['max_term_res'],
+                                                 max_seq_tokens=run_hparams['max_seq_tokens'],
+                                                 term_dropout=run_hparams['term_dropout'])
+        if 'test_term_matches_cutoff' in run_hparams:
+            test_term_matches_cutoff = run_hparams['test_term_matches_cutoff']
         else:
-            test_term_matches_cutoff = hparams['term_matches_cutoff']
+            test_term_matches_cutoff = run_hparams['term_matches_cutoff']
         val_batch_sampler = TERMLazyDataLoader(val_dataset,
                                                batch_size=1,
                                                shuffle=False,
@@ -150,12 +159,12 @@ def _setup_dataloaders(args, hparams):
         test_dataset = TERMDataset(args.dataset, pdb_ids=test_ids)
 
         train_batch_sampler = TERMDataLoader(train_dataset,
-                                             batch_size=hparams['train_batch_size'],
-                                             shuffle=hparams['shuffle'],
-                                             semi_shuffle=hparams['semi_shuffle'],
-                                             sort_data=hparams['sort_data'],
-                                             max_term_res=hparams['max_term_res'],
-                                             max_seq_tokens=hparams['max_seq_tokens'])
+                                             batch_size=run_hparams['train_batch_size'],
+                                             shuffle=run_hparams['shuffle'],
+                                             semi_shuffle=run_hparams['semi_shuffle'],
+                                             sort_data=run_hparams['sort_data'],
+                                             max_term_res=run_hparams['max_term_res'],
+                                             max_seq_tokens=run_hparams['max_seq_tokens'])
         val_batch_sampler = TERMDataLoader(val_dataset, batch_size=1, shuffle=False)
         test_batch_sampler = TERMDataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -227,13 +236,15 @@ def _load_checkpoint(run_dir):
             "training_curves": training_curves}
 
 
-def _setup_model(hparams, checkpoint, dev):
+def _setup_model(model_hparams, run_hparams, checkpoint, dev):
     """ Setup a TERMinator model using hparams, a checkpoint if provided, and a computation device.
 
     Args
     ----
-    hparams : dict
-        Fully configured hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+    model_hparams : dict
+        Fully configured model hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
+    run_hparams : dict
+        Fully configured training run hparams dictionary (see :code:`scripts/models/train/default_hparams.py`)
     checkpoint : OrderedDict or None
         Model parameters
     dev : str
@@ -246,13 +257,13 @@ def _setup_model(hparams, checkpoint, dev):
     terminator_module : TERMinator
         Inner TERMinator, unparallelized
     """
-    terminator = TERMinator(hparams=hparams, device=dev)
+    terminator = TERMinator(hparams=model_hparams, device=dev)
     if checkpoint is not None:
         terminator.load_state_dict(checkpoint)
     print(terminator)
-    print("hparams", terminator.hparams)
+    print("terminator hparams", terminator.hparams)
 
-    if hparams['finetune']:  # freeze all but the last output layer
+    if run_hparams['finetune']:  # freeze all but the last output layer
         for (name, module) in terminator.named_children():
             if name == "top":
                 for (n, m) in module.named_children():
@@ -284,8 +295,8 @@ def main(args):
         os.makedirs(run_dir)
 
     # setup dataloaders
-    hparams = _setup_hparams(args)
-    train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, hparams)
+    model_hparams, run_hparams = _setup_hparams(args)
+    train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, run_hparams)
     # load checkpoint
     checkpoint_dict = _load_checkpoint(run_dir)
     best_validation = checkpoint_dict["best_validation"]
@@ -296,11 +307,11 @@ def main(args):
     training_curves = checkpoint_dict["training_curves"]
 
     # construct terminator, loss fn, and optimizer
-    terminator, terminator_module = _setup_model(hparams, best_checkpoint, dev)
-    loss_fn = construct_loss_fn(hparams)
+    terminator, terminator_module = _setup_model(model_hparams, run_hparams, best_checkpoint, dev)
+    loss_fn = construct_loss_fn(run_hparams)
     optimizer = get_std_opt(terminator.parameters(),
-                            d_model=hparams['energies_hidden_dim'],
-                            regularization=hparams['regularization'],
+                            d_model=model_hparams['energies_hidden_dim'],
+                            regularization=run_hparams['regularization'],
                             state=last_optim_state)
 
     try:
@@ -363,7 +374,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train TERMinator!')
     parser.add_argument('--dataset', help='input folder .features files in proper directory structure.', required=True)
-    parser.add_argument('--hparams', help='hparams file path', required=True)
+    parser.add_argument('--model_hparams', help='file path for model hparams', required=True)
+    parser.add_argument('--run_hparams', help='file path for run hparams', required=True)
     parser.add_argument('--run_dir', help='path to place folder to store model files', required=True)
     parser.add_argument('--train', help='file with training dataset split')
     parser.add_argument('--validation', help='file with validation dataset split')

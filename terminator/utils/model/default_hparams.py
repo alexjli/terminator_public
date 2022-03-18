@@ -214,7 +214,7 @@ Parameters
     finetune : bool
         Whether or not to train the model in finetuning mode (i.e. freezing all weights but the output layer)
 """
-DEFAULT_HPARAMS = {
+DEFAULT_MODEL_HPARAMS = {
     'model': 'multichain',
     'matches': 'transformer',
     'term_hidden_dim': 32,
@@ -251,10 +251,15 @@ DEFAULT_HPARAMS = {
     'term_mpnn_linear': False,  #
     'struct2seq_linear': False,
     'use_terms': True,  #
+    'use_coords': True,
+    'num_features':
+    len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len']),  #
+}
+
+DEFAULT_TRAIN_HPARAMS = {
     'term_matches_cutoff': None,
     # 'test_term_matches_cutoff': None,
     # ^ is an optional hparam if you want to use a different TERM matches cutoff during validation/testing vs training
-    'use_coords': True,
     'train_batch_size': 16,
     'shuffle': True,
     'sort_data': True,
@@ -263,8 +268,6 @@ DEFAULT_HPARAMS = {
     'max_term_res': 55000,
     'max_seq_tokens': None,
     'term_dropout': None,
-    'num_features':
-    len(['sin_phi', 'sin_psi', 'sin_omega', 'cos_phi', 'cos_psi', 'cos_omega', 'env', 'rmsd', 'term_len']),  #
     'loss_config': {
         'nlcpl': 1,
     },
