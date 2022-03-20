@@ -186,7 +186,7 @@ def _setup_dataloaders(args, run_hparams):
     return train_dataloader, val_dataloader, test_dataloader
 
 
-def _load_checkpoint(run_dir):
+def _load_checkpoint(run_dir, finetune=False):
     """ If a training checkpoint exists, load the checkpoint. Otherwise, setup checkpointing initial values.
 
     Args
@@ -225,6 +225,9 @@ def _load_checkpoint(run_dir):
         start_epoch = 0
         writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'))
         training_curves = {"train_loss": [], "val_loss": []}
+        if finetune: # load existing model for finetuning
+            best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_original.pt'))
+            best_checkpoint = best_checkpoint_state['state_dict']
 
     return {"best_checkpoint_state": best_checkpoint_state,
             "last_checkpoint_state": last_checkpoint_state,
@@ -263,20 +266,6 @@ def _setup_model(model_hparams, run_hparams, checkpoint, dev):
     print(terminator)
     print("terminator hparams", terminator.hparams)
 
-    if run_hparams['finetune']:  # freeze all but the last output layer
-        for (name, module) in terminator.named_children():
-            if name == "top":
-                for (n, m) in module.named_children():
-                    if n == "W_out":
-                        m.requires_grad = True
-                        print(f"top.{n} unfrozen")
-                    else:
-                        m.requires_grad = False
-                        print(f"top.{n} frozen")
-            else:
-                module.requires_grad = False
-                print(f"{name} frozen")
-
     if torch.cuda.device_count() > 1 and dev != "cpu":
         terminator = nn.DataParallel(terminator)
         terminator_module = terminator.module
@@ -298,7 +287,7 @@ def main(args):
     model_hparams, run_hparams = _setup_hparams(args)
     train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, run_hparams)
     # load checkpoint
-    checkpoint_dict = _load_checkpoint(run_dir)
+    checkpoint_dict = _load_checkpoint(run_dir, model_hparams['finetune'])
     best_validation = checkpoint_dict["best_validation"]
     best_checkpoint = checkpoint_dict["best_checkpoint"]
     start_epoch = checkpoint_dict["start_epoch"]
@@ -384,7 +373,7 @@ if __name__ == '__main__':
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
     parser.add_argument('--dev', help='device to train on', default='cuda:0')
     parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
-    parser.add_argument('--lazy', help="use lazy data loading", default=False, action='store_true')
+    parser.add_argument('--lazy', help="use lazy data loading", action='store_true')
     parsed_args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder

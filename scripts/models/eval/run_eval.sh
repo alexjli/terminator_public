@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --mincpu=40
-#SBATCH --gres=gpu:volta:2
+#SBATCH --mincpu=32
+#SBATCH --gres=gpu:volta:1
 #SBATCH --time=2:00:00
-#SBATCH --exclusive
+#SBATCH --mem=50G
 #SBATCH -o OUTPUTDIR/eval-output.out
 #SBATCH -e OUTPUTDIR/eval-error.out
 

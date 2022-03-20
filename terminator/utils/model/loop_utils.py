@@ -151,10 +151,46 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
 
     running_loss_dict = {}
 
-    # set grads properly
+    # TODO find a better way to handle checking ' if torch.cuda.device_count() > 1 and dev != "cpu": '
+    try:
+        model_hparams = model.hparams
+        isDataParallel = False
+    except:
+        model_hparams = model.module.hparams # this occurs when nn.DataParallel is used
+        isDataParallel = True
+
+    # set grads properly 
     if grad:
         model.train()
-        torch.set_grad_enabled(True)
+        if model_hparams['finetune']: # freeze all but the last output layer
+            if isDataParallel: # TODO cleaner way to do this?
+                for (name, module) in model.module.named_children():
+                    if name == "top":
+                        for (n, m) in module.named_children():
+                            if n == "W_out":
+                                m.requires_grad = True
+                                print("top.{} unfrozen".format(n))
+                            else:
+                                m.requires_grad = False
+                                print("top.{} frozen".format(n))
+                    else:
+                        module.requires_grad = False
+                        print("{} frozen".format(name))
+            else:
+                for (name, module) in model.named_children():
+                    if name == "top":
+                        for (n, m) in module.named_children():
+                            if n == "W_out":
+                                m.requires_grad = True
+                                print("top.{} unfrozen".format(n))
+                            else:
+                                m.requires_grad = False
+                                print("top.{} frozen".format(n))
+                    else:
+                        module.requires_grad = False
+                        print("{} frozen".format(name))
+        else:
+            torch.set_grad_enabled(True)
     else:
         model.eval()
         torch.set_grad_enabled(False)

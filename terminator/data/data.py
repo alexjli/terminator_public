@@ -345,6 +345,9 @@ def _package(b_idx):
     contact_idxs = []
     gvp_data = []
 
+    sortcery_seqs = []
+    sortcery_nrgs = []
+
     for _, data in enumerate(batch):
         # have to transpose these two because then we can use pad_sequence for padding
         features.append(convert(data['features']).transpose(0, 1))
@@ -359,6 +362,12 @@ def _package(b_idx):
         seqs.append(convert(data['sequence']))
         ids.append(data['pdb'])
         chain_lens.append(data['chain_lens'])
+
+        if 'sortcery_seqs' in data:
+            assert len(batch) == 1, "batch_size for SORTCERY fine-tuning should be set to 1"
+            sortcery_seqs.append(convert(data['sortcery_seqs']))
+        if 'sortcery_nrgs' in data:
+            sortcery_nrgs.append(convert(data['sortcery_nrgs']))
 
         chain_idx = []
         for i, c_len in enumerate(data['chain_lens']):
@@ -425,7 +434,9 @@ def _package(b_idx):
         'seqs': seqs,
         'ids': ids,
         'chain_idx': chain_idx,
-        'gvp_data': gvp_data
+        'gvp_data': gvp_data,
+        'sortcery_seqs': sortcery_seqs[0].unsqueeze(0),
+        'sortcery_nrgs': sortcery_seqs[0].unsqueeze(0)
     }
 
 

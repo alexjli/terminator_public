@@ -88,57 +88,57 @@ def nlcpl(etab, E_idx, data):
     pad = (0, 1, 0, 1)
     etab = F.pad(etab, pad, "constant", 0)
 
-    isnt_x_aa = (ref_seqs != 20).float().to(etab.device)
+    isnt_x_aa = (ref_seqs != 20).float().to(etab.device) # b x L
 
     # separate selfE and pairE since we have to treat selfE differently
-    self_etab = etab[:, :, 0:1]
-    pair_etab = etab[:, :, 1:]
+    self_etab = etab[:, :, 0:1] # b x L x 1 x 21 x 21
+    pair_etab = etab[:, :, 1:] # b x L x 29 x 21 x 21
 
     # gather 22 self energies by taking the diagonal of the etab
-    self_nrgs_im = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
-    self_nrgs_im_expand = self_nrgs_im.expand(-1, -1, k - 1, -1)
+    self_nrgs_im = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1) # b x L x 1 x 21
+    self_nrgs_im_expand = self_nrgs_im.expand(-1, -1, k - 1, -1) # b x L x 29 x 21
 
     # E_idx for all but self
-    E_idx_jn = E_idx[:, :, 1:]
+    E_idx_jn = E_idx[:, :, 1:] # b x L x 29
 
     # self Es gathered from E_idx_others
-    E_idx_jn_expand = E_idx_jn.unsqueeze(-1).expand(-1, -1, -1, 21)
-    self_nrgs_jn = torch.gather(self_nrgs_im_expand, 1, E_idx_jn_expand)
+    E_idx_jn_expand = E_idx_jn.unsqueeze(-1).expand(-1, -1, -1, 21) # b x L x 29 x 21
+    self_nrgs_jn = torch.gather(self_nrgs_im_expand, 1, E_idx_jn_expand) # b x L x 29 x 21
 
     # idx matrix to gather the identity at all other residues given a residue of focus
-    E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k - 1), 1, E_idx_jn)
+    E_aa = torch.gather(ref_seqs.unsqueeze(-1).expand(-1, -1, k - 1), 1, E_idx_jn) # b x L x 29
     # expand the matrix so we can gather pair energies
-    E_aa = E_aa.view(list(E_idx_jn.shape) + [1, 1]).expand(-1, -1, -1, 21, -1)
+    E_aa = E_aa.view(list(E_idx_jn.shape) + [1, 1]).expand(-1, -1, -1, 21, -1) # b x L x 29 x 21 x 1
     # gather the 22 energies for each edge based on E_aa
-    pair_nrgs_jn = torch.gather(pair_etab, 4, E_aa).squeeze(-1)
+    pair_nrgs_jn = torch.gather(pair_etab, 4, E_aa).squeeze(-1) # b x L x 29 x 21
     # sum_(u != n,m) E_p(a_i,n; A_u)
-    sum_pair_nrgs_jn = torch.sum(pair_nrgs_jn, dim=2)
-    pair_nrgs_im_u = sum_pair_nrgs_jn.unsqueeze(2).expand(-1, -1, k - 1, -1) - pair_nrgs_jn
+    sum_pair_nrgs_jn = torch.sum(pair_nrgs_jn, dim=2) # b x L x 21 
+    pair_nrgs_im_u = sum_pair_nrgs_jn.unsqueeze(2).expand(-1, -1, k - 1, -1) - pair_nrgs_jn # b x L x 29 x 21
 
     # get pair_nrgs_u_jn from pair_nrgs_im_u
-    E_idx_imu_to_ujn = E_idx_jn.unsqueeze(-1).expand(pair_nrgs_im_u.shape)
-    pair_nrgs_u_jn = torch.gather(pair_nrgs_im_u, 1, E_idx_imu_to_ujn)
+    E_idx_imu_to_ujn = E_idx_jn.unsqueeze(-1).expand(pair_nrgs_im_u.shape) # b x L x 29 x 21
+    pair_nrgs_u_jn = torch.gather(pair_nrgs_im_u, 1, E_idx_imu_to_ujn) # b x L x 29 x 21
 
     # start building this wacky energy table
-    self_nrgs_im_expand = self_nrgs_im_expand.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
-    self_nrgs_jn_expand = self_nrgs_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1)
-    pair_nrgs_im_expand = pair_nrgs_im_u.unsqueeze(-1).expand(-1, -1, -1, -1, 21)
-    pair_nrgs_jn_expand = pair_nrgs_u_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1)
+    self_nrgs_im_expand = self_nrgs_im_expand.unsqueeze(-1).expand(-1, -1, -1, -1, 21) # b x L x 29 x 21 x 21
+    self_nrgs_jn_expand = self_nrgs_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1) # b x L x 29 x 21 x 21
+    pair_nrgs_im_expand = pair_nrgs_im_u.unsqueeze(-1).expand(-1, -1, -1, -1, 21) # b x L x 29 x 21 x 21
+    pair_nrgs_jn_expand = pair_nrgs_u_jn.unsqueeze(-1).expand(-1, -1, -1, -1, 21).transpose(-2, -1) # b x L x 29 x 21 x 21
 
     composite_nrgs = (self_nrgs_im_expand + self_nrgs_jn_expand + pair_etab + pair_nrgs_im_expand +
-                      pair_nrgs_jn_expand)
+                      pair_nrgs_jn_expand) # b x L x 29 x 21 x 21
 
     # convert energies to probabilities
-    composite_nrgs_reshape = composite_nrgs.view(n_batch, L, k - 1, 21 * 21, 1)
-    log_composite_prob_dist = torch.log_softmax(-composite_nrgs_reshape, dim=-2).view(n_batch, L, k - 1, 21, 21)
+    composite_nrgs_reshape = composite_nrgs.view(n_batch, L, k - 1, 21 * 21, 1) # b x L x 29 x 441 x 1
+    log_composite_prob_dist = torch.log_softmax(-composite_nrgs_reshape, dim=-2).view(n_batch, L, k - 1, 21, 21) # b x L x 29 x 21 x 21
     # get the probability of the sequence
-    im_probs = torch.gather(log_composite_prob_dist, 4, E_aa).squeeze(-1)
-    ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1, 1]).expand(-1, -1, k - 1, 1)
-    log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1)
+    im_probs = torch.gather(log_composite_prob_dist, 4, E_aa).squeeze(-1) # b x L x 29 x 21
+    ref_seqs_expand = ref_seqs.view(list(ref_seqs.shape) + [1, 1]).expand(-1, -1, k - 1, 1) # b x L x 29 x 1
+    log_edge_probs = torch.gather(im_probs, 3, ref_seqs_expand).squeeze(-1) # b x L x 29
 
     # reshape masks
-    x_mask = x_mask.unsqueeze(-1)
-    isnt_x_aa = isnt_x_aa.unsqueeze(-1)
+    x_mask = x_mask.unsqueeze(-1) # b x L x 1
+    isnt_x_aa = isnt_x_aa.unsqueeze(-1) # b x L x 1
     full_mask = x_mask * isnt_x_aa
     n_edges = torch.sum(full_mask.expand(log_edge_probs.shape))
 
@@ -154,6 +154,9 @@ def etab_norm_penalty(etab, E_idx, data):
     seq_lens = data['seq_lens']
     etab_norm = torch.linalg.norm(etab.view([-1]))
     return etab_norm / seq_lens.sum(), int(seq_lens.sum())
+    
+    # TODO are these equivalent?
+    # loss += model_hparams['regularize_etab'] * torch.mean(LA.norm(etab, dim=(1,2,3)) / data['seq_lens'])
 
 
 # pylint: disable=unused-argument
@@ -217,3 +220,69 @@ def construct_loss_fn(hparams):
         return loss_dict
 
     return _loss_fn
+
+
+def sortcery_loss(etab, E_idx, ref_seqs, x_mask, peptide_seqs, ref_energies):
+    ''' Compute the mean squared error between the etab's predicted energies for peptide-protein complexes and experimental energies derived from SORTCERY.
+    '''
+    n_batch, L, k, _ = etab.shape
+    assert n_batch == 1, "batch size should be set to 1 for fine-tuning with SORTCERY"
+
+    etab = etab[0].unsqueeze(-1).view(L, k, 20, 20)
+    E_idx = E_idx[0]
+    ref_seqs = ref_seqs[0]
+    x_mask = x_mask[0]
+    peptide_seqs = peptide_seqs[0]
+    ref_energies = ref_energies[0]
+
+    # X is encoded as 20 so lets just add an extra row/col of zeros
+    pad = (0, 1, 0, 1)
+    etab = F.pad(etab, pad, "constant", 0) # L x 30 x 21 x 21
+
+    peptide_shape = peptide_seqs.shape # n, c; c is the length of the chain
+    etab = etab.unsqueeze(0).expand(peptide_shape[0], -1, -1, -1, -1) # n x L x 30 x 21 x 21
+
+    protein_seq = ref_seqs[:-peptide_shape[1]] # (L - c), remove the native peptide to obtain only the protein sequences, so we can replace the peptides with SORTCERY peptides
+    complex_seqs = torch.cat((protein_seq.unsqueeze(0).expand(peptide_shape[0], -1), peptide_seqs), dim=1) # n x L
+
+    # identity of all residues
+    seq_residues = complex_seqs.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, k, 21).unsqueeze(-1) # n x L x 30 x 21 x 1
+    E_neighbors = torch.gather(etab, -1, seq_residues).squeeze(-1) # n x L x 30 x 21, gather etabs for each known residue in seqs
+
+    # identity of all kNN
+    E_idx_expanded = E_idx.unsqueeze(0).expand(peptide_shape[0], -1, -1)
+    E_aa = torch.gather(complex_seqs.unsqueeze(-1).expand(-1, -1, k), 1, E_idx_expanded).unsqueeze(-1) # n x L x 30 x 1
+    E_seqs = torch.gather(E_neighbors, -1, E_aa).squeeze(-1) # n x L x 30
+
+    # halve the energies of all bidirectional edges to avoid double counting
+    adj_matrix = torch.zeros((L,L), device=etab.device)
+    residueNums = E_idx[:,0].unsqueeze(-1).expand(-1, k)
+    edgeIndices = torch.cat((residueNums.reshape(-1,1), E_idx.reshape(-1,1)), dim=-1)
+    adj_matrix[edgeIndices[:,0], edgeIndices[:,1]] = 1
+    adj_matrix = adj_matrix + adj_matrix.t() # add the adjacency matrix to its transpose; bidirectional edges will have value 2
+    bidir_mask = torch.gather(adj_matrix, -1, E_idx)
+    bidir_mask[:,0] = 1 # self edges will be double counted, so we reset; then we take the reciprocal so that bidirectional edges have value 1/2 in the mask
+    bidir_mask = (1/bidir_mask).unsqueeze(0).expand(peptide_shape[0], -1, -1) # n x L x 30
+
+    # masks for residues with identity X (isnt_x_aa) and unmodeled residues (x_mask)
+    isnt_x_aa = (complex_seqs != 20).float().to(etab.device) # n x L
+    x_mask = x_mask.expand(peptide_shape[0], -1).unsqueeze(-1) # n x L x 1
+    isnt_x_aa = isnt_x_aa.unsqueeze(-1) # n x L x 1
+    full_mask = x_mask * isnt_x_aa # n x L x 1
+
+    # mask to only include peptide self energies and peptide-protein pair energies, no protein-only energies
+    protein_len = torch.numel(protein_seq)
+    peptide_mask = torch.where(E_idx < protein_len, torch.zeros(1, device=etab.device), torch.ones(1, device=etab.device)) # zero out any interactions with the protein
+    peptide_mask[protein_len:, :] = 1 # put back all protein-peptide interactions
+
+    E_seqs *= full_mask * bidir_mask * peptide_mask # n x L x 30
+
+    # compute predicted energy for each sequence
+    predicted_E = E_seqs.sum(dim=(-2,-1)) # n, sum across all pairs for all L residues
+
+    # normalize values around 0 for pearson correlation calculation
+    norm_pred = predicted_E - torch.mean(predicted_E) # n
+    norm_ref = ref_energies - torch.mean(ref_energies) # n
+
+    pearson = torch.sum(norm_pred * norm_ref) / (torch.sqrt(torch.sum(norm_pred**2)) * torch.sqrt(torch.sum(norm_ref**2)))
+    return -pearson # scalar; negate, since we want to minimize our loss function
