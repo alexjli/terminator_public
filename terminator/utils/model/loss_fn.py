@@ -174,52 +174,6 @@ def pair_self_energy_ratio(etab, E_idx, data):
     return pair_nrgs_avg / self_nrgs_avg, n_batches
 
 
-# Loss function construction
-
-
-def _get_loss_fn(fn_name):
-    """ Retrieve a loss function from this file given the function name """
-    try:
-        if fn_name in NOT_LOSS_FNS:  # prevent recursive and unexpected behavior
-            raise NameError
-        return getattr(sys.modules[__name__], fn_name)
-    except NameError as ne:
-        raise ValueError(f"Loss fn {fn_name} not found in {__name__}") from ne
-
-
-def construct_loss_fn(hparams):
-    """ Construct a combined loss function based on the inputted hparams
-
-    Args
-    ----
-    hparams : dict
-        The fully constructed hparams (see :code:`terminator/utils/model/default_hparams.py`). It should
-        contain an entry for 'loss_config' in the format {loss_fn_name : scaling_factor}. For example,
-        .. code-block :
-            {
-                'nlcpl': 1,
-                'etab_norm_penalty': 0.01
-            }
-
-    Returns
-    -------
-    _loss_fn
-        The constructed loss function
-    """
-    loss_config = hparams['loss_config']
-
-    def _loss_fn(etab, E_idx, data):
-        """ The returned loss function """
-        loss_dict = {}
-        for loss_fn_name, scaling_factor in loss_config.items():
-            subloss_fn = _get_loss_fn(loss_fn_name)
-            loss, count = subloss_fn(etab, E_idx, data)
-            loss_dict[loss_fn_name] = {"loss": loss, "count": count, "scaling_factor": scaling_factor}
-        return loss_dict
-
-    return _loss_fn
-
-
 def sortcery_loss(etab, E_idx, data):
     ''' Compute the mean squared error between the etab's predicted energies for peptide-protein complexes and experimental energies derived from SORTCERY.
     '''
@@ -284,3 +238,49 @@ def sortcery_loss(etab, E_idx, data):
 
     pearson = torch.sum(norm_pred * norm_ref) / (torch.sqrt(torch.sum(norm_pred**2)) * torch.sqrt(torch.sum(norm_ref**2)))
     return -pearson # scalar; negate, since we want to minimize our loss function
+
+# Loss function construction
+
+
+def _get_loss_fn(fn_name):
+    """ Retrieve a loss function from this file given the function name """
+    try:
+        if fn_name in NOT_LOSS_FNS:  # prevent recursive and unexpected behavior
+            raise NameError
+        return getattr(sys.modules[__name__], fn_name)
+    except NameError as ne:
+        raise ValueError(f"Loss fn {fn_name} not found in {__name__}") from ne
+
+
+def construct_loss_fn(hparams):
+    """ Construct a combined loss function based on the inputted hparams
+
+    Args
+    ----
+    hparams : dict
+        The fully constructed hparams (see :code:`terminator/utils/model/default_hparams.py`). It should
+        contain an entry for 'loss_config' in the format {loss_fn_name : scaling_factor}. For example,
+        .. code-block :
+            {
+                'nlcpl': 1,
+                'etab_norm_penalty': 0.01
+            }
+
+    Returns
+    -------
+    _loss_fn
+        The constructed loss function
+    """
+    loss_config = hparams['loss_config']
+
+    def _loss_fn(etab, E_idx, data):
+        """ The returned loss function """
+        loss_dict = {}
+        for loss_fn_name, scaling_factor in loss_config.items():
+            print(loss_fn_name, scaling_factor)
+            subloss_fn = _get_loss_fn(loss_fn_name)
+            loss, count = subloss_fn(etab, E_idx, data)
+            loss_dict[loss_fn_name] = {"loss": loss, "count": count, "scaling_factor": scaling_factor}
+        return loss_dict
+
+    return _loss_fn
