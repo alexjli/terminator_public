@@ -365,9 +365,9 @@ def _package(b_idx):
 
         if 'sortcery_seqs' in data:
             assert len(batch) == 1, "batch_size for SORTCERY fine-tuning should be set to 1"
-            sortcery_seqs.append(convert(data['sortcery_seqs']))
+            sortcery_seqs = convert(data['sortcery_seqs']).unsqueeze(0)
         if 'sortcery_nrgs' in data:
-            sortcery_nrgs.append(convert(data['sortcery_nrgs']))
+            sortcery_nrgs = convert(data['sortcery_nrgs']).unsqueeze(0)
 
         chain_idx = []
         for i, c_len in enumerate(data['chain_lens']):
@@ -435,8 +435,8 @@ def _package(b_idx):
         'ids': ids,
         'chain_idx': chain_idx,
         'gvp_data': gvp_data,
-        'sortcery_seqs': sortcery_seqs[0].unsqueeze(0),
-        'sortcery_nrgs': sortcery_seqs[0].unsqueeze(0)
+        'sortcery_seqs': sortcery_seqs,
+        'sortcery_nrgs': sortcery_nrgs
     }
 
 

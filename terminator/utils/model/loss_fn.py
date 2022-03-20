@@ -228,10 +228,10 @@ def sortcery_loss(etab, E_idx, data):
 
     etab = etab[0].unsqueeze(-1).view(L, k, 20, 20)
     E_idx = E_idx[0]
-    ref_seqs = data["ref_seqs"][0]
+    ref_seqs = data["seqs"][0]
     x_mask = data["x_mask"][0]
-    peptide_seqs = data["peptide_seqs"][0]
-    ref_energies = data["ref_energies"][0]
+    peptide_seqs = data["sortcery_seqs"][0]
+    ref_energies = data["sortcery_nrgs"][0]
 
     # X is encoded as 20 so lets just add an extra row/col of zeros
     pad = (0, 1, 0, 1)

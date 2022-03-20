@@ -287,7 +287,7 @@ def main(args):
     model_hparams, run_hparams = _setup_hparams(args)
     train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, run_hparams)
     # load checkpoint
-    checkpoint_dict = _load_checkpoint(run_dir, model_hparams['finetune'])
+    checkpoint_dict = _load_checkpoint(run_dir, run_hparams['finetune'])
     best_validation = checkpoint_dict["best_validation"]
     best_checkpoint = checkpoint_dict["best_checkpoint"]
     start_epoch = checkpoint_dict["start_epoch"]
