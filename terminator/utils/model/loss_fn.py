@@ -152,12 +152,10 @@ def nlcpl(etab, E_idx, data):
 def etab_norm_penalty(etab, E_idx, data):
     """ Take the norm of all etabs and scale it by the total number of residues involved """
     seq_lens = data['seq_lens']
-    etab_norm = torch.linalg.norm(etab.view([-1]))
-    return etab_norm / seq_lens.sum(), int(seq_lens.sum())
-    
-    # TODO are these equivalent?
-    # loss += model_hparams['regularize_etab'] * torch.mean(LA.norm(etab, dim=(1,2,3)) / data['seq_lens'])
-
+    # etab_norm = torch.linalg.norm(etab.view([-1]))
+    # return etab_norm / seq_lens.sum(), int(seq_lens.sum())
+    etab_norm = torch.mean(torch.linalg.norm(etab, dim=(1,2,3)) / seq_lens)
+    return etab_norm, int(seq_lens.sum())
 
 # pylint: disable=unused-argument
 def pair_self_energy_ratio(etab, E_idx, data):
@@ -222,7 +220,7 @@ def construct_loss_fn(hparams):
     return _loss_fn
 
 
-def sortcery_loss(etab, E_idx, ref_seqs, x_mask, peptide_seqs, ref_energies):
+def sortcery_loss(etab, E_idx, data):
     ''' Compute the mean squared error between the etab's predicted energies for peptide-protein complexes and experimental energies derived from SORTCERY.
     '''
     n_batch, L, k, _ = etab.shape
@@ -230,10 +228,10 @@ def sortcery_loss(etab, E_idx, ref_seqs, x_mask, peptide_seqs, ref_energies):
 
     etab = etab[0].unsqueeze(-1).view(L, k, 20, 20)
     E_idx = E_idx[0]
-    ref_seqs = ref_seqs[0]
-    x_mask = x_mask[0]
-    peptide_seqs = peptide_seqs[0]
-    ref_energies = ref_energies[0]
+    ref_seqs = data["ref_seqs"][0]
+    x_mask = data["x_mask"][0]
+    peptide_seqs = data["peptide_seqs"][0]
+    ref_energies = data["ref_energies"][0]
 
     # X is encoded as 20 so lets just add an extra row/col of zeros
     pad = (0, 1, 0, 1)
