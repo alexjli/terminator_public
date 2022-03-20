@@ -303,11 +303,14 @@ def main(args):
                             regularization=run_hparams['regularization'],
                             state=last_optim_state)
 
+    isDataParallel = True if torch.cuda.device_count() > 1 and dev != "cpu" else False
+    finetune = run_hparams["finetune"]
+
     try:
         for epoch in range(start_epoch, args.epochs):
             print('epoch', epoch)
 
-            epoch_loss, epoch_ld, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev)
+            epoch_loss, epoch_ld, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev, finetune=finetune, isDataParallel=isDataParallel)
             print('epoch loss', epoch_loss, 'epoch_ld', epoch_ld)
             writer.add_scalar('training loss', epoch_loss, epoch)
 

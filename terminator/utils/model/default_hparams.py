@@ -269,10 +269,10 @@ DEFAULT_TRAIN_HPARAMS = {
     'max_seq_tokens': None,
     'term_dropout': None,
     'loss_config': {
-        'nlcpl': 1,
-        'regularize_etab': 0,
-        'sortcery_coeff': 0,
-        'etab_norm_penalty': 0
+        'nlcpl': 1
+        # 'regularize_etab': 0,
+        # 'sortcery_coeff': 0,
+        # 'etab_norm_penalty': 0
     },
     'finetune': False
 }

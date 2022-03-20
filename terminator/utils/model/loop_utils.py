@@ -104,7 +104,7 @@ def _sum_loss_dicts(total_ld, batch_ld):
     return combined_ld
 
 
-def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0"):
+def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0", isDataParallel=False, finetune=False):
     """ Run :code:`model` on one epoch of :code:`dataloader`
 
     Args
@@ -151,18 +151,10 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
 
     running_loss_dict = {}
 
-    # TODO find a better way to handle checking ' if torch.cuda.device_count() > 1 and dev != "cpu": '
-    try:
-        model_hparams = model.hparams
-        isDataParallel = False
-    except:
-        model_hparams = model.module.hparams # this occurs when nn.DataParallel is used
-        isDataParallel = True
-
     # set grads properly 
     if grad:
         model.train()
-        if model_hparams['finetune']: # freeze all but the last output layer
+        if finetune: # freeze all but the last output layer
             if isDataParallel: # TODO cleaner way to do this?
                 for (name, module) in model.module.named_children():
                     if name == "top":
