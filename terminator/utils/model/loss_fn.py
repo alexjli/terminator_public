@@ -184,8 +184,8 @@ def sortcery_loss(etab, E_idx, data):
     E_idx = E_idx[0]
     ref_seqs = data["seqs"][0]
     x_mask = data["x_mask"][0]
-    peptide_seqs = data["sortcery_seqs"][0]
-    ref_energies = data["sortcery_nrgs"][0]
+    peptide_seqs = data["sortcery_seqs"][0][:1600]
+    ref_energies = data["sortcery_nrgs"][0][:1600]
 
     # X is encoded as 20 so lets just add an extra row/col of zeros
     pad = (0, 1, 0, 1)
@@ -237,7 +237,7 @@ def sortcery_loss(etab, E_idx, data):
     norm_ref = ref_energies - torch.mean(ref_energies) # n
 
     pearson = torch.sum(norm_pred * norm_ref) / (torch.sqrt(torch.sum(norm_pred**2)) * torch.sqrt(torch.sum(norm_ref**2)))
-    return -pearson # scalar; negate, since we want to minimize our loss function
+    return -pearson, 1 # scalar; negate, since we want to minimize our loss function
 
 # Loss function construction
 
@@ -277,7 +277,6 @@ def construct_loss_fn(hparams):
         """ The returned loss function """
         loss_dict = {}
         for loss_fn_name, scaling_factor in loss_config.items():
-            print(loss_fn_name, scaling_factor)
             subloss_fn = _get_loss_fn(loss_fn_name)
             loss, count = subloss_fn(etab, E_idx, data)
             loss_dict[loss_fn_name] = {"loss": loss, "count": count, "scaling_factor": scaling_factor}
