@@ -15,7 +15,6 @@ import sys
 
 import torch
 import torch.nn.functional as F
-import torch.linalg
 
 # pylint: disable=no-member
 
@@ -155,7 +154,7 @@ def etab_norm_penalty(etab, E_idx, data):
     # etab_norm = torch.linalg.norm(etab.view([-1]))
     # return etab_norm / seq_lens.sum(), int(seq_lens.sum())
     etab_norm = torch.mean(torch.linalg.norm(etab, dim=(1,2,3)) / seq_lens)
-    return etab_norm, int(seq_lens.sum())
+    return etab_norm, len(seq_lens)
 
 # pylint: disable=unused-argument
 def pair_self_energy_ratio(etab, E_idx, data):
@@ -184,8 +183,8 @@ def sortcery_loss(etab, E_idx, data):
     E_idx = E_idx[0]
     ref_seqs = data["seqs"][0]
     x_mask = data["x_mask"][0]
-    peptide_seqs = data["sortcery_seqs"][0][:1600]
-    ref_energies = data["sortcery_nrgs"][0][:1600]
+    peptide_seqs = data["sortcery_seqs"][0]
+    ref_energies = data["sortcery_nrgs"][0]
 
     # X is encoded as 20 so lets just add an extra row/col of zeros
     pad = (0, 1, 0, 1)

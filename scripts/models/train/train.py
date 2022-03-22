@@ -295,16 +295,17 @@ def main(args):
     writer = checkpoint_dict["writer"]
     training_curves = checkpoint_dict["training_curves"]
 
+    isDataParallel = True if torch.cuda.device_count() > 1 and dev != "cpu" else False
+    finetune = run_hparams["finetune"]
+    
     # construct terminator, loss fn, and optimizer
     terminator, terminator_module = _setup_model(model_hparams, run_hparams, best_checkpoint, dev)
     loss_fn = construct_loss_fn(run_hparams)
     optimizer = get_std_opt(terminator.parameters(),
                             d_model=model_hparams['energies_hidden_dim'],
                             regularization=run_hparams['regularization'],
-                            state=last_optim_state)
-
-    isDataParallel = True if torch.cuda.device_count() > 1 and dev != "cpu" else False
-    finetune = run_hparams["finetune"]
+                            state=last_optim_state,
+                            finetune=finetune)
 
     try:
         for epoch in range(start_epoch, args.epochs):
