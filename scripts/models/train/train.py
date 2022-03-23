@@ -297,7 +297,7 @@ def main(args):
 
     isDataParallel = True if torch.cuda.device_count() > 1 and dev != "cpu" else False
     finetune = run_hparams["finetune"]
-    
+
     # construct terminator, loss fn, and optimizer
     terminator, terminator_module = _setup_model(model_hparams, run_hparams, best_checkpoint, dev)
     loss_fn = construct_loss_fn(run_hparams)
@@ -305,7 +305,8 @@ def main(args):
                             d_model=model_hparams['energies_hidden_dim'],
                             regularization=run_hparams['regularization'],
                             state=last_optim_state,
-                            finetune=finetune)
+                            finetune=finetune,
+                            finetune_lr=run_hparams["finetune_lr"])
 
     try:
         for epoch in range(start_epoch, args.epochs):
@@ -323,18 +324,23 @@ def main(args):
             training_curves["train_loss"].append((epoch_loss, epoch_ld))
             training_curves["val_loss"].append((val_loss, val_ld))
 
+            comp = (val_ld['sortcery_loss']['loss'] < best_validation) if finetune else (val_loss < best_validation)
+
             # save a state checkpoint
             checkpoint_state = {
                 'epoch': epoch,
                 'state_dict': terminator_module.state_dict(),
-                'best_model': (val_loss < best_validation),
+                'best_model': comp, # (val_loss < best_validation)
                 'val_loss': best_validation,
                 'optimizer_state': optimizer.state_dict(),
                 'training_curves': training_curves
             }
             torch.save(checkpoint_state, os.path.join(run_dir, 'net_last_checkpoint.pt'))
-            if val_loss < best_validation:
-                best_validation = val_loss
+            if comp: # if (val_loss < best_validation)
+                if finetune:
+                    best_validation = val_ld['sortcery_loss']['loss']
+                else:
+                    best_validation = val_loss
                 best_checkpoint = copy.deepcopy(terminator_module.state_dict())
                 torch.save(checkpoint_state, os.path.join(run_dir, 'net_best_checkpoint.pt'))
 

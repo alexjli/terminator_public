@@ -271,5 +271,6 @@ DEFAULT_TRAIN_HPARAMS = {
     'loss_config': {
         'nlcpl': 1
     },
-    'finetune': False
+    'finetune': False,
+    'finetune_lr': 1e-6
 }

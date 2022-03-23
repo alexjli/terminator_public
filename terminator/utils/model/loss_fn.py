@@ -154,7 +154,7 @@ def etab_norm_penalty(etab, E_idx, data):
     # etab_norm = torch.linalg.norm(etab.view([-1]))
     # return etab_norm / seq_lens.sum(), int(seq_lens.sum())
     etab_norm = torch.mean(torch.linalg.norm(etab, dim=(1,2,3)) / seq_lens)
-    return etab_norm, len(seq_lens)
+    return etab_norm, int(seq_lens.sum())
 
 # pylint: disable=unused-argument
 def pair_self_energy_ratio(etab, E_idx, data):
@@ -236,7 +236,7 @@ def sortcery_loss(etab, E_idx, data):
     norm_ref = ref_energies - torch.mean(ref_energies) # n
 
     pearson = torch.sum(norm_pred * norm_ref) / (torch.sqrt(torch.sum(norm_pred**2)) * torch.sqrt(torch.sum(norm_ref**2)))
-    return -pearson, 1 # scalar; negate, since we want to minimize our loss function
+    return -pearson, len(ref_seqs) # scalar; negate, since we want to minimize our loss function
 
 # Loss function construction
 
