@@ -159,18 +159,19 @@ def etab_norm_penalty(etab, E_idx, data):
 # pylint: disable=unused-argument
 def pair_self_energy_ratio(etab, E_idx, data):
     """ Return the ratio of the scaled norm of pair energies vs self energies in an etab """
+    n_batch, L, k, _ = etab.shape
+    etab = etab.unsqueeze(-1).view(n_batch, L, k, 20, 20)
     self_etab = etab[:, :, 0:1]
     pair_etab = etab[:, :, 1:]
-    n_batches = etab.shape[0]
 
     # gather 22 self energies by taking the diagonal of the etab
     self_nrgs = torch.diagonal(self_etab, offset=0, dim1=-2, dim2=-1)
     # compute an "avg" by taking the mean of the magnitude of the values
     # then sqrt to get approx right scale for the energies
-    self_nrgs_avg = self_nrgs.square().mean().sqrt()
-    pair_nrgs_avg = pair_etab.square().mean().sqrt()
+    self_nrgs_avg = self_nrgs[self_nrgs != 0].square().mean().sqrt()
+    pair_nrgs_avg = pair_etab[pair_etab != 0].square().mean().sqrt()
 
-    return pair_nrgs_avg / self_nrgs_avg, n_batches
+    return pair_nrgs_avg / self_nrgs_avg, n_batch
 
 
 # Loss function construction
