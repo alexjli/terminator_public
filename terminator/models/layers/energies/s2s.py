@@ -84,7 +84,8 @@ class AblatedPairEnergies(nn.Module):
         etab = self.W(h_E)
 
         # merge duplicate pairEs
-        n_batch, n_res, k, out_dim = h_E.shape
+        n_batch, n_res, k, out_dim = etab.shape
+        etab = etab * x_mask.view(n_batch, n_res, 1, 1) # ensure output etab is masked properly
         etab = etab.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
         etab = merge_duplicate_pairE(etab, E_idx)
         etab = etab.view(n_batch, n_res, k, out_dim)
@@ -225,6 +226,7 @@ class PairEnergies(nn.Module):
         # project to output and merge duplicate pairEs
         h_E = self.W_out(h_E)
         n_batch, n_res, k, out_dim = h_E.shape
+        h_E = h_E * x_mask.view(n_batch, n_res, 1, 1) # ensure output etab is masked properly
         h_E = h_E.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
         h_E = merge_duplicate_pairE(h_E, E_idx)
 
