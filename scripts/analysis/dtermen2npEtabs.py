@@ -81,14 +81,17 @@ def dataGen(filepath, out_folder):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse dTERMen etabs and dump numpy versions')
-    parser.add_argument('--in_list_path',
-                        help='file containing etab paths, with one etab path per line',
-                        required=True)
+#    parser.add_argument('--in_list_path',
+#                        help='file containing etab paths, with one etab path per line',
+#                        required=True)
     parser.add_argument('--out_folder', help='folder where numpy etabs will be placed', required=True)
     parser.add_argument('-n', dest='num_cores', help='number of proceses to use', type=int, default=1)
     args = parser.parse_args()
 
-    with open(args.in_list_path) as fp:
-        in_list = [l.strip() for l in fp]
+#    with open(args.in_list_path) as fp:
+#        in_list = [l.strip() for l in fp]
+    
+    in_files = glob.glob(args.out_folder+"/*.etab")
+    in_list = [os.path.abspath(i) for i in in_files]
 
     parseEtabs(args.out_folder, in_list, num_cores=args.num_cores)

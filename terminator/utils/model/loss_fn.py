@@ -176,6 +176,10 @@ def pair_self_energy_ratio(etab, E_idx, data):
 def sortcery_loss(etab, E_idx, data):
     ''' Compute the mean squared error between the etab's predicted energies for peptide-protein complexes and experimental energies derived from SORTCERY.
     '''
+    # TODO hacky fix to avoid problems when without SORTCERY data
+    if len(data["sortcery_seqs"]) == 0:
+        return 0, 1
+    
     n_batch, L, k, _ = etab.shape
     assert n_batch == 1, "batch size should be set to 1 for fine-tuning with SORTCERY"
 
