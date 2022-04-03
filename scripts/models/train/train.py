@@ -186,7 +186,7 @@ def _setup_dataloaders(args, run_hparams):
     return train_dataloader, val_dataloader, test_dataloader
 
 
-def _load_checkpoint(run_dir, finetune=False):
+def _load_checkpoint(run_dir, dev, finetune=False):
     """ If a training checkpoint exists, load the checkpoint. Otherwise, setup checkpointing initial values.
 
     Args
@@ -209,8 +209,8 @@ def _load_checkpoint(run_dir, finetune=False):
     """
 
     if os.path.isfile(os.path.join(run_dir, 'net_best_checkpoint.pt')):
-        best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'))
-        last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'))
+        best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'), map_location=torch.device(dev))
+        last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'), map_location=torch.device(dev))
         best_checkpoint = best_checkpoint_state['state_dict']
         best_validation = best_checkpoint_state['val_loss']
         last_optim_state = last_checkpoint_state["optimizer_state"]
@@ -226,7 +226,7 @@ def _load_checkpoint(run_dir, finetune=False):
         writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'))
         training_curves = {"train_loss": [], "val_loss": []}
         if finetune: # load existing model for finetuning
-            best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_original.pt'))
+            best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_original.pt'), map_location=torch.device(dev))
             best_checkpoint = best_checkpoint_state['state_dict']
 
     return {"best_checkpoint_state": best_checkpoint_state,
@@ -287,7 +287,7 @@ def main(args):
     model_hparams, run_hparams = _setup_hparams(args)
     train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, run_hparams)
     # load checkpoint
-    checkpoint_dict = _load_checkpoint(run_dir, run_hparams['finetune'])
+    checkpoint_dict = _load_checkpoint(run_dir, dev, run_hparams['finetune'])
     best_validation = checkpoint_dict["best_validation"]
     best_checkpoint = checkpoint_dict["best_checkpoint"]
     start_epoch = checkpoint_dict["start_epoch"]
