@@ -27,7 +27,7 @@ if [[ ! -d $OUTPUTDIR ]];
 then
   mkdir $OUTPUTDIR
 fi
-RUNNAME=${2##*/}
+RUNNAME=${3##*/}
 sed \
   -e "s|DATASET|${DATASET}|g" \
   -e "s|DATANAME|${DATANAME}|g" \

@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH --mem=1000
 #SBATCH --partition=xeon-p8
-#SBATCH --time=2:00:00
+#SBATCH --time=4:00:00
 #SBATCH -o /dev/null
 
 . /etc/profile.d/modules.sh
