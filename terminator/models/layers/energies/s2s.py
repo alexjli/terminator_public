@@ -85,8 +85,10 @@ class AblatedPairEnergies(nn.Module):
 
         # merge duplicate pairEs
         n_batch, n_res, k, out_dim = etab.shape
-        etab = etab * x_mask.view(n_batch, n_res, 1, 1) # ensure output etab is masked properly
+        # ensure output etab is masked properly
+        etab = etab * x_mask.view(n_batch, n_res, 1, 1)
         etab = etab.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
+        etab[:, :, 0] = etab[:, :, 0] * torch.eye(20).to(etab.device) # zero off-diagonal energies
         etab = merge_duplicate_pairE(etab, E_idx)
         etab = etab.view(n_batch, n_res, k, out_dim)
 
@@ -228,6 +230,7 @@ class PairEnergies(nn.Module):
         n_batch, n_res, k, out_dim = h_E.shape
         h_E = h_E * x_mask.view(n_batch, n_res, 1, 1) # ensure output etab is masked properly
         h_E = h_E.unsqueeze(-1).view(n_batch, n_res, k, 20, 20)
+        h_E[:, :, 0] = h_E[:, :, 0] * torch.eye(20).to(h_E.device) # zero off-diagonal energies
         h_E = merge_duplicate_pairE(h_E, E_idx)
 
         # if specified, use generate self energies from node embeddings
