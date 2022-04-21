@@ -67,9 +67,7 @@ def _ingraham_featurize(batch, device="cpu"):
     return X, mask, lengths
 
 
-
 # Jing featurization functions
-
 
 
 def _normalize(tensor, dim=-1):
@@ -432,7 +430,6 @@ def _package(b_idx):
 # Non-lazy data loading functions
 
 
-
 def load_file(in_folder, pdb_id, min_protein_len=30):
     """Load the data specified in the proper .features file and return them.
     If the read sequence length is less than :code:`min_protein_len`, instead return None.
@@ -531,7 +528,7 @@ class TERMDataset(Dataset):
                     progress.update(1)
 
                 # get pdb_ids
-                pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
+                pdb_ids = [os.path.basename(path)[:-len(".features")] for path in filelist]
 
                 res_list = [
                     pool.apply_async(load_file, (in_folder, id),
@@ -951,7 +948,7 @@ class TERMLazyDataset(Dataset):
                     progress.update(1)
 
                 # get pdb_ids
-                pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
+                pdb_ids = [os.path.basename(path)[:-len(".features")] for path in filelist]
 
                 res_list = [
                     pool.apply_async(read_lens, (in_folder, pdb_id),
