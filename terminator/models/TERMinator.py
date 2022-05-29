@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from .layers.condense import CondenseTERM
 from .layers.energies.gvp import GVPPairEnergies
 from .layers.energies.s2s import (AblatedPairEnergies, PairEnergies)
+from .layers.energies.s2s_geometric import GeometricPairEnergies
 from .layers.utils import gather_edges, pad_sequence_12
 
 # pylint: disable=no-member, not-callable
@@ -51,6 +52,8 @@ class TERMinator(nn.Module):
             self.top = AblatedPairEnergies(hparams).to(self.dev)
         elif hparams['energies_gvp']:
             self.top = GVPPairEnergies(hparams).to(self.dev)
+        elif "energies_geometric" in hparams and hparams['energies_geometric']:
+            self.top = GeometricPairEnergies(hparams).to(self.dev)
         else:
             self.top = PairEnergies(hparams).to(self.dev)
 
@@ -143,6 +146,87 @@ class TERMinator(nn.Module):
 
         return h_V, gvp_batch.edge_index, h_E, E_idx
 
+    def _to_geometric_input(self, node_embeddings, edge_embeddings, data):
+        """ Convert Ingraham-style inputs to Jing-style inputs for use in Torch Geometric models
+
+        Args
+        ----
+        node_embeddings : torch.Tensor or None
+            Node embeddings at the structure level, outputted by the TERM Info Condensor.
+            :code:`None` if running in TERMless mode
+            Shape: n_batch x max_seq_len x tic_n_hidden
+
+        edge_embeddings : torch.Tensor or None
+            Edge embedings at the structure level, outputted by the TERM Info Condensor.
+            :code:`None` if running in TERMless mode
+            Shape: n_batch x max_seq_len x max_seq_len x tic_n_hidden
+
+        data : dict of torch.Tensor
+            Overall input data dictionary. See :code:`forward` for more info.
+
+        Returns
+        -------
+        h_V : torch.Tensor
+            Node embeddings in Jing format
+        edge_idex : torch.LongTensor
+            Edge index matrix in Jing format (sparse form)
+        h_E : torch.Tensor
+            Edge embeddings in Jing format
+        E_idx : torch.LongTensor
+            Edge index matrix in Ingraham format (kNN form)
+        """
+        geometric_data_list = [data['geometric_data'][i] for i in data['scatter_idx'].tolist()]
+        geometric_batch = torch_geometric.data.Batch.from_data_list(geometric_data_list)
+        seq_lens = data['seq_lens']
+        # extract node_embeddings and flatten
+        if node_embeddings is not None:
+            geometric_batch = geometric_batch.to(node_embeddings.device)
+            node_embeddings = torch.cat([h_V[:seq_lens[i]] for i, h_V in enumerate(torch.unbind(node_embeddings))],
+                                        dim=0)
+
+            h_V = torch.cat([geometric_batch.node_features, node_embeddings], dim=-1)
+        else:
+            h_V = geometric_batch.node_features
+
+        if edge_embeddings is not None:
+            # compute global E_idx from edge_index
+            total_len = seq_lens.sum()
+            batched_E_idx = geometric_batch.edge_index[0].view(total_len, self.hparams['k_neighbors'])
+            split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
+            offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
+            split_E_idxs = [e - offset for e, offset in zip(split_E_idxs, offset)]
+            E_idx = pad_sequence(split_E_idxs, batch_first=True)
+
+            # gather relevant edges
+            E_embed_neighbors = gather_edges(edge_embeddings, E_idx)
+
+            # flatten edge_embeddings
+            edge_embeddings_source = torch.cat(
+                [h_E[:seq_lens[i]] for i, h_E in enumerate(torch.unbind(E_embed_neighbors))], dim=0)
+            edge_embeddings_flat = edge_embeddings_source.view(
+                [geometric_batch.edge_index.shape[1], self.hparams['term_hidden_dim']])
+
+            h_E = torch.cat([geometric_batch.edge_features, edge_embeddings_flat], dim=-1)
+        else:
+            h_E = geometric_batch.edge_features
+
+            # compute E_idx as done for Ingraham features
+            X = data['X'][:, :, 1]
+            mask = data['x_mask']
+            eps = 1e-6
+            # Convolutional network on NCHW
+            mask_2D = torch.unsqueeze(mask, 1) * torch.unsqueeze(mask, 2)
+            dX = torch.unsqueeze(X, 1) - torch.unsqueeze(X, 2)
+            D = mask_2D * torch.sqrt(torch.sum(dX**2, 3) + eps)
+
+            # Identify k nearest neighbors (including self)
+            D_max, _ = torch.max(D, -1, keepdim=True)
+            D_adjust = D + (1. - mask_2D) * D_max
+            _, E_idx = torch.topk(D_adjust, self.hparams['k_neighbors'], dim=-1, largest=False)
+
+
+        return h_V, geometric_batch.edge_index, h_E, E_idx
+
     def _from_gvp_outputs(self, h_E, E_idx, seq_lens, max_seq_len):
         """ Convert outputs of GVP models to Ingraham style outputs
 
@@ -177,10 +261,42 @@ class TERMinator(nn.Module):
         if padding_diff > 0:
             padding = torch.zeros(etab.shape[0], padding_diff, etab.shape[2], etab.shape[3], device=etab.device)
             etab = torch.cat([etab, padding], dim=1)
-            padding = torch.zeros(etab.shape[0], padding_diff, etab.shape[2], device=etab.device).long()
-            E_idx = torch.cat([E_idx, padding], dim=1)
+            #padding = torch.zeros(etab.shape[0], padding_diff, etab.shape[2], device=etab.device).long()
+            #E_idx = torch.cat([E_idx, padding], dim=1)
+
+        # compute global E_idx from edge_index
+        total_len = seq_lens.sum()
+        batched_E_idx = E_idx[0].view(total_len, self.hparams['k_neighbors'])
+        split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
+        offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
+        split_E_idxs = [e - offset for e, offset in zip(split_E_idxs, offset)]
+        E_idx = pad_sequence(split_E_idxs, batch_first=True)
 
         return etab, E_idx
+
+    def _from_geometric_outputs(self, h_E, E_idx, seq_lens, max_seq_len):
+        """ Convert outputs of Torch Geometric models to Ingraham style outputs
+
+        Args
+        ----
+        h_E : torch.Tensor
+            Outputted Potts Model in Torch Geometric format
+        E_idx : torch.Tensor
+            Edge index matrix in Ingraham format (kNN sparse)
+        seq_lens : np.ndarray (int)
+            Sequence lens of proteins in batch
+        max_seq_len : int
+            Max sequence length of proteins in batch
+
+        Returns
+        -------
+        etab : torch.Tensor
+            Potts Model in Ingraham Format
+        E_idx : torch.LongTensor
+            Edge index matrix in Ingraham format (kNN sparse)
+        """
+        # aliases _from_gvp_outputs since it's the same procedure
+        return self._from_gvp_outputs(h_E, E_idx, seq_lens, max_seq_len)
 
     def forward(self, data, max_seq_len):
         """Compute the Potts model parameters for the structure
@@ -256,6 +372,11 @@ class TERMinator(nn.Module):
             h_E, edge_index = self.top(h_V, edge_index, h_E)
 
             etab, E_idx = self._from_gvp_outputs(h_E, E_idx, data['seq_lens'], max_seq_len)
+        elif "energies_geometric" in self.hparams and self.hparams['energies_geometric']:
+            h_V, edge_index, h_E, E_idx = self._to_geometric_input(node_embeddings, edge_embeddings, data)
+            h_E, edge_index = self.top(h_V, edge_index, h_E)
+
+            etab, E_idx = self._from_geometric_outputs(h_E, edge_index, data['seq_lens'], max_seq_len)
         else:
             etab, E_idx = self.top(node_embeddings, edge_embeddings, data['X'], data['x_mask'], data['chain_idx'])
 

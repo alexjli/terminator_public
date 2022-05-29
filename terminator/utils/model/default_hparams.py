@@ -124,6 +124,9 @@ Parameters
     energies_output_dim : int, default=400
         Output dimension of GNN Potts Model Encoder
 
+    energies_geometric : bool, default=False
+        Use Torch Geometric version of GNN Potts Model Encoder instead
+
     energies_gvp : bool, default=False
         Use GVP version of GNN Potts Model Encoder instead
 
@@ -245,6 +248,7 @@ DEFAULT_MODEL_HPARAMS = {
     'energies_use_mpnn': False,  #
     'energies_output_dim': 20 * 20,  #
     'energies_gvp': False,  #
+    'energies_geometric': False,  #
     'energies_full_graph': True,  #
     'res_embed_linear': False,  #
     'matches_linear': False,  #
