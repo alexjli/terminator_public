@@ -3,13 +3,16 @@ import functools
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch_geometric.utils import sort_edge_index
 
 from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split, tuple_cat, tuple_index, tuple_sum)
+from ..utils import merge_duplicate_edges_geometric, merge_duplicate_pairE_geometric
 
 # pylint: disable=no-member
 
 
 class EdgeLayer(nn.Module):
+    """ GVP Edge MPNN """
     def __init__(self,
                  node_dims,
                  edge_dims,
@@ -56,6 +59,7 @@ class EdgeLayer(nn.Module):
         self.ff_func = nn.Sequential(*ff_func)
 
     def forward(self, h_V, edge_index, h_E, node_mask=None):
+        """ TODO """
         h_V_merge = _merge(*h_V)
         fake_h_dim = h_V_merge.shape[-1]
         edge_index_flat = edge_index.flatten()
@@ -68,6 +72,10 @@ class EdgeLayer(nn.Module):
 
         h_EV = tuple_cat(h_V_i, h_E, h_V_j)
         dh = self.message_func(h_EV)
+
+        # merge scalar features in edges
+        dh_s = merge_duplicate_edges_geometric(dh[0], edge_index)
+        dh = (dh_s, dh[1])
 
         x = h_E
         if node_mask is not None:
@@ -135,6 +143,8 @@ class GVPPairEnergies(nn.Module):
         h_V = (h_V[0].to(local_dev), h_V[1].to(local_dev))
         h_E = (h_E[0].to(local_dev), h_E[1].to(local_dev))
         edge_index = edge_index.to(local_dev)
+        # sort the graph indexes beforehand so we don't run into weird indexing errors
+        edge_index, h_E = sort_edge_index(edge_index=edge_index, edge_attr=h_E)
 
         h_V = self.W_v(h_V)
         h_E = self.W_e(h_E)
@@ -144,4 +154,6 @@ class GVPPairEnergies(nn.Module):
             h_E = edge_layer(h_V, edge_index, h_E)
 
         etab = self.W_out(h_E)
+        # merge pairE tables to ensure each edge has the same energy dist
+        etab = merge_duplicate_pairE_geometric(etab, edge_index)
         return etab, edge_index

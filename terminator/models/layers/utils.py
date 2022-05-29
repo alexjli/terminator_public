@@ -3,6 +3,7 @@ import sys
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
+import torch_geometric.utils
 
 # pylint: disable=no-member
 
@@ -390,6 +391,52 @@ def merge_duplicate_edges(h_E_update, E_idx):
     return merged_E_updates
 
 
+def merge_duplicate_edges_geometric(h_E_update, edge_index):
+    """ Average embeddings across bidirectional edges for Torch Geometric graphs
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings.
+
+    This function assumes edge_index is sorted by columns, and will fail if
+    this is not the case.
+
+    Args
+    ----
+    h_E_update : torch.Tensor
+        Update tensor for edges embeddings in Torch Geometric sparse form
+        Shape : n_edge x n_hidden
+    edge_index : torch.LongTensor
+        Torch Geometric sparse edge indices
+        Shape : 2 x n_edge
+
+    Returns
+    -------
+    merged_E_updates : torch.Tensor
+        Edge update with merged updates for bidirectional edges
+        Shape : n_edge x n_hidden
+    """
+
+    original_edge = torch.ones_like(edge_index[0])
+    dummy_edge = torch.zeros_like(edge_index[0])
+    edge_index_t = torch.stack([edge_index[1], edge_index[0]], dim=0)
+
+    u_edge_index, h_E_update = torch_geometric.utils.coalesce(
+                                    edge_index=torch.cat([edge_index, edge_index_t], dim=-1),
+                                    edge_attr=torch.cat([h_E_update, h_E_update], dim=0),
+                                    reduce="mean",
+                                    sort_by_row=False)
+    u_edge_index_c, u_count = torch_geometric.utils.coalesce(
+                                    edge_index=torch.cat([edge_index, edge_index_t], dim=-1),
+                                    edge_attr=torch.cat([original_edge, dummy_edge], dim=0),
+                                    reduce="max",
+                                    sort_by_row=False)
+    assert (u_edge_index == u_edge_index_c).all()
+    select = (u_count == 1)
+    assert (u_edge_index[:, select] == edge_index).all()
+
+    return h_E_update[select]
+
+
 def merge_duplicate_term_edges(h_E_update, E_idx):
     """ Average embeddings across bidirectional TERM edges.
 
@@ -573,6 +620,59 @@ def merge_duplicate_pairE_sparse(h_E, E_idx):
     flat_merged_etab = collect / weight.unsqueeze(-1)
     merged_etab = flat_merged_etab.view(h_E.shape)
     return merged_etab
+
+
+def merge_duplicate_pairE_geometric(h_E, edge_index):
+    """ Sparse method to average pair energy tables across bidirectional edges with Torch Geometric.
+
+    TERMinator edges are represented as two bidirectional edges, and to allow for
+    communication between these edges we average the embeddings. In the case for
+    pair energies, we transpose the tables to ensure that the pair energy table
+    is symmetric upon inverse (e.g. the pair energy between i and j should be
+    the same as the pair energy between j and i)
+
+    This function assumes edge_index is sorted by columns, and will fail if
+    this is not the case.
+
+    Args
+    ----
+    h_E : torch.Tensor
+        Pair energies in Torch Geometric sparse form
+        Shape : n_edge x 400
+    E_idx : torch.LongTensor
+        Torch Geometric sparse edge indices
+        Shape : 2 x n_edge
+
+    Returns
+    -------
+    torch.Tensor
+        Pair energies with merged energies for bidirectional edges
+        Shape : n_edge x 400
+    """
+    original_edge = torch.ones_like(edge_index[0])
+    dummy_edge = torch.zeros_like(edge_index[0])
+    edge_index_t = torch.stack([edge_index[1], edge_index[0]])
+    h_E_transpose = h_E.view([-1, 20, 20]).transpose(-1, -2).reshape([-1, 400])
+
+    unfused_h_E = torch.cat([h_E, h_E_transpose], dim=0)
+    unfused_edge_index = torch.cat([edge_index, edge_index_t], dim=-1)
+    unfused_count = torch.cat([original_edge, dummy_edge], dim=0)
+
+    f_edge_index, h_E = torch_geometric.utils.coalesce(
+                            edge_index=unfused_edge_index,
+                            edge_attr=unfused_h_E,
+                            reduce="mean",
+                            sort_by_row=False)
+    f_edge_index_c, f_count = torch_geometric.utils.coalesce(
+                                    edge_index=unfused_edge_index,
+                                    edge_attr=unfused_count,
+                                    reduce="max",
+                                    sort_by_row=False)
+    assert (f_edge_index == f_edge_index_c).all()
+    select = (f_count == 1)
+    assert (f_edge_index[:, select] == edge_index).all()
+
+    return h_E[select]
 
 
 # edge aggregation fns
