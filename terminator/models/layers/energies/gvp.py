@@ -3,7 +3,6 @@ import functools
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch_geometric.utils import sort_edge_index
 
 from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split, tuple_cat, tuple_index, tuple_sum)
 from ..utils import merge_duplicate_edges_geometric, merge_duplicate_pairE_geometric
@@ -132,6 +131,10 @@ class GVPPairEnergies(nn.Module):
 
         self.W_out = GVP(edge_h_dim, output_dim, activations=(None, None))
 
+        # if enabled, generate self energies in etab from node embeddings
+        if "node_self_sub" in hparams.keys() and hparams["node_self_sub"] is True:
+            self.W_proj = GVP(node_h_dim, (20, 0), activations=(None, None))
+
     def forward(self, h_V, edge_index, h_E):
         '''Forward pass to be used at train-time, or evaluating likelihood.
 
@@ -143,8 +146,6 @@ class GVPPairEnergies(nn.Module):
         h_V = (h_V[0].to(local_dev), h_V[1].to(local_dev))
         h_E = (h_E[0].to(local_dev), h_E[1].to(local_dev))
         edge_index = edge_index.to(local_dev)
-        # sort the graph indexes beforehand so we don't run into weird indexing errors
-        edge_index, h_E = sort_edge_index(edge_index=edge_index, edge_attr=h_E)
 
         h_V = self.W_v(h_V)
         h_E = self.W_e(h_E)
@@ -156,4 +157,15 @@ class GVPPairEnergies(nn.Module):
         etab = self.W_out(h_E)
         # merge pairE tables to ensure each edge has the same energy dist
         etab = merge_duplicate_pairE_geometric(etab, edge_index)
+
+        # zero out off-diag energies for self edges
+        self_edge_select = (edge_index[0] == edge_index[1])
+        etab[self_edge_select] = etab[self_edge_select] * torch.eye(20).view(1, -1).to(etab.device)
+
+        # if specified, use generate self energies from node embeddings
+        if "node_self_sub" in self.hparams.keys() and self.hparams["node_self_sub"] is True:
+            h_V = self.W_proj(h_V)
+            etab_select = etab[(edge_index[0] == edge_index[1])]
+            etab[edge_index[0] == edge_index[1]] = torch.diag_embed(h_V, dim1=-2, dim2=-1).view(etab_select.shape)
+
         return etab, edge_index

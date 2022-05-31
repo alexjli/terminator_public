@@ -3,7 +3,6 @@ import sys
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
-import torch_geometric.utils
 
 # pylint: disable=no-member
 
@@ -376,19 +375,33 @@ def merge_duplicate_edges(h_E_update, E_idx):
         Edge update with merged updates for bidirectional edges
         Shape : n_batch x n_res x k x n_hidden
     """
-    dev = h_E_update.device
-    n_batch, n_nodes, _, hidden_dim = h_E_update.shape
-    # collect edges into NxN tensor shape
-    collection = torch.zeros((n_batch, n_nodes, n_nodes, hidden_dim)).to(dev)
-    neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, hidden_dim).to(dev)
-    collection.scatter_(2, neighbor_idx, h_E_update)
-    # transpose to get same edge in reverse direction
-    collection = collection.transpose(1, 2)
-    # gather reverse edges
-    reverse_E_update = gather_edges(collection, E_idx)
-    # average h_E_update and reverse_E_update at non-zero positions
-    merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update) / 2, h_E_update)
-    return merged_E_updates
+    seq_lens = torch.ones(h_E_update.shape[0]).long().to(h_E_update.device) * h_E_update.shape[1]
+    h_dim = h_E_update.shape[-1]
+    h_E_geometric = h_E_update.view([-1, h_dim])
+    split_E_idxs = torch.unbind(E_idx)
+    offset = [seq_lens[:i].sum() for i in range(len(seq_lens))]
+    split_E_idxs = [e.to(h_E_update.device) + o for e, o in zip(split_E_idxs, offset)]
+    edge_index_row = torch.cat([e.view(-1) for e in split_E_idxs], dim=0)
+    edge_index_col = torch.repeat_interleave(torch.arange(edge_index_row.shape[0] // 30), 30).to(h_E_update.device)
+    edge_index = torch.stack([edge_index_row, edge_index_col])
+    merge = merge_duplicate_edges_geometric(h_E_geometric, edge_index)
+    merge = merge.view(h_E_update.shape)
+
+    # dev = h_E_update.device
+    # n_batch, n_nodes, _, hidden_dim = h_E_update.shape
+    # # collect edges into NxN tensor shape
+    # collection = torch.zeros((n_batch, n_nodes, n_nodes, hidden_dim)).to(dev)
+    # neighbor_idx = E_idx.unsqueeze(-1).expand(-1, -1, -1, hidden_dim).to(dev)
+    # collection.scatter_(2, neighbor_idx, h_E_update)
+    # # transpose to get same edge in reverse direction
+    # collection = collection.transpose(1, 2)
+    # # gather reverse edges
+    # reverse_E_update = gather_edges(collection, E_idx)
+    # # average h_E_update and reverse_E_update at non-zero positions
+    # merged_E_updates = torch.where(reverse_E_update != 0, (h_E_update + reverse_E_update) / 2, h_E_update)
+    # assert (merge == merged_E_updates).all()
+
+    return merge
 
 
 def merge_duplicate_edges_geometric(h_E_update, edge_index):
@@ -396,9 +409,6 @@ def merge_duplicate_edges_geometric(h_E_update, edge_index):
 
     TERMinator edges are represented as two bidirectional edges, and to allow for
     communication between these edges we average the embeddings.
-
-    This function assumes edge_index is sorted by columns, and will fail if
-    this is not the case.
 
     Args
     ----
@@ -415,26 +425,23 @@ def merge_duplicate_edges_geometric(h_E_update, edge_index):
         Edge update with merged updates for bidirectional edges
         Shape : n_edge x n_hidden
     """
+    num_nodes = edge_index.max() + 1
+    row_idx = edge_index[0] + edge_index[1] * num_nodes
+    col_idx = edge_index[1] + edge_index[0] * num_nodes
+    internal_idx = torch.arange(edge_index.shape[1])
 
-    original_edge = torch.ones_like(edge_index[0])
-    dummy_edge = torch.zeros_like(edge_index[0])
-    edge_index_t = torch.stack([edge_index[1], edge_index[0]], dim=0)
+    mapping = torch.zeros(max(row_idx.max(), col_idx.max()) + 1).long() - 1
+    mapping[col_idx] = internal_idx
 
-    u_edge_index, h_E_update = torch_geometric.utils.coalesce(
-                                    edge_index=torch.cat([edge_index, edge_index_t], dim=-1),
-                                    edge_attr=torch.cat([h_E_update, h_E_update], dim=0),
-                                    reduce="mean",
-                                    sort_by_row=False)
-    u_edge_index_c, u_count = torch_geometric.utils.coalesce(
-                                    edge_index=torch.cat([edge_index, edge_index_t], dim=-1),
-                                    edge_attr=torch.cat([original_edge, dummy_edge], dim=0),
-                                    reduce="max",
-                                    sort_by_row=False)
-    assert (u_edge_index == u_edge_index_c).all()
-    select = (u_count == 1)
-    assert (u_edge_index[:, select] == edge_index).all()
+    reverse_idx = mapping[row_idx]
+    mask = (reverse_idx >= 0)
+    reverse_idx = reverse_idx[mask]
 
-    return h_E_update[select]
+    reverse_h_E = h_E_update[mask]
+    h_E_update[reverse_idx] = (h_E_update[reverse_idx] + reverse_h_E)/2
+
+    return h_E_update
+
 
 
 def merge_duplicate_term_edges(h_E_update, E_idx):
@@ -498,7 +505,20 @@ def merge_duplicate_pairE(h_E, E_idx):
         Shape : n_batch x n_res x k x n_aa x n_aa
     """
     try:
-        return merge_duplicate_pairE_dense(h_E, E_idx)
+        seq_lens = torch.ones(h_E.shape[0]).long().to(h_E.device) * h_E.shape[1]
+        h_E_geometric = h_E.view([-1, 400])
+        split_E_idxs = torch.unbind(E_idx)
+        offset = [seq_lens[:i].sum() for i in range(len(seq_lens))]
+        split_E_idxs = [e.to(h_E.device) + o for e, o in zip(split_E_idxs, offset)]
+        edge_index_row = torch.cat([e.view(-1) for e in split_E_idxs], dim=0)
+        edge_index_col = torch.repeat_interleave(torch.arange(edge_index_row.shape[0] // 30), 30).to(h_E.device)
+        edge_index = torch.stack([edge_index_row, edge_index_col])
+        merge = merge_duplicate_pairE_geometric(h_E_geometric, edge_index)
+        merge = merge.view(h_E.shape)
+        #old_merge = merge_duplicate_pairE_dense(h_E, E_idx)
+        #assert (old_merge == merge).all(), (old_merge, merge)
+
+        return merge
     except RuntimeError as err:
         print(err, file=sys.stderr)
         print("We're handling this error as if it's an out-of-memory error", file=sys.stderr)
@@ -649,30 +669,23 @@ def merge_duplicate_pairE_geometric(h_E, edge_index):
         Pair energies with merged energies for bidirectional edges
         Shape : n_edge x 400
     """
-    original_edge = torch.ones_like(edge_index[0])
-    dummy_edge = torch.zeros_like(edge_index[0])
-    edge_index_t = torch.stack([edge_index[1], edge_index[0]])
-    h_E_transpose = h_E.view([-1, 20, 20]).transpose(-1, -2).reshape([-1, 400])
+    num_nodes = edge_index.max() + 1
+    row_idx = edge_index[0] + edge_index[1] * num_nodes
+    col_idx = edge_index[1] + edge_index[0] * num_nodes
+    internal_idx = torch.arange(edge_index.shape[1])
 
-    unfused_h_E = torch.cat([h_E, h_E_transpose], dim=0)
-    unfused_edge_index = torch.cat([edge_index, edge_index_t], dim=-1)
-    unfused_count = torch.cat([original_edge, dummy_edge], dim=0)
+    mapping = torch.zeros(max(row_idx.max(), col_idx.max()) + 1).long() - 1
+    mapping[col_idx] = internal_idx
 
-    f_edge_index, h_E = torch_geometric.utils.coalesce(
-                            edge_index=unfused_edge_index,
-                            edge_attr=unfused_h_E,
-                            reduce="mean",
-                            sort_by_row=False)
-    f_edge_index_c, f_count = torch_geometric.utils.coalesce(
-                                    edge_index=unfused_edge_index,
-                                    edge_attr=unfused_count,
-                                    reduce="max",
-                                    sort_by_row=False)
-    assert (f_edge_index == f_edge_index_c).all()
-    select = (f_count == 1)
-    assert (f_edge_index[:, select] == edge_index).all()
+    reverse_idx = mapping[row_idx]
+    mask = (reverse_idx >= 0)
+    reverse_idx = reverse_idx[mask]
 
-    return h_E[select]
+    reverse_h_E = h_E[mask]
+    transpose_h_E = reverse_h_E.view([-1, 20, 20]).transpose(-1, -2).reshape([-1, 400])
+    h_E[reverse_idx] = (h_E[reverse_idx] + transpose_h_E)/2
+
+    return h_E
 
 
 # edge aggregation fns

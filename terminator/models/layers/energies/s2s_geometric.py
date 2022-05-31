@@ -6,7 +6,6 @@ Ingraham Structure MPNN, but implemented in Torch Geometric
 import torch
 from torch import nn
 from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import sort_edge_index
 
 from terminator.models.layers.s2s_modules import Normalize
 from ..utils import merge_duplicate_edges_geometric, merge_duplicate_pairE_geometric
@@ -139,7 +138,6 @@ class NodeMPNNLayer(nn.Module):
                 dim of node embeddings (s, V). If not `None`, only
                 these nodes will be updated.
         '''
-
         dh = self.conv(x, edge_index, edge_attr)
 
         if node_mask is not None:
@@ -268,6 +266,10 @@ class GeometricPairEnergies(nn.Module):
 
         self.W_out = nn.Linear(edge_h_dim, output_dim)
 
+        # if enabled, generate self energies in etab from node embeddings
+        if "node_self_sub" in hparams.keys() and hparams["node_self_sub"] is True:
+            self.W_proj = nn.Linear(node_h_dim, 20)
+
     def forward(self, h_V, edge_index, h_E):
         '''Forward pass to be used at train-time, or evaluating likelihood.
 
@@ -279,8 +281,6 @@ class GeometricPairEnergies(nn.Module):
         h_V = h_V.to(local_dev)
         h_E = h_E.to(local_dev)
         edge_index = edge_index.to(local_dev)
-        # sort the graph indexes beforehand so we don't run into weird indexing errors
-        edge_index, h_E = sort_edge_index(edge_index=edge_index, edge_attr=h_E, sort_by_row=False)
 
         h_V = self.W_v(h_V)
         h_E = self.W_e(h_E)
@@ -292,4 +292,14 @@ class GeometricPairEnergies(nn.Module):
         etab = self.W_out(h_E)
         # merge pairE tables to ensure each edge has the same energy dist
         etab = merge_duplicate_pairE_geometric(etab, edge_index)
+        self_edge_select = (edge_index[0] == edge_index[1])
+        # zero out off-diag energies for self edges
+        etab[self_edge_select] = etab[self_edge_select] * torch.eye(20).view(1, -1).to(etab.device)
+
+        # if specified, use generate self energies from node embeddings
+        if "node_self_sub" in self.hparams.keys() and self.hparams["node_self_sub"] is True:
+            h_V = self.W_proj(h_V)
+            etab_select = etab[(edge_index[0] == edge_index[1])]
+            etab[edge_index[0] == edge_index[1]] = torch.diag_embed(h_V, dim1=-2, dim2=-1).view(etab_select.shape)
+
         return etab, edge_index
