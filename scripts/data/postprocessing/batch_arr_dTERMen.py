@@ -15,6 +15,7 @@ See :code:`python batch_arr_dTERMen.py --help` for more info.
 import argparse
 import glob
 import os
+import random
 import sys
 
 # for autosummary import purposes
@@ -54,6 +55,7 @@ if __name__ == '__main__':
     batch_arr_list = os.path.join(args.output_dir, f"{basename}_batch_arr.list")
 
     with open(batch_arr_list, 'w') as fp:
+        random.shuffle(pdbs)
         for pdb in pdbs:
             fp.write(pdb + "\n")
 
