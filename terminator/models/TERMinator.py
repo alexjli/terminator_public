@@ -108,15 +108,15 @@ class TERMinator(nn.Module):
         else:
             h_V = (gvp_batch.node_s, gvp_batch.node_v)
 
-        if edge_embeddings is not None:
-            # compute global E_idx from edge_index
-            total_len = seq_lens.sum()
-            batched_E_idx = gvp_batch.edge_index[0].view(total_len, self.hparams['k_neighbors'])
-            split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
-            offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
-            split_E_idxs = [e - offset for e, offset in zip(split_E_idxs, offset)]
-            E_idx = pad_sequence(split_E_idxs, batch_first=True)
 
+        # compute global E_idx from edge_index
+        total_len = seq_lens.sum()
+        batched_E_idx = gvp_batch.edge_index[0].view(total_len, self.hparams['k_neighbors'])
+        split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
+        offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
+        split_E_idxs = [e.to(seq_lens.device) - offset for e, offset in zip(split_E_idxs, offset)]
+        E_idx = pad_sequence(split_E_idxs, batch_first=True)
+        if edge_embeddings is not None:
             # gather relevant edges
             E_embed_neighbors = gather_edges(edge_embeddings, E_idx)
 
@@ -129,20 +129,6 @@ class TERMinator(nn.Module):
             h_E = (torch.cat([gvp_batch.edge_s, edge_embeddings_flat], dim=-1), gvp_batch.edge_v)
         else:
             h_E = (gvp_batch.edge_s, gvp_batch.edge_v)
-
-            # compute E_idx as done for Ingraham features
-            X = data['X'][:, :, 1]
-            mask = data['x_mask']
-            eps = 1e-6
-            # Convolutional network on NCHW
-            mask_2D = torch.unsqueeze(mask, 1) * torch.unsqueeze(mask, 2)
-            dX = torch.unsqueeze(X, 1) - torch.unsqueeze(X, 2)
-            D = mask_2D * torch.sqrt(torch.sum(dX**2, 3) + eps)
-
-            # Identify k nearest neighbors (including self)
-            D_max, _ = torch.max(D, -1, keepdim=True)
-            D_adjust = D + (1. - mask_2D) * D_max
-            _, E_idx = torch.topk(D_adjust, self.hparams['k_neighbors'], dim=-1, largest=False)
 
         return h_V, gvp_batch.edge_index, h_E, E_idx
 
@@ -188,15 +174,17 @@ class TERMinator(nn.Module):
         else:
             h_V = geometric_batch.node_features
 
-        if edge_embeddings is not None:
-            # compute global E_idx from edge_index
-            total_len = seq_lens.sum()
-            batched_E_idx = geometric_batch.edge_index[0].view(total_len, self.hparams['k_neighbors'])
-            split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
-            offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
-            split_E_idxs = [e - offset for e, offset in zip(split_E_idxs, offset)]
-            E_idx = pad_sequence(split_E_idxs, batch_first=True)
 
+        # compute global E_idx from edge_index
+        dev = seq_lens.device
+        total_len = seq_lens.sum()
+        batched_E_idx = geometric_batch.edge_index[0].view(total_len, self.hparams['k_neighbors'])
+        split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
+        offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
+        split_E_idxs = [e.to(dev) - o for e, o in zip(split_E_idxs, offset)]
+        E_idx = pad_sequence(split_E_idxs, batch_first=True)
+
+        if edge_embeddings is not None:
             # gather relevant edges
             E_embed_neighbors = gather_edges(edge_embeddings, E_idx)
 
@@ -209,21 +197,6 @@ class TERMinator(nn.Module):
             h_E = torch.cat([geometric_batch.edge_features, edge_embeddings_flat], dim=-1)
         else:
             h_E = geometric_batch.edge_features
-
-            # compute E_idx as done for Ingraham features
-            X = data['X'][:, :, 1]
-            mask = data['x_mask']
-            eps = 1e-6
-            # Convolutional network on NCHW
-            mask_2D = torch.unsqueeze(mask, 1) * torch.unsqueeze(mask, 2)
-            dX = torch.unsqueeze(X, 1) - torch.unsqueeze(X, 2)
-            D = mask_2D * torch.sqrt(torch.sum(dX**2, 3) + eps)
-
-            # Identify k nearest neighbors (including self)
-            D_max, _ = torch.max(D, -1, keepdim=True)
-            D_adjust = D + (1. - mask_2D) * D_max
-            _, E_idx = torch.topk(D_adjust, self.hparams['k_neighbors'], dim=-1, largest=False)
-
 
         return h_V, geometric_batch.edge_index, h_E, E_idx
 
@@ -256,33 +229,26 @@ class TERMinator(nn.Module):
         split_h_E = torch.split(h_E, seq_lens.tolist())
         etab = pad_sequence_12(split_h_E)
 
+        #print(etab.shape, E_idx.shape)
         # pad the difference if using DataParallel
         padding_diff = max_seq_len - etab.shape[1]
         if padding_diff > 0:
             padding = torch.zeros(etab.shape[0], padding_diff, etab.shape[2], etab.shape[3], device=etab.device)
             etab = torch.cat([etab, padding], dim=1)
-            #padding = torch.zeros(etab.shape[0], padding_diff, etab.shape[2], device=etab.device).long()
-            #E_idx = torch.cat([E_idx, padding], dim=1)
-
-        # compute global E_idx from edge_index
-        total_len = seq_lens.sum()
-        batched_E_idx = E_idx[0].view(total_len, self.hparams['k_neighbors'])
-        split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
-        offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
-        split_E_idxs = [e - offset for e, offset in zip(split_E_idxs, offset)]
-        E_idx = pad_sequence(split_E_idxs, batch_first=True)
+            padding = torch.zeros(etab.shape[0], padding_diff, etab.shape[2], device=etab.device).long()
+            E_idx = torch.cat([E_idx, padding], dim=1)
 
         return etab, E_idx
 
-    def _from_geometric_outputs(self, h_E, E_idx, seq_lens, max_seq_len):
+    def _from_geometric_outputs(self, h_E, edge_index, seq_lens, max_seq_len):
         """ Convert outputs of Torch Geometric models to Ingraham style outputs
 
         Args
         ----
         h_E : torch.Tensor
             Outputted Potts Model in Torch Geometric format
-        E_idx : torch.Tensor
-            Edge index matrix in Ingraham format (kNN sparse)
+        edge_index : torch.Tensor
+            Edge index matrix in Torch Geometric form
         seq_lens : np.ndarray (int)
             Sequence lens of proteins in batch
         max_seq_len : int
@@ -295,6 +261,14 @@ class TERMinator(nn.Module):
         E_idx : torch.LongTensor
             Edge index matrix in Ingraham format (kNN sparse)
         """
+        # compute global E_idx from edge_index
+        total_len = seq_lens.sum()
+        batched_E_idx = edge_index[0].view(total_len, self.hparams['k_neighbors'])
+        split_E_idxs = torch.split(batched_E_idx, list(seq_lens))
+        offset = [sum(seq_lens[:i]) for i in range(len(seq_lens))]
+        split_E_idxs = [e - offset for e, offset in zip(split_E_idxs, offset)]
+        E_idx = pad_sequence(split_E_idxs, batch_first=True)
+
         # aliases _from_gvp_outputs since it's the same procedure
         return self._from_gvp_outputs(h_E, E_idx, seq_lens, max_seq_len)
 
