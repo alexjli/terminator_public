@@ -62,7 +62,7 @@ if __name__ == '__main__':
     num_batches = len(pdbs) // args.batch_size + 1
 
     bid = os.popen(
-        (f"sbatch --parsable --array=0-{num_batches} "
+        (f"sbatch --parsable --array=0-{num_batches} --mem={args.batch_size * 2000} --mincpu={args.batch_size} "
          f"{os.path.join(DIR, 'batch_arr_dTERMen.sh')} {output_path} {batch_arr_list} {args.batch_size}")).read()
     bid = int(bid.strip())
     os.system(f"sbatch --dependency=afterany:{bid} sum_res.sh {args.output_dir} {args.dtermen_data}")
