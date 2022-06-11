@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --mincpu=24
+#SBATCH --mincpu=32
+#SBATCH --gres=gpu:volta:1
 #SBATCH --time=HOURS:00:00
 #SBATCH --mem=50G
 #SBATCH -o RUNDIR/train-output_runRUNNO.out
@@ -18,9 +19,4 @@ python train.py \
   --model_hparams=MODEL_HPARAMS \
   --run_hparams=RUN_HPARAMS \
   --run_dir=RUNDIR \
-  --out_dir=OUTPUTDIR \
-  --dev=cpu \
-  --epochs=100 \
-  --train=DATASET/TRAIN.in \
-  --validation=DATASET/VALIDATION.in \
-  --test=DATASET/TEST.in
+  --out_dir=OUTPUTDIR

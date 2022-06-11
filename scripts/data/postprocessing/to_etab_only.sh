@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH --partition=xeon-p8
-#SBATCH --time=08:00:00
-#SBATCH --exclusive
+#SBATCH --time=02:00:00
 #SBATCH --mem=0
 #SBATCH -o OUTPUTDIR/etab-output.out
 #SBATCH -e OUTPUTDIR/etab-error.out
@@ -16,8 +15,3 @@ python to_etab.py \
     --output_dir=OUTPUTDIR \
     --dtermen_data=DTERMENDATA \
     --num_cores=64 -u
-python batch_arr_dTERMen.py \
-    --output_dir=OUTPUTDIR \
-    --pdb_root=PDBROOT \
-    --dtermen_data=DTERMENDATA \
-    --batch_size=45
