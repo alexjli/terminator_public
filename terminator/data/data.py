@@ -21,55 +21,8 @@ from tqdm import tqdm
 
 # pylint: disable=no-member, not-callable
 
-# Ingraham featurization functions
-
-
-def _ingraham_featurize(batch, device="cpu"):
-    """ Pack and pad coords in batch into torch tensors
-    as done in https://github.com/jingraham/neurips19-graph-protein-design
-
-    Args
-    ----
-    batch : list of dict
-        list of protein backbone coordinate dictionaries,
-        in the format of that outputted by :code:`parseCoords.py`
-    device : str
-        device to place torch tensors
-
-    Returns
-    -------
-    X : torch.Tensor
-        Batched coordinates tensor
-    mask : torch.Tensor
-        Mask for X
-    lengths : np.ndarray
-        Array of lengths of batched proteins
-    """
-    B = len(batch)
-    lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
-    l_max = max(lengths)
-    X = np.zeros([B, l_max, 4, 3])
-
-    # Build the batch
-    for i, x in enumerate(batch):
-        l = x.shape[0]
-        x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
-        X[i, :, :, :] = x_pad
-
-    # Mask
-    isnan = np.isnan(X)
-    mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
-    X[isnan] = 0.
-
-    # Conversion
-    X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
-    mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
-    return X, mask, lengths
-
-
 
 # Jing featurization functions
-
 
 
 def _normalize(tensor, dim=-1):
@@ -283,6 +236,215 @@ def _jing_featurize(protein, dev='cpu'):
     return data
 
 
+# Ingraham featurization functions
+
+
+def _ingraham_featurize(batch, device="cpu"):
+    """ Pack and pad coords in batch into torch tensors
+    as done in https://github.com/jingraham/neurips19-graph-protein-design
+
+    Args
+    ----
+    batch : list of dict
+        list of protein backbone coordinate dictionaries,
+        in the format of that outputted by :code:`parseCoords.py`
+    device : str
+        device to place torch tensors
+
+    Returns
+    -------
+    X : torch.Tensor
+        Batched coordinates tensor
+    mask : torch.Tensor
+        Mask for X
+    lengths : np.ndarray
+        Array of lengths of batched proteins
+    """
+    B = len(batch)
+    lengths = np.array([b.shape[0] for b in batch], dtype=np.int32)
+    l_max = max(lengths)
+    X = np.zeros([B, l_max, 4, 3])
+
+    # Build the batch
+    for i, x in enumerate(batch):
+        l = x.shape[0]
+        x_pad = np.pad(x, [[0, l_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan, ))
+        X[i, :, :, :] = x_pad
+
+    # Mask
+    isnan = np.isnan(X)
+    mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
+    X[isnan] = 0.
+
+    # Conversion
+    X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
+    mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
+    return X, mask, lengths
+
+def _quaternions(R):
+    """ Convert a batch of 3D rotations [R] to quaternions [Q]
+        R [...,3,3]
+        Q [...,4]
+    """
+    def _R(i, j):
+        return R[..., i, j]
+
+    # Simple Wikipedia version
+    # en.wikipedia.org/wiki/Rotation_matrix#Quaternion
+    # For other options see math.stackexchange.com/questions/2074316/calculating-rotation-axis-from-rotation-matrix
+    diag = torch.diagonal(R, dim1=-2, dim2=-1)
+    Rxx, Ryy, Rzz = diag.unbind(-1)
+    magnitudes = 0.5 * torch.sqrt(
+        torch.abs(1 + torch.stack([Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1)))
+    signs = torch.sign(torch.stack([_R(2, 1) - _R(1, 2), _R(0, 2) - _R(2, 0), _R(1, 0) - _R(0, 1)], -1))
+    xyz = signs * magnitudes
+    # The relu enforces a non-negative trace
+    w = torch.sqrt(F.relu(1 + diag.sum(-1, keepdim=True))) / 2.
+    Q = torch.cat((xyz, w), -1)
+    Q = F.normalize(Q, dim=-1)
+
+    return Q
+
+
+def _orientations_coarse(X, edge_index, eps=1e-6):
+    # Pair features
+
+    # Shifted slices of unit vectors
+    dX = X[1:, :] - X[:-1, :]
+    U = F.normalize(dX, dim=-1)
+    u_2 = U[:-2, :]
+    u_1 = U[1:-1, :]
+    u_0 = U[2:, :]
+    # Backbone normals
+    n_2 = F.normalize(torch.cross(u_2, u_1), dim=-1)
+    n_1 = F.normalize(torch.cross(u_1, u_0), dim=-1)
+
+    # Bond angle calculation
+    cosA = -(u_1 * u_0).sum(-1)
+    cosA = torch.clamp(cosA, -1 + eps, 1 - eps)
+    A = torch.acos(cosA)
+    # Angle between normals
+    cosD = (n_2 * n_1).sum(-1)
+    cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
+    D = torch.sign((u_2 * n_1).sum(-1)) * torch.acos(cosD)
+    # Backbone features
+    AD_features = torch.stack((torch.cos(A), torch.sin(A) * torch.cos(D), torch.sin(A) * torch.sin(D)), -1)
+    AD_features = F.pad(AD_features, (0, 0, 1, 2), 'constant', 0)
+
+    # Build relative orientations
+    o_1 = F.normalize(u_2 - u_1, dim=-1)
+    O = torch.stack((o_1, n_2, torch.cross(o_1, n_2)), 2)
+    O = O.view(list(O.shape[:1]) + [9])
+    O = F.pad(O, (0, 0, 1, 2), 'constant', 0)
+
+    # DEBUG: Viz [dense] pairwise orientations
+    # O = O.view(list(O.shape[:2]) + [3,3])
+    # dX = X.unsqueeze(2) - X.unsqueeze(1)
+    # dU = torch.matmul(O.unsqueeze(2), dX.unsqueeze(-1)).squeeze(-1)
+    # dU = dU / torch.norm(dU, dim=-1, keepdim=True)
+    # dU = (dU + 1.) / 2.
+    # plt.imshow(dU.data.numpy()[0])
+    # plt.show()
+    # print(dX.size(), O.size(), dU.size())
+    # exit(0)
+
+    O_pairs = O[edge_index]
+    X_pairs = X[edge_index]
+
+    # Re-view as rotation matrices
+    O_pairs = O_pairs.view(list(O_pairs.shape[:-1]) + [3,3])
+
+    # Rotate into local reference frames
+    dX = X_pairs[0] - X_pairs[1]
+    dU = torch.matmul(O_pairs[1], dX.unsqueeze(-1)).squeeze(-1)
+    dU = F.normalize(dU, dim=-1)
+    R = torch.matmul(O_pairs[1].transpose(-1, -2), O_pairs[0])
+    Q = _quaternions(R)
+
+    # Orientation features
+    O_features = torch.cat((dU, Q), dim=-1)
+
+    # DEBUG: Viz pairwise orientations
+    # IMG = Q[:,:,:,:3]
+    # # IMG = dU
+    # dU_full = torch.zeros(X.shape[0], X.shape[1], X.shape[1], 3).scatter(
+    #     2, E_idx.unsqueeze(-1).expand(-1,-1,-1,3), IMG
+    # )
+    # print(dU_full)
+    # dU_full = (dU_full + 1.) / 2.
+    # plt.imshow(dU_full.data.numpy()[0])
+    # plt.show()
+    # exit(0)
+    # print(Q.sum(), dU.sum(), R.sum())
+    return AD_features, O_features
+
+def _ingraham_geometric_featurize(protein, dev='cpu'):
+    """ Featurize individual proteins for use in torch_geometric Data objects,
+    as done in https://github.com/drorlab/gvp-pytorch
+
+    Args
+    ----
+    protein : dict
+        Dictionary of protein features
+
+        - :code:`name` - PDB ID of the protein
+        - :code:`coords` - list of dicts specifying backbone atom coordinates
+        in the format of that outputted by :code:`parseCoords.py`
+        - :code:`seq` - protein sequence
+        - :code:`chain_idx` - an integer per residue such that each unique integer represents a unique chain
+
+    Returns
+    -------
+    torch_geometric.data.Data
+        Data object containing
+        - :code:`x` - CA atomic coordinates
+        - :code:`seq` - sequence of protein
+        - :code:`name` - PDB ID of protein
+        - :code:`node_s` - Node scalar features
+        - :code:`node_v` - Node vector features
+        - :code:`edge_s` - Edge scalar features
+        - :code:`edge_v` - Edge vector features
+        - :code:`edge_index` - Sparse representation of edge
+        - :code:`mask` - Residue mask specifying residues with incomplete coordinate sets
+    """
+    name = protein['name']
+    with torch.no_grad():
+        coords = torch.as_tensor(protein['coords'], device=dev, dtype=torch.float32)
+        seq = torch.as_tensor(protein['seq'], device=dev, dtype=torch.long)
+
+        mask = torch.isfinite(coords.sum(dim=(1, 2)))
+        coords[~mask] = np.inf
+
+        X_ca = coords[:, 1]
+        edge_index = torch_cluster.knn_graph(X_ca, k=30, loop=True)  # TODO: make param
+
+        pos_embeddings = _positional_embeddings(edge_index)
+        # generate mask for interchain interactions
+        pos_chain = (protein['chain_idx'][edge_index.view(-1)]).view(2, -1)
+        pos_mask = (pos_chain[0] != pos_chain[1])
+        # zero out all interchain positional embeddings
+        pos_embeddings = pos_mask.unsqueeze(-1) * pos_embeddings
+
+        E_vectors = X_ca[edge_index[0]] - X_ca[edge_index[1]]
+        rbf = _rbf(E_vectors.norm(dim=-1), D_count=16, device=dev)  # TODO: make param
+
+        dihedrals = _dihedrals(coords)
+        _, orientations = _orientations_coarse(X_ca, edge_index)
+
+        node_features = dihedrals
+        edge_features = torch.cat([pos_embeddings, rbf, orientations], dim=-1)
+
+        node_features, edge_features, = map(torch.nan_to_num, (node_features, edge_features))
+
+    data = torch_geometric.data.Data(x=X_ca,
+                                     seq=seq,
+                                     name=name,
+                                     node_features=node_features,
+                                     edge_features=edge_features,
+                                     edge_index=edge_index,
+                                     mask=mask)
+    return data
+
 
 # Batching functions
 
@@ -344,6 +506,7 @@ def _package(b_idx):
     ppoe = []
     contact_idxs = []
     gvp_data = []
+    geometric_data = []
 
     sortcery_seqs = []
     sortcery_nrgs = []
@@ -375,6 +538,13 @@ def _package(b_idx):
         chain_idx = torch.cat(chain_idx, dim=0)
         gvp_data.append(
             _jing_featurize({
+                'name': data['pdb'],
+                'coords': data['coords'],
+                'seq': data['sequence'],
+                'chain_idx': chain_idx
+            }))
+        geometric_data.append(
+            _ingraham_geometric_featurize({
                 'name': data['pdb'],
                 'coords': data['coords'],
                 'seq': data['sequence'],
@@ -437,11 +607,11 @@ def _package(b_idx):
         'gvp_data': gvp_data,
         'sortcery_seqs': sortcery_seqs,
         'sortcery_nrgs': sortcery_nrgs
+        'geometric_data': geometric_data
     }
 
 
 # Non-lazy data loading functions
-
 
 
 def load_file(in_folder, pdb_id, min_protein_len=30):
@@ -542,7 +712,7 @@ class TERMDataset(Dataset):
                     progress.update(1)
 
                 # get pdb_ids
-                pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
+                pdb_ids = [os.path.basename(path)[:-len(".features")] for path in filelist]
 
                 res_list = [
                     pool.apply_async(load_file, (in_folder, id),
@@ -962,7 +1132,7 @@ class TERMLazyDataset(Dataset):
                     progress.update(1)
 
                 # get pdb_ids
-                pdb_ids = [os.path.basename(path).split(".")[0] for path in filelist]
+                pdb_ids = [os.path.basename(path)[:-len(".features")] for path in filelist]
 
                 res_list = [
                     pool.apply_async(read_lens, (in_folder, pdb_id),

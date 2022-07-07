@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --mem=1000
+#SBATCH --mem=2000
 #SBATCH --partition=xeon-p8
-#SBATCH --time=0:20:00
+#SBATCH --time=0:30:00
 #SBATCH -o OUTPUTDIR/ID-output.out
 #SBATCH -e OUTPUTDIR/ID-error.err
 # collect MST_PATH from config file

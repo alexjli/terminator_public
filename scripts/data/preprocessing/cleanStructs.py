@@ -16,16 +16,14 @@ Usage:
 See :code:`python cleanStructs.py --help` for more info.
 """
 import argparse
-import glob
-import json
 import multiprocessing as mp
 import os
-import pickle
 import sys
-import time
 import traceback
 
 import numpy as np
+
+# pylint: disable=unspecified-encoding
 
 
 def extractBackbone(filename, outpath):
@@ -38,7 +36,8 @@ def extractBackbone(filename, outpath):
     outpath : str
         Prefix to place the output file (.red.pdb will be appended)
     """
-    valid_elements = ['N', 'CA', 'C', 'O']
+    VALID_ELEMENTS = ['N', 'CA', 'C', 'O']
+    VALID_RECORD_TYPES = ['ATOM', 'HETATM']
     struct_dict = {}
     valid_entry_lines = []
     with open(filename, 'r') as fp:
@@ -49,24 +48,25 @@ def extractBackbone(filename, outpath):
         if data[:3] == 'TER' or data[:3] == 'END':
             valid_entry_lines.append(line_num)
             continue
+        record_type = data[0:6].strip()
+        if record_type not in VALID_RECORD_TYPES:
+            print(f"Skipping line: {data}")
+            continue
+
         try:
             element = data[13:16].strip()
-            residue = data[17:20].strip()
             residx = data[22:27].strip()
             chain = data[21]
-            x = data[30:38].strip()
-            y = data[38:46].strip()
-            z = data[46:54].strip()
-            coords = [float(coord) for coord in [x, y, z]]
         except Exception as e:
             print(data)
             raise e
 
+
         if (chain, residx) not in struct_dict.keys():
             struct_dict[(chain, residx)] = {"elements": np.array([False for _ in range(5)]), "line_numbers": []}
 
-        if element in valid_elements:
-            struct_dict[(chain, residx)]["elements"][valid_elements.index(element)] = True
+        if element in VALID_ELEMENTS:
+            struct_dict[(chain, residx)]["elements"][VALID_ELEMENTS.index(element)] = True
             struct_dict[(chain, residx)]["line_numbers"].append(line_num)
         elif element == 'OXT':
             struct_dict[(chain, residx)]["elements"][-1] = True
@@ -88,7 +88,7 @@ def extractBackbone(filename, outpath):
     valid_entry_lines.sort()
 
     with open(outpath, 'w') as fp:
-        for idx in range(len(valid_entry_lines)):
+        for idx, _ in enumerate(valid_entry_lines):
             cur_line_num = valid_entry_lines[idx]
             prev_line_num = valid_entry_lines[idx - 1] if idx > 0 else valid_entry_lines[0]
             cur_line = entry_lines[cur_line_num]
@@ -153,7 +153,7 @@ def generateCoordsDir(in_list, out_folder, num_cores=1):
     pool = mp.Pool(num_cores, maxtasksperchild=10)
     for in_file in in_list:
         in_file = os.path.abspath(in_file)
-        res = pool.apply_async(dataGen, args=(in_file, out_folder), error_callback=_raise_error)
+        pool.apply_async(dataGen, args=(in_file, out_folder), error_callback=_raise_error)
 
     pool.close()
     pool.join()

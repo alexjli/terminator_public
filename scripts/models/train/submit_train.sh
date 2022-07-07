@@ -6,7 +6,7 @@ DATANAME=${1##*/}
 MODEL_HPARAMS=$(readlink -f $2)
 RUN_HPARAMS=$(readlink -f $3)
 RUNDIR=$(readlink -f $4)
-RUNNAME=${3##*/}
+RUNNAME=${4##*/}
 OUTPUTDIR=$(readlink -f $5)
 HOURS=$6
 TRAIN=$7
@@ -45,7 +45,7 @@ fi
 sed \
   -e "s|DATASET|${DATASET}|g" \
   -e "s|DATANAME|${DATANAME}|g" \
-  -e 's|RUNNO|0|g' \
+  -e "s|RUNNO|${RUNNO}|g" \
   -e "s|MODEL_HPARAMS|${MODEL_HPARAMS}|g" \
   -e "s|RUN_HPARAMS|${RUN_HPARAMS}|g" \
   -e "s|RUNDIR|${RUNDIR}|g" \
