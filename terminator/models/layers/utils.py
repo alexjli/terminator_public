@@ -443,7 +443,6 @@ def merge_duplicate_edges_geometric(h_E_update, edge_index):
     return h_E_update
 
 
-
 def merge_duplicate_term_edges(h_E_update, E_idx):
     """ Average embeddings across bidirectional TERM edges.
 

@@ -158,7 +158,7 @@ class ProteinFeatures(nn.Module):
         # exit(0)
         return RBF
 
-    def _quaternions(self, R):
+    def _quaternions(self, R, eps=1e-10):
         """ Convert a batch of 3D rotations [R] to quaternions [Q]
             R [...,3,3]
             Q [...,4]
@@ -172,7 +172,7 @@ class ProteinFeatures(nn.Module):
         diag = torch.diagonal(R, dim1=-2, dim2=-1)
         Rxx, Ryy, Rzz = diag.unbind(-1)
         magnitudes = 0.5 * torch.sqrt(
-            torch.abs(1 + torch.stack([Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1)))
+            torch.abs(1 + torch.stack([Rxx - Ryy - Rzz, -Rxx + Ryy - Rzz, -Rxx - Ryy + Rzz], -1) + eps))
         signs = torch.sign(torch.stack([_R(2, 1) - _R(1, 2), _R(0, 2) - _R(2, 0), _R(1, 0) - _R(0, 1)], -1))
         xyz = signs * magnitudes
         # The relu enforces a non-negative trace

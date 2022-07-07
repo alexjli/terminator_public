@@ -1,9 +1,10 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH --mincpu=16
-#SBATCH --gres=gpu:volta:1
+#SBATCH --gres=gpu:volta:2
 #SBATCH --time=HOURS:00:00
 #SBATCH --mem=35G
+#SBATCH --exclusive
 #SBATCH -o RUNDIR/train-output_runRUNNO.out
 #SBATCH -e RUNDIR/train-error_runRUNNO.out
 #SBATCH -p normal

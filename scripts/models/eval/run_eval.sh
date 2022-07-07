@@ -9,7 +9,7 @@
 
 CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
-conda activate terminator
+conda activate terminator-nightly
 ulimit -s unlimited
 
 python eval.py \

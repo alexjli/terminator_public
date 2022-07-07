@@ -223,3 +223,15 @@ make sure code taken from other places is cited
 throw away contact index?
 
 take dtermen run folder directly rather than try to search for the right folder?
+
+plot performance vs train-test similarity (e.g. sequence similarity)
+
+4/20:
+
+what license to use for arxiv paper
+
+multichain: only show results for proteins with no blast hits against training set?
+citing a preprint in a journal article?
+looking at degenerate sequence structures, TERMinator is bad with long helicies (coiled coils, helix bundle, and collagen)
+
+show recovery by secondary structure
