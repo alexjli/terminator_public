@@ -148,6 +148,11 @@ def nlcpl(etab, E_idx, data):
     return nlcpl_return, int(n_edges)
 
 
+def nlcpl_test(etab, E_idx, data):
+    """ Alias of nlcpl_full """
+    return nlcpl_full(etab, E_idx, data)
+
+
 def nlcpl_full(etab, E_idx, data):
     """ Negative log composite psuedo-likelihood
         Averaged nlcpl per residue, across batches

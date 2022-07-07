@@ -177,25 +177,24 @@ def covariation_features(matches, term_lens, rmsds, mask):
         Weighted cross-covariance matrices
         Shape: n_batch x n_terms x max_term_len x max_term_len x n_hidden x n_hidden
     """
-    with torch.no_grad():
-        local_dev = matches.device
-        batchify_terms = batchify(matches, term_lens)
-        term_rmsds = batchify(rmsds, term_lens)
-        # try using -rmsd as weight
-        term_rmsds = -term_rmsds
-        term_rmsds[term_rmsds == 0] = torch.tensor(np.finfo(np.float32).min).to(local_dev)
-        weights = F.softmax(term_rmsds, dim=-1)
+    local_dev = matches.device
+    batchify_terms = batchify(matches, term_lens)
+    term_rmsds = batchify(rmsds, term_lens)
+    # try using -rmsd as weight
+    term_rmsds = -term_rmsds
+    term_rmsds[term_rmsds == 0] = torch.tensor(np.finfo(np.float32).min).to(local_dev)
+    weights = F.softmax(term_rmsds, dim=-1)
 
-        weighted_mean = (weights.unsqueeze(-1) * batchify_terms).sum(dim=-2)
-        centered = batchify_terms - weighted_mean.unsqueeze(-2)
-        weighted_centered = weights.unsqueeze(-1) * centered
-        X = weighted_centered.unsqueeze(-3).transpose(-2, -1)
-        X_t = weighted_centered.unsqueeze(-4)
-        cov_mat = X @ X_t
-        mask = mask.unsqueeze(-1).float()
-        mask_edges = mask @ mask.transpose(-2, -1)
-        mask_edges = mask_edges.unsqueeze(-1).unsqueeze(-1)
-        cov_mat *= mask_edges
+    weighted_mean = (weights.unsqueeze(-1) * batchify_terms).sum(dim=-2)
+    centered = batchify_terms - weighted_mean.unsqueeze(-2)
+    weighted_centered = weights.unsqueeze(-1) * centered
+    X = weighted_centered.unsqueeze(-3).transpose(-2, -1)
+    X_t = weighted_centered.unsqueeze(-4)
+    cov_mat = X @ X_t
+    mask = mask.unsqueeze(-1).float()
+    mask_edges = mask @ mask.transpose(-2, -1)
+    mask_edges = mask_edges.unsqueeze(-1).unsqueeze(-1)
+    cov_mat *= mask_edges
 
     return cov_mat
 
