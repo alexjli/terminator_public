@@ -9,7 +9,9 @@ RUNDIR=$(readlink -f $4)
 RUNNAME=${4##*/}
 OUTPUTDIR=$(readlink -f $5)
 HOURS=$6
-RUNNO=$7
+TRAIN=$7
+VALIDATION=$8
+TEST=$9
 echo "$DATANAME $RUNNAME $OUTPUTDIR"
 
 # compute what directory this file is in
@@ -50,6 +52,9 @@ sed \
   -e "s|OUTPUTDIR|${OUTPUTDIR}|g" \
   -e "s|RUNNAME|${RUNNAME}|g" \
   -e "s|HOURS|${HOURS}|g" \
+  -e "s|TRAIN|${TRAIN}|g" \
+  -e "s|VALIDATION|${VALIDATION}|g" \
+  -e "s|TEST|${TEST}|g" \
   <run_train.sh \
   >bash_files/run_${DATANAME}_${RUNNAME}_run0.sh
 jid0=$(sbatch --parsable bash_files/run_${DATANAME}_${RUNNAME}_run0.sh)

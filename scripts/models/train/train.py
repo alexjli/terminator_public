@@ -186,7 +186,7 @@ def _setup_dataloaders(args, run_hparams):
     return train_dataloader, val_dataloader, test_dataloader
 
 
-def _load_checkpoint(run_dir):
+def _load_checkpoint(run_dir, dev, finetune=False):
     """ If a training checkpoint exists, load the checkpoint. Otherwise, setup checkpointing initial values.
 
     Args
@@ -209,8 +209,8 @@ def _load_checkpoint(run_dir):
     """
 
     if os.path.isfile(os.path.join(run_dir, 'net_best_checkpoint.pt')):
-        best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'))
-        last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'))
+        best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_best_checkpoint.pt'), map_location=torch.device(dev))
+        last_checkpoint_state = torch.load(os.path.join(run_dir, 'net_last_checkpoint.pt'), map_location=torch.device(dev))
         best_checkpoint = best_checkpoint_state['state_dict']
         best_validation = best_checkpoint_state['val_loss']
         last_optim_state = last_checkpoint_state["optimizer_state"]
@@ -225,6 +225,9 @@ def _load_checkpoint(run_dir):
         start_epoch = 0
         writer = SummaryWriter(log_dir=os.path.join(run_dir, 'tensorboard'))
         training_curves = {"train_loss": [], "val_loss": []}
+        if finetune: # load existing model for finetuning
+            best_checkpoint_state = torch.load(os.path.join(run_dir, 'net_original.pt'), map_location=torch.device(dev))
+            best_checkpoint = best_checkpoint_state['state_dict']
 
     return {"best_checkpoint_state": best_checkpoint_state,
             "last_checkpoint_state": last_checkpoint_state,
@@ -263,20 +266,6 @@ def _setup_model(model_hparams, run_hparams, checkpoint, dev):
     print(terminator)
     print("terminator hparams", terminator.hparams)
 
-    if run_hparams['finetune']:  # freeze all but the last output layer
-        for (name, module) in terminator.named_children():
-            if name == "top":
-                for (n, m) in module.named_children():
-                    if n == "W_out":
-                        m.requires_grad = True
-                        print(f"top.{n} unfrozen")
-                    else:
-                        m.requires_grad = False
-                        print(f"top.{n} frozen")
-            else:
-                module.requires_grad = False
-                print(f"{name} frozen")
-
     if torch.cuda.device_count() > 1 and dev != "cpu":
         terminator = nn.DataParallel(terminator)
         terminator_module = terminator.module
@@ -298,7 +287,7 @@ def main(args):
     model_hparams, run_hparams = _setup_hparams(args)
     train_dataloader, val_dataloader, test_dataloader = _setup_dataloaders(args, run_hparams)
     # load checkpoint
-    checkpoint_dict = _load_checkpoint(run_dir)
+    checkpoint_dict = _load_checkpoint(run_dir, dev, run_hparams['finetune'])
     best_validation = checkpoint_dict["best_validation"]
     best_checkpoint = checkpoint_dict["best_checkpoint"]
     start_epoch = checkpoint_dict["start_epoch"]
@@ -306,19 +295,24 @@ def main(args):
     writer = checkpoint_dict["writer"]
     training_curves = checkpoint_dict["training_curves"]
 
+    isDataParallel = True if torch.cuda.device_count() > 1 and dev != "cpu" else False
+    finetune = run_hparams["finetune"]
+
     # construct terminator, loss fn, and optimizer
     terminator, terminator_module = _setup_model(model_hparams, run_hparams, best_checkpoint, dev)
     loss_fn = construct_loss_fn(run_hparams)
     optimizer = get_std_opt(terminator.parameters(),
                             d_model=model_hparams['energies_hidden_dim'],
                             regularization=run_hparams['regularization'],
-                            state=last_optim_state)
+                            state=last_optim_state,
+                            finetune=finetune,
+                            finetune_lr=run_hparams["finetune_lr"])
 
     try:
         for epoch in range(start_epoch, args.epochs):
             print('epoch', epoch)
 
-            epoch_loss, epoch_ld, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev)
+            epoch_loss, epoch_ld, _ = run_epoch(terminator, train_dataloader, loss_fn, optimizer=optimizer, grad=True, dev=dev, finetune=finetune, isDataParallel=isDataParallel)
             print('epoch loss', epoch_loss, 'epoch_ld', epoch_ld)
             writer.add_scalar('training loss', epoch_loss, epoch)
 
@@ -330,18 +324,23 @@ def main(args):
             training_curves["train_loss"].append((epoch_loss, epoch_ld))
             training_curves["val_loss"].append((val_loss, val_ld))
 
+            comp = (val_ld['sortcery_loss']['loss'] < best_validation) if finetune else (val_loss < best_validation)
+
             # save a state checkpoint
             checkpoint_state = {
                 'epoch': epoch,
                 'state_dict': terminator_module.state_dict(),
-                'best_model': (val_loss < best_validation),
+                'best_model': comp, # (val_loss < best_validation)
                 'val_loss': best_validation,
                 'optimizer_state': optimizer.state_dict(),
                 'training_curves': training_curves
             }
             torch.save(checkpoint_state, os.path.join(run_dir, 'net_last_checkpoint.pt'))
-            if val_loss < best_validation:
-                best_validation = val_loss
+            if comp: # if (val_loss < best_validation)
+                if finetune:
+                    best_validation = val_ld['sortcery_loss']['loss']
+                else:
+                    best_validation = val_loss
                 best_checkpoint = copy.deepcopy(terminator_module.state_dict())
                 torch.save(checkpoint_state, os.path.join(run_dir, 'net_best_checkpoint.pt'))
 
@@ -384,7 +383,7 @@ if __name__ == '__main__':
                         help='path to place test set eval results (e.g. net.out). If not set, default to --run_dir')
     parser.add_argument('--dev', help='device to train on', default='cuda:0')
     parser.add_argument('--epochs', help='number of epochs to train for', default=100, type=int)
-    parser.add_argument('--lazy', help="use lazy data loading", default=False, action='store_true')
+    parser.add_argument('--lazy', help="use lazy data loading", action='store_true')
     parsed_args = parser.parse_args()
 
     # by default, if no splits are provided, read the splits from the dataset folder

@@ -273,7 +273,8 @@ DEFAULT_TRAIN_HPARAMS = {
     'max_seq_tokens': None,
     'term_dropout': None,
     'loss_config': {
-        'nlcpl': 1,
+        'nlcpl': 1
     },
-    'finetune': False
+    'finetune': False,
+    'finetune_lr': 1e-6
 }

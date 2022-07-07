@@ -7,10 +7,11 @@
 #SBATCH --exclusive
 #SBATCH -o RUNDIR/train-output_runRUNNO.out
 #SBATCH -e RUNDIR/train-error_runRUNNO.out
+#SBATCH -p normal
 
 CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
-conda activate terminator-nightly
+conda activate terminator
 ulimit -s unlimited
 ulimit -n 10000
 
@@ -20,4 +21,8 @@ python train.py \
   --run_hparams=RUN_HPARAMS \
   --run_dir=RUNDIR \
   --out_dir=OUTPUTDIR \
-  --lazy
+  --dev=cpu \
+  --epochs=100 \
+  --train=DATASET/TRAIN.in \
+  --validation=DATASET/VALIDATION.in \
+  --test=DATASET/TEST.in
