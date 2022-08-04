@@ -471,27 +471,27 @@ def _package(b_idx):
     dict
         Collection of batched features required for running TERMinator. This contains:
 
-        - :code:`msas` - the multiple sequence alignment
+        - :code:`msas` - the sequences for each TERM match to the target structure
 
-        - :code:`features` - the TERM features
+        - :code:`features` - the :math:`\\phi, \\psi, \\omega`, and environment values of the TERM matches
 
-        - :code:`ppoe` - ???
+        - :code:`ppoe` - the :math:`\\phi, \\psi, \\omega`, and environment values of the target structure
 
-        - :code:`seq_lens` - the lengths of the sequences
+        - :code:`seq_lens` - lengths of the target sequences
 
-        - :code:`focuses` - ???
+        - :code:`focuses` - the corresponding target structure residue index for each TERM residue
 
-        - :code:`contact_idxs` - contact indices
+        - :code:`contact_idxs` - contact indices for each TERM residue
 
-        - :code:`src_key_mask` - ???
+        - :code:`src_key_mask` - mask for TERM residue padding
 
         - :code:`X` - coordinates
 
-        - :code:`x_mask` - ???
+        - :code:`x_mask` - mask for the target structure
 
-        - :code:`seqs` - the sequences
+        - :code:`seqs` - the target sequences
 
-        - :code:`ids` - the PDB id??
+        - :code:`ids` - the PDB ids
 
         - :code:`chain_idx` - the chain IDs
     """
@@ -606,7 +606,7 @@ def _package(b_idx):
         'chain_idx': chain_idx,
         'gvp_data': gvp_data,
         'sortcery_seqs': sortcery_seqs,
-        'sortcery_nrgs': sortcery_nrgs
+        'sortcery_nrgs': sortcery_nrgs,
         'geometric_data': geometric_data
     }
 
@@ -985,27 +985,27 @@ class TERMBatchSampler(Sampler):
         dict
             Collection of batched features required for running TERMinator. This contains:
 
-            - :code:`msas` - the multiple sequence alignment
+            - :code:`msas` - the sequences for each TERM match to the target structure
 
-            - :code:`features` - the TERM features
+            - :code:`features` - the :math:`\\phi, \\psi, \\omega`, and environment values of the TERM matches
 
-            - :code:`ppoe` - ???
+            - :code:`ppoe` - the :math:`\\phi, \\psi, \\omega`, and environment values of the target structure
 
-            - :code:`seq_lens` - the lengths of the sequences
+            - :code:`seq_lens` - lengths of the target sequences
 
-            - :code:`focuses` - ???
+            - :code:`focuses` - the corresponding target structure residue index for each TERM residue
 
-            - :code:`contact_idxs` - contact indices
+            - :code:`contact_idxs` - contact indices for each TERM residue
 
-            - :code:`src_key_mask` - ???
+            - :code:`src_key_mask` - mask for TERM residue padding
 
             - :code:`X` - coordinates
 
-            - :code:`x_mask` - ???
+            - :code:`x_mask` - mask for the target structure
 
-            - :code:`seqs` - the sequences
+            - :code:`seqs` - the target sequences
 
-            - :code:`ids` - the PDB id??
+            - :code:`ids` - the PDB ids
 
             - :code:`chain_idx` - the chain IDs
         """
@@ -1422,27 +1422,27 @@ class TERMLazyBatchSampler(Sampler):
         dict
             Collection of batched features required for running TERMinator. This contains:
 
-            - :code:`msas` - the multiple sequence alignment
+            - :code:`msas` - the sequences for each TERM match to the target structure
 
-            - :code:`features` - the TERM features
+            - :code:`features` - the :math:`\\phi, \\psi, \\omega`, and environment values of the TERM matches
 
-            - :code:`ppoe` - ???
+            - :code:`ppoe` - the :math:`\\phi, \\psi, \\omega`, and environment values of the target structure
 
-            - :code:`seq_lens` - the lengths of the sequences
+            - :code:`seq_lens` - lengths of the target sequences
 
-            - :code:`focuses` - ???
+            - :code:`focuses` - the corresponding target structure residue index for each TERM residue
 
-            - :code:`contact_idxs` - contact indices
+            - :code:`contact_idxs` - contact indices for each TERM residue
 
-            - :code:`src_key_mask` - ???
+            - :code:`src_key_mask` - mask for TERM residue padding
 
             - :code:`X` - coordinates
 
-            - :code:`x_mask` - ???
+            - :code:`x_mask` - mask for the target structure
 
-            - :code:`seqs` - the sequences
+            - :code:`seqs` - the target sequences
 
-            - :code:`ids` - the PDB id??
+            - :code:`ids` - the PDB ids
 
             - :code:`chain_idx` - the chain IDs
         """
