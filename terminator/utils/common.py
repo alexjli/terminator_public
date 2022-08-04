@@ -60,4 +60,4 @@ def ints_to_seq(int_list):
     return [int_to_AA[i] for i in int_list]
 
 def aa_three_to_one(residue):
-    return int_to_3lt_AA[AA_to_int[residue]]
+    return int_to_AA[AA_to_int[residue]]
