@@ -151,7 +151,7 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
 
     running_loss_dict = {}
 
-    # set grads properly 
+    # set grads properly
     if grad:
         model.train()
         if finetune: # freeze all but the last output layer
@@ -212,6 +212,7 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
         if test:
             n_batch, l, n = etab.shape[:3]
             dump.append({
+                'loss': loss,
                 'out': etab.view(n_batch, l, n, 20, 20).cpu().numpy(),
                 'idx': E_idx.cpu().numpy(),
                 'ids': ids

@@ -25,6 +25,7 @@ def find_pdb_path(pdb, root):
     ValueError
         If the PDB file is not found
     """
+    # switch for bcl2 cases
     if pdb.count("_") == 4:
         pdb_subname = "_".join(pdb.split("_")[2:4])
         pattern = os.path.join(root, "PDB", pdb_subname[1:3].lower(), f"{pdb_subname}.pdb")
