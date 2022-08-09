@@ -1,15 +1,16 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --mincpu=32
-#SBATCH --gres=gpu:volta:1
+#SBATCH --mincpu=16
+#SBATCH --gres=gpu:volta:2
 #SBATCH --time=HOURS:00:00
-#SBATCH --mem=50G
+#SBATCH --mem=35G
+#SBATCH --exclusive
 #SBATCH -o RUNDIR/train-output_runRUNNO.out
 #SBATCH -e RUNDIR/train-error_runRUNNO.out
 
-CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
+CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2022b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
-conda activate terminator-nightly
+conda activate terminator
 ulimit -s unlimited
 ulimit -n 10000
 
@@ -19,4 +20,8 @@ python train.py \
   --run_hparams=RUN_HPARAMS \
   --run_dir=RUNDIR \
   --out_dir=OUTPUTDIR \
-  --lazy
+  --dev=cpu \
+  --epochs=100 \
+  --train=DATASET/TRAIN.in \
+  --validation=DATASET/VALIDATION.in \
+  --test=DATASET/TEST.in

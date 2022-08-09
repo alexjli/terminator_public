@@ -104,7 +104,7 @@ def _sum_loss_dicts(total_ld, batch_ld):
     return combined_ld
 
 
-def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0"):
+def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=False, test=False, dev="cuda:0", isDataParallel=False, finetune=False):
     """ Run :code:`model` on one epoch of :code:`dataloader`
 
     Args
@@ -154,7 +154,29 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
     # set grads properly
     if grad:
         model.train()
-        torch.set_grad_enabled(True)
+        if finetune: # freeze all but the last output layer
+            if isDataParallel: # TODO cleaner way to do this?
+                for (name, module) in model.module.named_children():
+                    if name == "top":
+                        for (n, m) in module.named_children():
+                            if n == "W_out":
+                                m.requires_grad = True
+                            else:
+                                m.requires_grad = False
+                    else:
+                        module.requires_grad = False
+            else:
+                for (name, module) in model.named_children():
+                    if name == "top":
+                        for (n, m) in module.named_children():
+                            if n == "W_out":
+                                m.requires_grad = True
+                            else:
+                                m.requires_grad = False
+                    else:
+                        module.requires_grad = False
+        else:
+            torch.set_grad_enabled(True)
     else:
         model.eval()
         torch.set_grad_enabled(False)
@@ -190,6 +212,7 @@ def run_epoch(model, dataloader, loss_fn, optimizer=None, scheduler=None, grad=F
         if test:
             n_batch, l, n = etab.shape[:3]
             dump.append({
+                'loss': loss,
                 'out': etab.view(n_batch, l, n, 20, 20).cpu().numpy(),
                 'idx': E_idx.cpu().numpy(),
                 'ids': ids

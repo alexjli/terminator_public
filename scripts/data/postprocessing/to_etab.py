@@ -12,19 +12,19 @@ Usage:
 See :code:`python to_etab.py --help` for more info.
 """
 import argparse
-import json
 import multiprocessing as mp
 import os
 import pickle
 import sys
 import time
 import traceback
-from shutil import copyfile
 
 import numpy as np
 from tqdm import tqdm
 
-from terminator.utils.common import AA_to_int, int_to_AA
+from terminator.utils.common import int_to_3lt_AA
+
+# pylint: disable=wrong-import-position,wrong-import-order,redefined-outer-name,unspecified-encoding
 
 # for autosummary import purposes
 sys.path.insert(0, os.path.dirname(__file__))
@@ -37,11 +37,12 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
+# pylint: disable=broad-except
 def _to_etab_file_wrapper(etab_matrix, E_idx, idx_dict, out_path):
     """Wrapper for _to_etab_file that does error handling"""
     try:
         return to_etab_file(etab_matrix, E_idx, idx_dict, out_path)
-    except Exception as e:
+    except Exception:
         eprint(out_path)
         eprint(idx_dict)
         traceback.print_exc()
@@ -80,19 +81,19 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
     # l x 20
     self_nrgs = np.diagonal(self_etab, offset=0, axis1=-2, axis2=-1)
     for aa_idx, aa_nrgs in enumerate(self_nrgs):
+        # pylint: disable=broad-except
         try:
             chain, resid = idx_dict[aa_idx]
-        except Exception as e:
+        except Exception:
             eprint("num residues: ", len(self_nrgs))
             eprint(out_path)
             eprint(idx_dict)
             traceback.print_exc()
             return False, out_path
         for aa_int_id, nrg in enumerate(aa_nrgs):
-            aa_3lt_id = int_to_AA[aa_int_id]
+            aa_3lt_id = int_to_3lt_AA[aa_int_id]
             out_file.write('{},{} {} {}\n'.format(chain, resid, aa_3lt_id, nrg))
 
-    num_aa = self_nrgs.shape[0]
     pair_nrgs = {}
 
     # l x k-1 x 20 x 20
@@ -103,9 +104,9 @@ def to_etab_file(etab_matrix, E_idx, idx_dict, out_path):
             chain_j, j_resid = idx_dict[j_idx]
 
             for i, i_slice in enumerate(k_slice):
-                i_3lt_id = int_to_AA[i]
+                i_3lt_id = int_to_3lt_AA[i]
                 for j, nrg in enumerate(i_slice):
-                    j_3lt_id = int_to_AA[j]
+                    j_3lt_id = int_to_3lt_AA[j]
 
                     # every etab has two entries i, j and j, i
                     # average these nrgs
@@ -154,12 +155,10 @@ def get_idx_dict(pdb, chain_filter=None):
                 continue
             try:
                 chain = data[21]
-                """
-                residx = int(data[22:26].strip())
-                icode = data[26]
-                if icode != ' ':
-                    residx = str(residx) + icode
-                """
+                # residx = int(data[22:26].strip())
+                # icode = data[26]
+                # if icode != ' ':
+                #     residx = str(residx) + icode
                 residx = data[22:27].strip()  # rip i didn't know about icodes
 
             except Exception as e:

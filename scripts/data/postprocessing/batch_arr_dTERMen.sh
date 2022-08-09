@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH --mem=1000
 #SBATCH --partition=xeon-p8
-#SBATCH --time=2:00:00
+#SBATCH --time=0:20:00
 #SBATCH -o /dev/null
 
 . /etc/profile.d/modules.sh
@@ -32,6 +31,8 @@ do
   ID=${RUNLIST[$i]}
   echo $ID
   runfile="run_${ID}.sh"
-  bash $runfile > "${ID}-output.out" 2> "${ID}-error.err"
+  bash $runfile > "${ID}-output.out" 2> "${ID}-error.err" &
   i=$(($i + 1))
 done
+
+wait

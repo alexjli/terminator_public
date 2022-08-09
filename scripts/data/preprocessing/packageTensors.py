@@ -1,19 +1,15 @@
 """Functions that generate features from dTERMen files :code:`.dat` and :code:`.red.pdb`"""
-import glob
 import os
 import pickle
 import sys
 
 import numpy as np
-from scipy.linalg import block_diag
-from scipy.special import softmax
 
 from terminator.utils.common import seq_to_ints
 
 # for autosummary import purposes
 sys.path.insert(0, os.path.dirname(__file__))
 from parseCoords import parseCoords
-from parseEtab import parseEtab
 from parseTERM import parseTERMdata
 
 NUM_AA = 21  # including X

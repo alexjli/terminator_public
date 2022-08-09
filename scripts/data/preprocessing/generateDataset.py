@@ -168,7 +168,7 @@ if __name__ == '__main__':
     mp.set_start_method("spawn")  # i should use context managers but low priority change
     parser = argparse.ArgumentParser('Generate features data files from dTERMen .dat files')
     parser.add_argument('--in_folder',
-                        help='input folder containing .dat files in proper directory structure',
+                        help='input folder containing .dat/.red.pdb files in proper directory structure',
                         required=True)
     parser.add_argument('--out_folder', help='folder where features will be placed', required=True)
     parser.add_argument('--cutoff', dest='cutoff', help='max number of match entries per TERM', default=50, type=int)

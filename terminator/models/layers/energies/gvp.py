@@ -5,11 +5,13 @@ from torch import nn
 import torch.nn.functional as F
 
 from ..gvp import (GVP, Dropout, GVPConvLayer, LayerNorm, _merge, _split, tuple_cat, tuple_index, tuple_sum)
+from ..utils import merge_duplicate_edges_geometric, merge_duplicate_pairE_geometric
 
 # pylint: disable=no-member
 
 
 class EdgeLayer(nn.Module):
+    """ GVP Edge MPNN """
     def __init__(self,
                  node_dims,
                  edge_dims,
@@ -56,6 +58,7 @@ class EdgeLayer(nn.Module):
         self.ff_func = nn.Sequential(*ff_func)
 
     def forward(self, h_V, edge_index, h_E, node_mask=None):
+        """ TODO """
         h_V_merge = _merge(*h_V)
         fake_h_dim = h_V_merge.shape[-1]
         edge_index_flat = edge_index.flatten()
@@ -68,6 +71,10 @@ class EdgeLayer(nn.Module):
 
         h_EV = tuple_cat(h_V_i, h_E, h_V_j)
         dh = self.message_func(h_EV)
+
+        # merge scalar features in edges
+        dh_s = merge_duplicate_edges_geometric(dh[0], edge_index)
+        dh = (dh_s, dh[1])
 
         x = h_E
         if node_mask is not None:
@@ -124,6 +131,10 @@ class GVPPairEnergies(nn.Module):
 
         self.W_out = GVP(edge_h_dim, output_dim, activations=(None, None))
 
+        # if enabled, generate self energies in etab from node embeddings
+        if "node_self_sub" in hparams.keys() and hparams["node_self_sub"] is True:
+            self.W_proj = GVP(node_h_dim, (20, 0), activations=(None, None))
+
     def forward(self, h_V, edge_index, h_E):
         '''Forward pass to be used at train-time, or evaluating likelihood.
 
@@ -144,4 +155,17 @@ class GVPPairEnergies(nn.Module):
             h_E = edge_layer(h_V, edge_index, h_E)
 
         etab = self.W_out(h_E)
+        # merge pairE tables to ensure each edge has the same energy dist
+        etab = merge_duplicate_pairE_geometric(etab, edge_index)
+
+        # zero out off-diag energies for self edges
+        self_edge_select = (edge_index[0] == edge_index[1])
+        etab[self_edge_select] = etab[self_edge_select] * torch.eye(20).view(1, -1).to(etab.device)
+
+        # if specified, use generate self energies from node embeddings
+        if "node_self_sub" in self.hparams.keys() and self.hparams["node_self_sub"] is True:
+            h_V = self.W_proj(h_V)
+            etab_select = etab[(edge_index[0] == edge_index[1])]
+            etab[edge_index[0] == edge_index[1]] = torch.diag_embed(h_V, dim1=-2, dim2=-1).view(etab_select.shape)
+
         return etab, edge_index

@@ -1,0 +1,552 @@
+Loading feature file paths
+Loading feature file paths
+Loading feature file paths
+TERM information condenser hidden dimensionality is 32
+GNN Potts Model Encoder hidden dimensionality is 128
+TERMinator(
+  (bot): CondenseTERM(
+    (embedding): ResidueFeatures(
+      (embedding): Embedding(21, 23)
+      (relu): ReLU(inplace=True)
+      (tanh): Tanh()
+      (lin1): Linear(in_features=32, out_features=32, bias=True)
+      (lin2): Linear(in_features=32, out_features=32, bias=True)
+      (bn): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (edge_features): EdgeFeatures(
+      (W): Sequential(
+        (0): Linear(in_features=900, out_features=128, bias=True)
+        (1): ReLU()
+        (2): Linear(in_features=128, out_features=32, bias=True)
+      )
+    )
+    (cie): ContactIndexEncoding(
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+    (term_mpnn): TERMGraphTransformerEncoder(
+      (W_v): Linear(in_features=32, out_features=32, bias=True)
+      (W_e): Linear(in_features=32, out_features=32, bias=True)
+      (edge_encoder): ModuleList(
+        (0): TERMEdgeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+        (1): TERMEdgeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+        (2): TERMEdgeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+        (3): TERMEdgeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+      )
+      (node_encoder): ModuleList(
+        (0): TERMNodeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+        (1): TERMNodeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+        (2): TERMNodeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+        (3): TERMNodeMPNNLayer(
+          (dropout): Dropout(p=0.1, inplace=False)
+          (norm): ModuleList(
+            (0): Normalize()
+            (1): Normalize()
+          )
+          (W1): Linear(in_features=160, out_features=32, bias=True)
+          (W2): Linear(in_features=32, out_features=32, bias=True)
+          (W3): Linear(in_features=32, out_features=32, bias=True)
+          (dense): PositionWiseFeedForward(
+            (W_in): Linear(in_features=32, out_features=128, bias=True)
+            (W_out): Linear(in_features=128, out_features=32, bias=True)
+          )
+        )
+      )
+      (W_out): Linear(in_features=32, out_features=32, bias=True)
+    )
+  )
+  (top): PairEnergies(
+    (features): MultiChainProteinFeatures(
+      (embeddings): IndexDiffEncoding()
+      (dropout): Dropout(p=0.1, inplace=False)
+      (node_embedding): Linear(in_features=6, out_features=128, bias=True)
+      (edge_embedding): Linear(in_features=39, out_features=128, bias=True)
+      (norm_nodes): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (norm_edges): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    )
+    (W_v): Linear(in_features=160, out_features=128, bias=True)
+    (W_e): Linear(in_features=160, out_features=128, bias=True)
+    (edge_encoder): ModuleList(
+      (0): EdgeMPNNLayer(
+        (dropout): Dropout(p=0.1, inplace=False)
+        (norm): ModuleList(
+          (0): Normalize()
+          (1): Normalize()
+        )
+        (W1): Linear(in_features=384, out_features=128, bias=True)
+        (W2): Linear(in_features=128, out_features=128, bias=True)
+        (W3): Linear(in_features=128, out_features=128, bias=True)
+        (dense): PositionWiseFeedForward(
+          (W_in): Linear(in_features=128, out_features=512, bias=True)
+          (W_out): Linear(in_features=512, out_features=128, bias=True)
+        )
+      )
+      (1): EdgeMPNNLayer(
+        (dropout): Dropout(p=0.1, inplace=False)
+        (norm): ModuleList(
+          (0): Normalize()
+          (1): Normalize()
+        )
+        (W1): Linear(in_features=384, out_features=128, bias=True)
+        (W2): Linear(in_features=128, out_features=128, bias=True)
+        (W3): Linear(in_features=128, out_features=128, bias=True)
+        (dense): PositionWiseFeedForward(
+          (W_in): Linear(in_features=128, out_features=512, bias=True)
+          (W_out): Linear(in_features=512, out_features=128, bias=True)
+        )
+      )
+      (2): EdgeMPNNLayer(
+        (dropout): Dropout(p=0.1, inplace=False)
+        (norm): ModuleList(
+          (0): Normalize()
+          (1): Normalize()
+        )
+        (W1): Linear(in_features=384, out_features=128, bias=True)
+        (W2): Linear(in_features=128, out_features=128, bias=True)
+        (W3): Linear(in_features=128, out_features=128, bias=True)
+        (dense): PositionWiseFeedForward(
+          (W_in): Linear(in_features=128, out_features=512, bias=True)
+          (W_out): Linear(in_features=512, out_features=128, bias=True)
+        )
+      )
+    )
+    (node_encoder): ModuleList(
+      (0): NodeMPNNLayer(
+        (dropout): Dropout(p=0.1, inplace=False)
+        (norm): ModuleList(
+          (0): Normalize()
+          (1): Normalize()
+        )
+        (W1): Linear(in_features=384, out_features=128, bias=True)
+        (W2): Linear(in_features=128, out_features=128, bias=True)
+        (W3): Linear(in_features=128, out_features=128, bias=True)
+        (dense): PositionWiseFeedForward(
+          (W_in): Linear(in_features=128, out_features=512, bias=True)
+          (W_out): Linear(in_features=512, out_features=128, bias=True)
+        )
+      )
+      (1): NodeMPNNLayer(
+        (dropout): Dropout(p=0.1, inplace=False)
+        (norm): ModuleList(
+          (0): Normalize()
+          (1): Normalize()
+        )
+        (W1): Linear(in_features=384, out_features=128, bias=True)
+        (W2): Linear(in_features=128, out_features=128, bias=True)
+        (W3): Linear(in_features=128, out_features=128, bias=True)
+        (dense): PositionWiseFeedForward(
+          (W_in): Linear(in_features=128, out_features=512, bias=True)
+          (W_out): Linear(in_features=512, out_features=128, bias=True)
+        )
+      )
+      (2): NodeMPNNLayer(
+        (dropout): Dropout(p=0.1, inplace=False)
+        (norm): ModuleList(
+          (0): Normalize()
+          (1): Normalize()
+        )
+        (W1): Linear(in_features=384, out_features=128, bias=True)
+        (W2): Linear(in_features=128, out_features=128, bias=True)
+        (W3): Linear(in_features=128, out_features=128, bias=True)
+        (dense): PositionWiseFeedForward(
+          (W_in): Linear(in_features=128, out_features=512, bias=True)
+          (W_out): Linear(in_features=512, out_features=128, bias=True)
+        )
+      )
+    )
+    (W_out): Linear(in_features=128, out_features=400, bias=True)
+  )
+)
+terminator hparams {'cov_features': 'all_raw', 'cov_compress': 'ffn', 'term_use_mpnn': True, 'matches': 'ablate', 'energies_use_mpnn': True, 'energies_full_graph': True, 'contact_idx': True, 'energies_encoder_layers': 3, 'energies_hidden_dim': 128, 'use_terms': True, 'model': 'multichain', 'term_hidden_dim': 32, 'gradient_checkpointing': True, 'num_pair_stats': 28, 'num_sing_stats': 0, 'resnet_blocks': 4, 'term_layers': 4, 'term_heads': 4, 'conv_filter': 3, 'matches_layers': 4, 'matches_num_heads': 4, 'k_neighbors': 30, 'k_cutoff': None, 'cie_dropout': 0.1, 'cie_scaling': 500, 'cie_offset': 0, 'transformer_dropout': 0.1, 'energies_protein_features': 'full', 'energies_augment_eps': 0, 'energies_dropout': 0.1, 'energies_output_dim': 400, 'energies_gvp': False, 'res_embed_linear': False, 'matches_linear': False, 'term_mpnn_linear': False, 'struct2seq_linear': False, 'use_coords': True, 'num_features': 9, 'energies_input_dim': 32}
+epoch 0
+epoch loss 5.29466209826603 epoch_ld {'nlcpl': {'loss': 5.29466209826603, 'count': 114266670, 'scaling_factor': 1}}
+val loss 4.506743013202408 val ld {'nlcpl': {'loss': 4.506743013202408, 'count': 3070578, 'scaling_factor': 1}}
+epoch 1
+epoch loss 3.924926705011069 epoch_ld {'nlcpl': {'loss': 3.924926705011069, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.9287334328925763 val ld {'nlcpl': {'loss': 3.9287334328925763, 'count': 3070578, 'scaling_factor': 1}}
+epoch 2
+epoch loss 3.575771460121066 epoch_ld {'nlcpl': {'loss': 3.575771460121066, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.7886656262359812 val ld {'nlcpl': {'loss': 3.7886656262359812, 'count': 3070578, 'scaling_factor': 1}}
+epoch 3
+epoch loss 3.3930941477070053 epoch_ld {'nlcpl': {'loss': 3.3930941477070053, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.6698231939302035 val ld {'nlcpl': {'loss': 3.6698231939302035, 'count': 3070578, 'scaling_factor': 1}}
+epoch 4
+epoch loss 3.289925478356894 epoch_ld {'nlcpl': {'loss': 3.289925478356894, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.5866222229351754 val ld {'nlcpl': {'loss': 3.5866222229351754, 'count': 3070578, 'scaling_factor': 1}}
+epoch 5
+epoch loss 3.2211452715129236 epoch_ld {'nlcpl': {'loss': 3.2211452715129236, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.5476041715129485 val ld {'nlcpl': {'loss': 3.5476041715129485, 'count': 3070578, 'scaling_factor': 1}}
+epoch 6
+epoch loss 3.1678482870146945 epoch_ld {'nlcpl': {'loss': 3.1678482870146945, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.491919636188214 val ld {'nlcpl': {'loss': 3.491919636188214, 'count': 3070578, 'scaling_factor': 1}}
+epoch 7
+epoch loss 3.125696288055271 epoch_ld {'nlcpl': {'loss': 3.125696288055271, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.482642406464002 val ld {'nlcpl': {'loss': 3.482642406464002, 'count': 3070578, 'scaling_factor': 1}}
+epoch 8
+epoch loss 3.091426108139786 epoch_ld {'nlcpl': {'loss': 3.091426108139786, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.441893798149235 val ld {'nlcpl': {'loss': 3.441893798149235, 'count': 3070578, 'scaling_factor': 1}}
+epoch 9
+epoch loss 3.061149183240418 epoch_ld {'nlcpl': {'loss': 3.061149183240418, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.4305015079485286 val ld {'nlcpl': {'loss': 3.4305015079485286, 'count': 3070578, 'scaling_factor': 1}}
+epoch 10
+epoch loss 3.035449719765442 epoch_ld {'nlcpl': {'loss': 3.035449719765442, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.4008850715281085 val ld {'nlcpl': {'loss': 3.4008850715281085, 'count': 3070578, 'scaling_factor': 1}}
+epoch 11
+epoch loss 3.0120034539940965 epoch_ld {'nlcpl': {'loss': 3.0120034539940965, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.417476067522134 val ld {'nlcpl': {'loss': 3.417476067522134, 'count': 3070578, 'scaling_factor': 1}}
+epoch 12
+epoch loss 2.991278288017348 epoch_ld {'nlcpl': {'loss': 2.991278288017348, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.390059166150401 val ld {'nlcpl': {'loss': 3.390059166150401, 'count': 3070578, 'scaling_factor': 1}}
+epoch 13
+epoch loss 2.972863125861298 epoch_ld {'nlcpl': {'loss': 2.972863125861298, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3722760932966263 val ld {'nlcpl': {'loss': 3.3722760932966263, 'count': 3070578, 'scaling_factor': 1}}
+epoch 14
+epoch loss 2.9563622760599313 epoch_ld {'nlcpl': {'loss': 2.9563622760599313, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.374897791088664 val ld {'nlcpl': {'loss': 3.374897791088664, 'count': 3070578, 'scaling_factor': 1}}
+epoch 15
+epoch loss 2.9403291873113466 epoch_ld {'nlcpl': {'loss': 2.9403291873113466, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.353403174607634 val ld {'nlcpl': {'loss': 3.353403174607634, 'count': 3070578, 'scaling_factor': 1}}
+epoch 16
+epoch loss 2.9262347722925295 epoch_ld {'nlcpl': {'loss': 2.9262347722925295, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3441992935367217 val ld {'nlcpl': {'loss': 3.3441992935367217, 'count': 3070578, 'scaling_factor': 1}}
+epoch 17
+epoch loss 2.912773092391439 epoch_ld {'nlcpl': {'loss': 2.912773092391439, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3528480166039327 val ld {'nlcpl': {'loss': 3.3528480166039327, 'count': 3070578, 'scaling_factor': 1}}
+epoch 18
+epoch loss 2.899901670572989 epoch_ld {'nlcpl': {'loss': 2.899901670572989, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3648666141233172 val ld {'nlcpl': {'loss': 3.3648666141233172, 'count': 3070578, 'scaling_factor': 1}}
+epoch 19
+epoch loss 2.8896849745107875 epoch_ld {'nlcpl': {'loss': 2.8896849745107875, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.34143072970293 val ld {'nlcpl': {'loss': 3.34143072970293, 'count': 3070578, 'scaling_factor': 1}}
+epoch 20
+epoch loss 2.878384199426437 epoch_ld {'nlcpl': {'loss': 2.878384199426437, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.331651038906333 val ld {'nlcpl': {'loss': 3.331651038906333, 'count': 3070578, 'scaling_factor': 1}}
+epoch 21
+epoch loss 2.8676200693250147 epoch_ld {'nlcpl': {'loss': 2.8676200693250147, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.314635857243087 val ld {'nlcpl': {'loss': 3.314635857243087, 'count': 3070578, 'scaling_factor': 1}}
+epoch 22
+epoch loss 2.858233752777048 epoch_ld {'nlcpl': {'loss': 2.858233752777048, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.332863781124595 val ld {'nlcpl': {'loss': 3.332863781124595, 'count': 3070578, 'scaling_factor': 1}}
+epoch 23
+epoch loss 2.849846028451855 epoch_ld {'nlcpl': {'loss': 2.849846028451855, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.308450773293889 val ld {'nlcpl': {'loss': 3.308450773293889, 'count': 3070578, 'scaling_factor': 1}}
+epoch 24
+epoch loss 2.840508611695153 epoch_ld {'nlcpl': {'loss': 2.840508611695153, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.334669374862985 val ld {'nlcpl': {'loss': 3.334669374862985, 'count': 3070578, 'scaling_factor': 1}}
+epoch 25
+epoch loss 2.8333814197408262 epoch_ld {'nlcpl': {'loss': 2.8333814197408262, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3279374262713795 val ld {'nlcpl': {'loss': 3.3279374262713795, 'count': 3070578, 'scaling_factor': 1}}
+epoch 26
+epoch loss 2.8257949124391297 epoch_ld {'nlcpl': {'loss': 2.8257949124391297, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.336630603793399 val ld {'nlcpl': {'loss': 3.336630603793399, 'count': 3070578, 'scaling_factor': 1}}
+epoch 27
+epoch loss 2.8187784606726183 epoch_ld {'nlcpl': {'loss': 2.8187784606726183, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.307758083987007 val ld {'nlcpl': {'loss': 3.307758083987007, 'count': 3070578, 'scaling_factor': 1}}
+epoch 28
+epoch loss 2.8120933910428927 epoch_ld {'nlcpl': {'loss': 2.8120933910428927, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3086275211376464 val ld {'nlcpl': {'loss': 3.3086275211376464, 'count': 3070578, 'scaling_factor': 1}}
+epoch 29
+epoch loss 2.8043428948718314 epoch_ld {'nlcpl': {'loss': 2.8043428948718314, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3005124756639628 val ld {'nlcpl': {'loss': 3.3005124756639628, 'count': 3070578, 'scaling_factor': 1}}
+epoch 30
+epoch loss 2.798741149646395 epoch_ld {'nlcpl': {'loss': 2.798741149646395, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3006190230528403 val ld {'nlcpl': {'loss': 3.3006190230528403, 'count': 3070578, 'scaling_factor': 1}}
+epoch 31
+epoch loss 2.7930881729733406 epoch_ld {'nlcpl': {'loss': 2.7930881729733406, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.318657887161878 val ld {'nlcpl': {'loss': 3.318657887161878, 'count': 3070578, 'scaling_factor': 1}}
+epoch 32
+epoch loss 2.7870249961604583 epoch_ld {'nlcpl': {'loss': 2.7870249961604583, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.298570272561831 val ld {'nlcpl': {'loss': 3.298570272561831, 'count': 3070578, 'scaling_factor': 1}}
+epoch 33
+epoch loss 2.781181585026586 epoch_ld {'nlcpl': {'loss': 2.781181585026586, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.295555013686942 val ld {'nlcpl': {'loss': 3.295555013686942, 'count': 3070578, 'scaling_factor': 1}}
+epoch 34
+epoch loss 2.7765456527862655 epoch_ld {'nlcpl': {'loss': 2.7765456527862655, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.299277685707751 val ld {'nlcpl': {'loss': 3.299277685707751, 'count': 3070578, 'scaling_factor': 1}}
+epoch 35
+epoch loss 2.7705670396231286 epoch_ld {'nlcpl': {'loss': 2.7705670396231286, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2989065818842813 val ld {'nlcpl': {'loss': 3.2989065818842813, 'count': 3070578, 'scaling_factor': 1}}
+epoch 36
+epoch loss 2.7665469544141925 epoch_ld {'nlcpl': {'loss': 2.7665469544141925, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3056364536636673 val ld {'nlcpl': {'loss': 3.3056364536636673, 'count': 3070578, 'scaling_factor': 1}}
+epoch 37
+epoch loss 2.7596099408492805 epoch_ld {'nlcpl': {'loss': 2.7596099408492805, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2979590766379148 val ld {'nlcpl': {'loss': 3.2979590766379148, 'count': 3070578, 'scaling_factor': 1}}
+epoch 38
+epoch loss 2.755576197798281 epoch_ld {'nlcpl': {'loss': 2.755576197798281, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3020245290712693 val ld {'nlcpl': {'loss': 3.3020245290712693, 'count': 3070578, 'scaling_factor': 1}}
+epoch 39
+epoch loss 2.751836177852841 epoch_ld {'nlcpl': {'loss': 2.751836177852841, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2936237415042715 val ld {'nlcpl': {'loss': 3.2936237415042715, 'count': 3070578, 'scaling_factor': 1}}
+epoch 40
+epoch loss 2.7473637254692815 epoch_ld {'nlcpl': {'loss': 2.7473637254692815, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3079255471055533 val ld {'nlcpl': {'loss': 3.3079255471055533, 'count': 3070578, 'scaling_factor': 1}}
+epoch 41
+epoch loss 2.7426563712096277 epoch_ld {'nlcpl': {'loss': 2.7426563712096277, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.290981234294246 val ld {'nlcpl': {'loss': 3.290981234294246, 'count': 3070578, 'scaling_factor': 1}}
+epoch 42
+epoch loss 2.739846648696457 epoch_ld {'nlcpl': {'loss': 2.739846648696457, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3007437968859374 val ld {'nlcpl': {'loss': 3.3007437968859374, 'count': 3070578, 'scaling_factor': 1}}
+epoch 43
+epoch loss 2.7352494703663335 epoch_ld {'nlcpl': {'loss': 2.7352494703663335, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3005715941741522 val ld {'nlcpl': {'loss': 3.3005715941741522, 'count': 3070578, 'scaling_factor': 1}}
+epoch 44
+epoch loss 2.7303191771313315 epoch_ld {'nlcpl': {'loss': 2.7303191771313315, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2923294603886544 val ld {'nlcpl': {'loss': 3.2923294603886544, 'count': 3070578, 'scaling_factor': 1}}
+epoch 45
+epoch loss 2.7272560211025048 epoch_ld {'nlcpl': {'loss': 2.7272560211025048, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.289004904853976 val ld {'nlcpl': {'loss': 3.289004904853976, 'count': 3070578, 'scaling_factor': 1}}
+epoch 46
+epoch loss 2.723729414482318 epoch_ld {'nlcpl': {'loss': 2.723729414482318, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3012353109355526 val ld {'nlcpl': {'loss': 3.3012353109355526, 'count': 3070578, 'scaling_factor': 1}}
+epoch 47
+epoch loss 2.719249664130313 epoch_ld {'nlcpl': {'loss': 2.719249664130313, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2972337368904108 val ld {'nlcpl': {'loss': 3.2972337368904108, 'count': 3070578, 'scaling_factor': 1}}
+epoch 48
+epoch loss 2.71731341589842 epoch_ld {'nlcpl': {'loss': 2.71731341589842, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3123337788210847 val ld {'nlcpl': {'loss': 3.3123337788210847, 'count': 3070578, 'scaling_factor': 1}}
+epoch 49
+epoch loss 2.7121512239962793 epoch_ld {'nlcpl': {'loss': 2.7121512239962793, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.292966055976112 val ld {'nlcpl': {'loss': 3.292966055976112, 'count': 3070578, 'scaling_factor': 1}}
+epoch 50
+epoch loss 2.709813670631071 epoch_ld {'nlcpl': {'loss': 2.709813670631071, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.295790743776929 val ld {'nlcpl': {'loss': 3.295790743776929, 'count': 3070578, 'scaling_factor': 1}}
+epoch 51
+epoch loss 2.706899404919667 epoch_ld {'nlcpl': {'loss': 2.706899404919667, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.300484552019946 val ld {'nlcpl': {'loss': 3.300484552019946, 'count': 3070578, 'scaling_factor': 1}}
+epoch 52
+epoch loss 2.7045326057554755 epoch_ld {'nlcpl': {'loss': 2.7045326057554755, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.309226023916894 val ld {'nlcpl': {'loss': 3.309226023916894, 'count': 3070578, 'scaling_factor': 1}}
+epoch 53
+epoch loss 2.702286184093234 epoch_ld {'nlcpl': {'loss': 2.702286184093234, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.290530499051532 val ld {'nlcpl': {'loss': 3.290530499051532, 'count': 3070578, 'scaling_factor': 1}}
+epoch 54
+epoch loss 2.6968340596259677 epoch_ld {'nlcpl': {'loss': 2.6968340596259677, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2934960947973284 val ld {'nlcpl': {'loss': 3.2934960947973284, 'count': 3070578, 'scaling_factor': 1}}
+epoch 55
+epoch loss 2.6952753984126914 epoch_ld {'nlcpl': {'loss': 2.6952753984126914, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2842867223959 val ld {'nlcpl': {'loss': 3.2842867223959, 'count': 3070578, 'scaling_factor': 1}}
+epoch 56
+epoch loss 2.691177854365868 epoch_ld {'nlcpl': {'loss': 2.691177854365868, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.297099480803971 val ld {'nlcpl': {'loss': 3.297099480803971, 'count': 3070578, 'scaling_factor': 1}}
+epoch 57
+epoch loss 2.689381659968829 epoch_ld {'nlcpl': {'loss': 2.689381659968829, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3175789219726783 val ld {'nlcpl': {'loss': 3.3175789219726783, 'count': 3070578, 'scaling_factor': 1}}
+epoch 58
+epoch loss 2.686457342037432 epoch_ld {'nlcpl': {'loss': 2.686457342037432, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2913014737975743 val ld {'nlcpl': {'loss': 3.2913014737975743, 'count': 3070578, 'scaling_factor': 1}}
+epoch 59
+epoch loss 2.6832537821654445 epoch_ld {'nlcpl': {'loss': 2.6832537821654445, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.312238348972379 val ld {'nlcpl': {'loss': 3.312238348972379, 'count': 3070578, 'scaling_factor': 1}}
+epoch 60
+epoch loss 2.681626976703924 epoch_ld {'nlcpl': {'loss': 2.681626976703924, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2992275653361287 val ld {'nlcpl': {'loss': 3.2992275653361287, 'count': 3070578, 'scaling_factor': 1}}
+epoch 61
+epoch loss 2.6789741695519758 epoch_ld {'nlcpl': {'loss': 2.6789741695519758, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2966571184280635 val ld {'nlcpl': {'loss': 3.2966571184280635, 'count': 3070578, 'scaling_factor': 1}}
+epoch 62
+epoch loss 2.675262996909679 epoch_ld {'nlcpl': {'loss': 2.675262996909679, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.289577636179505 val ld {'nlcpl': {'loss': 3.289577636179505, 'count': 3070578, 'scaling_factor': 1}}
+epoch 63
+epoch loss 2.6743237706279164 epoch_ld {'nlcpl': {'loss': 2.6743237706279164, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.30344093298291 val ld {'nlcpl': {'loss': 3.30344093298291, 'count': 3070578, 'scaling_factor': 1}}
+epoch 64
+epoch loss 2.6705017679324707 epoch_ld {'nlcpl': {'loss': 2.6705017679324707, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3121436561965036 val ld {'nlcpl': {'loss': 3.3121436561965036, 'count': 3070578, 'scaling_factor': 1}}
+epoch 65
+epoch loss 2.668491529914391 epoch_ld {'nlcpl': {'loss': 2.668491529914391, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.304027175191094 val ld {'nlcpl': {'loss': 3.304027175191094, 'count': 3070578, 'scaling_factor': 1}}
+epoch 66
+epoch loss 2.666847252867908 epoch_ld {'nlcpl': {'loss': 2.666847252867908, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3015420353297125 val ld {'nlcpl': {'loss': 3.3015420353297125, 'count': 3070578, 'scaling_factor': 1}}
+epoch 67
+epoch loss 2.664180130286644 epoch_ld {'nlcpl': {'loss': 2.664180130286644, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.292553260098016 val ld {'nlcpl': {'loss': 3.292553260098016, 'count': 3070578, 'scaling_factor': 1}}
+epoch 68
+epoch loss 2.663264602031321 epoch_ld {'nlcpl': {'loss': 2.663264602031321, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.292998738748324 val ld {'nlcpl': {'loss': 3.292998738748324, 'count': 3070578, 'scaling_factor': 1}}
+epoch 69
+epoch loss 2.659745953495064 epoch_ld {'nlcpl': {'loss': 2.659745953495064, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3006774452984557 val ld {'nlcpl': {'loss': 3.3006774452984557, 'count': 3070578, 'scaling_factor': 1}}
+epoch 70
+epoch loss 2.65716012716209 epoch_ld {'nlcpl': {'loss': 2.65716012716209, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.290818260968946 val ld {'nlcpl': {'loss': 3.290818260968946, 'count': 3070578, 'scaling_factor': 1}}
+epoch 71
+epoch loss 2.6546675872366516 epoch_ld {'nlcpl': {'loss': 2.6546675872366516, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.288974155328768 val ld {'nlcpl': {'loss': 3.288974155328768, 'count': 3070578, 'scaling_factor': 1}}
+epoch 72
+epoch loss 2.652274397919668 epoch_ld {'nlcpl': {'loss': 2.652274397919668, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2952703006527715 val ld {'nlcpl': {'loss': 3.2952703006527715, 'count': 3070578, 'scaling_factor': 1}}
+epoch 73
+epoch loss 2.6507795607471913 epoch_ld {'nlcpl': {'loss': 2.6507795607471913, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.294834703945022 val ld {'nlcpl': {'loss': 3.294834703945022, 'count': 3070578, 'scaling_factor': 1}}
+epoch 74
+epoch loss 2.649336646102276 epoch_ld {'nlcpl': {'loss': 2.649336646102276, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.290435752407318 val ld {'nlcpl': {'loss': 3.290435752407318, 'count': 3070578, 'scaling_factor': 1}}
+epoch 75
+epoch loss 2.647029512572735 epoch_ld {'nlcpl': {'loss': 2.647029512572735, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.292958603441007 val ld {'nlcpl': {'loss': 3.292958603441007, 'count': 3070578, 'scaling_factor': 1}}
+epoch 76
+epoch loss 2.64549873436953 epoch_ld {'nlcpl': {'loss': 2.64549873436953, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3070888274140335 val ld {'nlcpl': {'loss': 3.3070888274140335, 'count': 3070578, 'scaling_factor': 1}}
+epoch 77
+epoch loss 2.6442940043716274 epoch_ld {'nlcpl': {'loss': 2.6442940043716274, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.296859833550233 val ld {'nlcpl': {'loss': 3.296859833550233, 'count': 3070578, 'scaling_factor': 1}}
+epoch 78
+epoch loss 2.6408895390256935 epoch_ld {'nlcpl': {'loss': 2.6408895390256935, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.315843964039167 val ld {'nlcpl': {'loss': 3.315843964039167, 'count': 3070578, 'scaling_factor': 1}}
+epoch 79
+epoch loss 2.6397758511342877 epoch_ld {'nlcpl': {'loss': 2.6397758511342877, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3052459112119514 val ld {'nlcpl': {'loss': 3.3052459112119514, 'count': 3070578, 'scaling_factor': 1}}
+epoch 80
+epoch loss 2.6384796134430637 epoch_ld {'nlcpl': {'loss': 2.6384796134430637, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2807102189712345 val ld {'nlcpl': {'loss': 3.2807102189712345, 'count': 3070578, 'scaling_factor': 1}}
+epoch 81
+epoch loss 2.636365691351807 epoch_ld {'nlcpl': {'loss': 2.636365691351807, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.314099164258677 val ld {'nlcpl': {'loss': 3.314099164258677, 'count': 3070578, 'scaling_factor': 1}}
+epoch 82
+epoch loss 2.63536518138556 epoch_ld {'nlcpl': {'loss': 2.63536518138556, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.303089915586971 val ld {'nlcpl': {'loss': 3.303089915586971, 'count': 3070578, 'scaling_factor': 1}}
+epoch 83
+epoch loss 2.632506276059342 epoch_ld {'nlcpl': {'loss': 2.632506276059342, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2872462760246774 val ld {'nlcpl': {'loss': 3.2872462760246774, 'count': 3070578, 'scaling_factor': 1}}
+epoch 84
+epoch loss 2.631321239470828 epoch_ld {'nlcpl': {'loss': 2.631321239470828, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.299487926850512 val ld {'nlcpl': {'loss': 3.299487926850512, 'count': 3070578, 'scaling_factor': 1}}
+epoch 85
+epoch loss 2.629696522510144 epoch_ld {'nlcpl': {'loss': 2.629696522510144, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2969336549763026 val ld {'nlcpl': {'loss': 3.2969336549763026, 'count': 3070578, 'scaling_factor': 1}}
+epoch 86
+epoch loss 2.6267782578597276 epoch_ld {'nlcpl': {'loss': 2.6267782578597276, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3009741426863006 val ld {'nlcpl': {'loss': 3.3009741426863006, 'count': 3070578, 'scaling_factor': 1}}
+epoch 87
+epoch loss 2.6253713242789933 epoch_ld {'nlcpl': {'loss': 2.6253713242789933, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2949091793615306 val ld {'nlcpl': {'loss': 3.2949091793615306, 'count': 3070578, 'scaling_factor': 1}}
+epoch 88
+epoch loss 2.623825755761211 epoch_ld {'nlcpl': {'loss': 2.623825755761211, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2950188989613705 val ld {'nlcpl': {'loss': 3.2950188989613705, 'count': 3070578, 'scaling_factor': 1}}
+epoch 89
+epoch loss 2.62330984787241 epoch_ld {'nlcpl': {'loss': 2.62330984787241, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3033484902106016 val ld {'nlcpl': {'loss': 3.3033484902106016, 'count': 3070578, 'scaling_factor': 1}}
+epoch 90
+epoch loss 2.621051152854523 epoch_ld {'nlcpl': {'loss': 2.621051152854523, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.305301952273342 val ld {'nlcpl': {'loss': 3.305301952273342, 'count': 3070578, 'scaling_factor': 1}}
+epoch 91
+epoch loss 2.619713410155268 epoch_ld {'nlcpl': {'loss': 2.619713410155268, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.318905710591938 val ld {'nlcpl': {'loss': 3.318905710591938, 'count': 3070578, 'scaling_factor': 1}}
+epoch 92
+epoch loss 2.618862843161084 epoch_ld {'nlcpl': {'loss': 2.618862843161084, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.2961627406353973 val ld {'nlcpl': {'loss': 3.2961627406353973, 'count': 3070578, 'scaling_factor': 1}}
+epoch 93
+epoch loss 2.6176166958029907 epoch_ld {'nlcpl': {'loss': 2.6176166958029907, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.305765532587777 val ld {'nlcpl': {'loss': 3.305765532587777, 'count': 3070578, 'scaling_factor': 1}}
+epoch 94
+epoch loss 2.6146591061854774 epoch_ld {'nlcpl': {'loss': 2.6146591061854774, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3043754933087133 val ld {'nlcpl': {'loss': 3.3043754933087133, 'count': 3070578, 'scaling_factor': 1}}
+epoch 95
+epoch loss 2.6128829245148593 epoch_ld {'nlcpl': {'loss': 2.6128829245148593, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.301792581265898 val ld {'nlcpl': {'loss': 3.301792581265898, 'count': 3070578, 'scaling_factor': 1}}
+epoch 96
+epoch loss 2.612428027669971 epoch_ld {'nlcpl': {'loss': 2.612428027669971, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.312697755471028 val ld {'nlcpl': {'loss': 3.312697755471028, 'count': 3070578, 'scaling_factor': 1}}
+epoch 97
+epoch loss 2.6103929691411216 epoch_ld {'nlcpl': {'loss': 2.6103929691411216, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.301799874294603 val ld {'nlcpl': {'loss': 3.301799874294603, 'count': 3070578, 'scaling_factor': 1}}
+epoch 98
+epoch loss 2.610492451757103 epoch_ld {'nlcpl': {'loss': 2.610492451757103, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3219556787845756 val ld {'nlcpl': {'loss': 3.3219556787845756, 'count': 3070578, 'scaling_factor': 1}}
+epoch 99
+epoch loss 2.607340318974494 epoch_ld {'nlcpl': {'loss': 2.607340318974494, 'count': 114266670, 'scaling_factor': 1}}
+val loss 3.3184156985723883 val ld {'nlcpl': {'loss': 3.3184156985723883, 'count': 3070578, 'scaling_factor': 1}}
+{'train_loss': [(5.29466209826603, {'nlcpl': {'loss': 5.29466209826603, 'count': 114266670, 'scaling_factor': 1}}), (3.924926705011069, {'nlcpl': {'loss': 3.924926705011069, 'count': 114266670, 'scaling_factor': 1}}), (3.575771460121066, {'nlcpl': {'loss': 3.575771460121066, 'count': 114266670, 'scaling_factor': 1}}), (3.3930941477070053, {'nlcpl': {'loss': 3.3930941477070053, 'count': 114266670, 'scaling_factor': 1}}), (3.289925478356894, {'nlcpl': {'loss': 3.289925478356894, 'count': 114266670, 'scaling_factor': 1}}), (3.2211452715129236, {'nlcpl': {'loss': 3.2211452715129236, 'count': 114266670, 'scaling_factor': 1}}), (3.1678482870146945, {'nlcpl': {'loss': 3.1678482870146945, 'count': 114266670, 'scaling_factor': 1}}), (3.125696288055271, {'nlcpl': {'loss': 3.125696288055271, 'count': 114266670, 'scaling_factor': 1}}), (3.091426108139786, {'nlcpl': {'loss': 3.091426108139786, 'count': 114266670, 'scaling_factor': 1}}), (3.061149183240418, {'nlcpl': {'loss': 3.061149183240418, 'count': 114266670, 'scaling_factor': 1}}), (3.035449719765442, {'nlcpl': {'loss': 3.035449719765442, 'count': 114266670, 'scaling_factor': 1}}), (3.0120034539940965, {'nlcpl': {'loss': 3.0120034539940965, 'count': 114266670, 'scaling_factor': 1}}), (2.991278288017348, {'nlcpl': {'loss': 2.991278288017348, 'count': 114266670, 'scaling_factor': 1}}), (2.972863125861298, {'nlcpl': {'loss': 2.972863125861298, 'count': 114266670, 'scaling_factor': 1}}), (2.9563622760599313, {'nlcpl': {'loss': 2.9563622760599313, 'count': 114266670, 'scaling_factor': 1}}), (2.9403291873113466, {'nlcpl': {'loss': 2.9403291873113466, 'count': 114266670, 'scaling_factor': 1}}), (2.9262347722925295, {'nlcpl': {'loss': 2.9262347722925295, 'count': 114266670, 'scaling_factor': 1}}), (2.912773092391439, {'nlcpl': {'loss': 2.912773092391439, 'count': 114266670, 'scaling_factor': 1}}), (2.899901670572989, {'nlcpl': {'loss': 2.899901670572989, 'count': 114266670, 'scaling_factor': 1}}), (2.8896849745107875, {'nlcpl': {'loss': 2.8896849745107875, 'count': 114266670, 'scaling_factor': 1}}), (2.878384199426437, {'nlcpl': {'loss': 2.878384199426437, 'count': 114266670, 'scaling_factor': 1}}), (2.8676200693250147, {'nlcpl': {'loss': 2.8676200693250147, 'count': 114266670, 'scaling_factor': 1}}), (2.858233752777048, {'nlcpl': {'loss': 2.858233752777048, 'count': 114266670, 'scaling_factor': 1}}), (2.849846028451855, {'nlcpl': {'loss': 2.849846028451855, 'count': 114266670, 'scaling_factor': 1}}), (2.840508611695153, {'nlcpl': {'loss': 2.840508611695153, 'count': 114266670, 'scaling_factor': 1}}), (2.8333814197408262, {'nlcpl': {'loss': 2.8333814197408262, 'count': 114266670, 'scaling_factor': 1}}), (2.8257949124391297, {'nlcpl': {'loss': 2.8257949124391297, 'count': 114266670, 'scaling_factor': 1}}), (2.8187784606726183, {'nlcpl': {'loss': 2.8187784606726183, 'count': 114266670, 'scaling_factor': 1}}), (2.8120933910428927, {'nlcpl': {'loss': 2.8120933910428927, 'count': 114266670, 'scaling_factor': 1}}), (2.8043428948718314, {'nlcpl': {'loss': 2.8043428948718314, 'count': 114266670, 'scaling_factor': 1}}), (2.798741149646395, {'nlcpl': {'loss': 2.798741149646395, 'count': 114266670, 'scaling_factor': 1}}), (2.7930881729733406, {'nlcpl': {'loss': 2.7930881729733406, 'count': 114266670, 'scaling_factor': 1}}), (2.7870249961604583, {'nlcpl': {'loss': 2.7870249961604583, 'count': 114266670, 'scaling_factor': 1}}), (2.781181585026586, {'nlcpl': {'loss': 2.781181585026586, 'count': 114266670, 'scaling_factor': 1}}), (2.7765456527862655, {'nlcpl': {'loss': 2.7765456527862655, 'count': 114266670, 'scaling_factor': 1}}), (2.7705670396231286, {'nlcpl': {'loss': 2.7705670396231286, 'count': 114266670, 'scaling_factor': 1}}), (2.7665469544141925, {'nlcpl': {'loss': 2.7665469544141925, 'count': 114266670, 'scaling_factor': 1}}), (2.7596099408492805, {'nlcpl': {'loss': 2.7596099408492805, 'count': 114266670, 'scaling_factor': 1}}), (2.755576197798281, {'nlcpl': {'loss': 2.755576197798281, 'count': 114266670, 'scaling_factor': 1}}), (2.751836177852841, {'nlcpl': {'loss': 2.751836177852841, 'count': 114266670, 'scaling_factor': 1}}), (2.7473637254692815, {'nlcpl': {'loss': 2.7473637254692815, 'count': 114266670, 'scaling_factor': 1}}), (2.7426563712096277, {'nlcpl': {'loss': 2.7426563712096277, 'count': 114266670, 'scaling_factor': 1}}), (2.739846648696457, {'nlcpl': {'loss': 2.739846648696457, 'count': 114266670, 'scaling_factor': 1}}), (2.7352494703663335, {'nlcpl': {'loss': 2.7352494703663335, 'count': 114266670, 'scaling_factor': 1}}), (2.7303191771313315, {'nlcpl': {'loss': 2.7303191771313315, 'count': 114266670, 'scaling_factor': 1}}), (2.7272560211025048, {'nlcpl': {'loss': 2.7272560211025048, 'count': 114266670, 'scaling_factor': 1}}), (2.723729414482318, {'nlcpl': {'loss': 2.723729414482318, 'count': 114266670, 'scaling_factor': 1}}), (2.719249664130313, {'nlcpl': {'loss': 2.719249664130313, 'count': 114266670, 'scaling_factor': 1}}), (2.71731341589842, {'nlcpl': {'loss': 2.71731341589842, 'count': 114266670, 'scaling_factor': 1}}), (2.7121512239962793, {'nlcpl': {'loss': 2.7121512239962793, 'count': 114266670, 'scaling_factor': 1}}), (2.709813670631071, {'nlcpl': {'loss': 2.709813670631071, 'count': 114266670, 'scaling_factor': 1}}), (2.706899404919667, {'nlcpl': {'loss': 2.706899404919667, 'count': 114266670, 'scaling_factor': 1}}), (2.7045326057554755, {'nlcpl': {'loss': 2.7045326057554755, 'count': 114266670, 'scaling_factor': 1}}), (2.702286184093234, {'nlcpl': {'loss': 2.702286184093234, 'count': 114266670, 'scaling_factor': 1}}), (2.6968340596259677, {'nlcpl': {'loss': 2.6968340596259677, 'count': 114266670, 'scaling_factor': 1}}), (2.6952753984126914, {'nlcpl': {'loss': 2.6952753984126914, 'count': 114266670, 'scaling_factor': 1}}), (2.691177854365868, {'nlcpl': {'loss': 2.691177854365868, 'count': 114266670, 'scaling_factor': 1}}), (2.689381659968829, {'nlcpl': {'loss': 2.689381659968829, 'count': 114266670, 'scaling_factor': 1}}), (2.686457342037432, {'nlcpl': {'loss': 2.686457342037432, 'count': 114266670, 'scaling_factor': 1}}), (2.6832537821654445, {'nlcpl': {'loss': 2.6832537821654445, 'count': 114266670, 'scaling_factor': 1}}), (2.681626976703924, {'nlcpl': {'loss': 2.681626976703924, 'count': 114266670, 'scaling_factor': 1}}), (2.6789741695519758, {'nlcpl': {'loss': 2.6789741695519758, 'count': 114266670, 'scaling_factor': 1}}), (2.675262996909679, {'nlcpl': {'loss': 2.675262996909679, 'count': 114266670, 'scaling_factor': 1}}), (2.6743237706279164, {'nlcpl': {'loss': 2.6743237706279164, 'count': 114266670, 'scaling_factor': 1}}), (2.6705017679324707, {'nlcpl': {'loss': 2.6705017679324707, 'count': 114266670, 'scaling_factor': 1}}), (2.668491529914391, {'nlcpl': {'loss': 2.668491529914391, 'count': 114266670, 'scaling_factor': 1}}), (2.666847252867908, {'nlcpl': {'loss': 2.666847252867908, 'count': 114266670, 'scaling_factor': 1}}), (2.664180130286644, {'nlcpl': {'loss': 2.664180130286644, 'count': 114266670, 'scaling_factor': 1}}), (2.663264602031321, {'nlcpl': {'loss': 2.663264602031321, 'count': 114266670, 'scaling_factor': 1}}), (2.659745953495064, {'nlcpl': {'loss': 2.659745953495064, 'count': 114266670, 'scaling_factor': 1}}), (2.65716012716209, {'nlcpl': {'loss': 2.65716012716209, 'count': 114266670, 'scaling_factor': 1}}), (2.6546675872366516, {'nlcpl': {'loss': 2.6546675872366516, 'count': 114266670, 'scaling_factor': 1}}), (2.652274397919668, {'nlcpl': {'loss': 2.652274397919668, 'count': 114266670, 'scaling_factor': 1}}), (2.6507795607471913, {'nlcpl': {'loss': 2.6507795607471913, 'count': 114266670, 'scaling_factor': 1}}), (2.649336646102276, {'nlcpl': {'loss': 2.649336646102276, 'count': 114266670, 'scaling_factor': 1}}), (2.647029512572735, {'nlcpl': {'loss': 2.647029512572735, 'count': 114266670, 'scaling_factor': 1}}), (2.64549873436953, {'nlcpl': {'loss': 2.64549873436953, 'count': 114266670, 'scaling_factor': 1}}), (2.6442940043716274, {'nlcpl': {'loss': 2.6442940043716274, 'count': 114266670, 'scaling_factor': 1}}), (2.6408895390256935, {'nlcpl': {'loss': 2.6408895390256935, 'count': 114266670, 'scaling_factor': 1}}), (2.6397758511342877, {'nlcpl': {'loss': 2.6397758511342877, 'count': 114266670, 'scaling_factor': 1}}), (2.6384796134430637, {'nlcpl': {'loss': 2.6384796134430637, 'count': 114266670, 'scaling_factor': 1}}), (2.636365691351807, {'nlcpl': {'loss': 2.636365691351807, 'count': 114266670, 'scaling_factor': 1}}), (2.63536518138556, {'nlcpl': {'loss': 2.63536518138556, 'count': 114266670, 'scaling_factor': 1}}), (2.632506276059342, {'nlcpl': {'loss': 2.632506276059342, 'count': 114266670, 'scaling_factor': 1}}), (2.631321239470828, {'nlcpl': {'loss': 2.631321239470828, 'count': 114266670, 'scaling_factor': 1}}), (2.629696522510144, {'nlcpl': {'loss': 2.629696522510144, 'count': 114266670, 'scaling_factor': 1}}), (2.6267782578597276, {'nlcpl': {'loss': 2.6267782578597276, 'count': 114266670, 'scaling_factor': 1}}), (2.6253713242789933, {'nlcpl': {'loss': 2.6253713242789933, 'count': 114266670, 'scaling_factor': 1}}), (2.623825755761211, {'nlcpl': {'loss': 2.623825755761211, 'count': 114266670, 'scaling_factor': 1}}), (2.62330984787241, {'nlcpl': {'loss': 2.62330984787241, 'count': 114266670, 'scaling_factor': 1}}), (2.621051152854523, {'nlcpl': {'loss': 2.621051152854523, 'count': 114266670, 'scaling_factor': 1}}), (2.619713410155268, {'nlcpl': {'loss': 2.619713410155268, 'count': 114266670, 'scaling_factor': 1}}), (2.618862843161084, {'nlcpl': {'loss': 2.618862843161084, 'count': 114266670, 'scaling_factor': 1}}), (2.6176166958029907, {'nlcpl': {'loss': 2.6176166958029907, 'count': 114266670, 'scaling_factor': 1}}), (2.6146591061854774, {'nlcpl': {'loss': 2.6146591061854774, 'count': 114266670, 'scaling_factor': 1}}), (2.6128829245148593, {'nlcpl': {'loss': 2.6128829245148593, 'count': 114266670, 'scaling_factor': 1}}), (2.612428027669971, {'nlcpl': {'loss': 2.612428027669971, 'count': 114266670, 'scaling_factor': 1}}), (2.6103929691411216, {'nlcpl': {'loss': 2.6103929691411216, 'count': 114266670, 'scaling_factor': 1}}), (2.610492451757103, {'nlcpl': {'loss': 2.610492451757103, 'count': 114266670, 'scaling_factor': 1}}), (2.607340318974494, {'nlcpl': {'loss': 2.607340318974494, 'count': 114266670, 'scaling_factor': 1}})], 'val_loss': [(4.506743013202408, {'nlcpl': {'loss': 4.506743013202408, 'count': 3070578, 'scaling_factor': 1}}), (3.9287334328925763, {'nlcpl': {'loss': 3.9287334328925763, 'count': 3070578, 'scaling_factor': 1}}), (3.7886656262359812, {'nlcpl': {'loss': 3.7886656262359812, 'count': 3070578, 'scaling_factor': 1}}), (3.6698231939302035, {'nlcpl': {'loss': 3.6698231939302035, 'count': 3070578, 'scaling_factor': 1}}), (3.5866222229351754, {'nlcpl': {'loss': 3.5866222229351754, 'count': 3070578, 'scaling_factor': 1}}), (3.5476041715129485, {'nlcpl': {'loss': 3.5476041715129485, 'count': 3070578, 'scaling_factor': 1}}), (3.491919636188214, {'nlcpl': {'loss': 3.491919636188214, 'count': 3070578, 'scaling_factor': 1}}), (3.482642406464002, {'nlcpl': {'loss': 3.482642406464002, 'count': 3070578, 'scaling_factor': 1}}), (3.441893798149235, {'nlcpl': {'loss': 3.441893798149235, 'count': 3070578, 'scaling_factor': 1}}), (3.4305015079485286, {'nlcpl': {'loss': 3.4305015079485286, 'count': 3070578, 'scaling_factor': 1}}), (3.4008850715281085, {'nlcpl': {'loss': 3.4008850715281085, 'count': 3070578, 'scaling_factor': 1}}), (3.417476067522134, {'nlcpl': {'loss': 3.417476067522134, 'count': 3070578, 'scaling_factor': 1}}), (3.390059166150401, {'nlcpl': {'loss': 3.390059166150401, 'count': 3070578, 'scaling_factor': 1}}), (3.3722760932966263, {'nlcpl': {'loss': 3.3722760932966263, 'count': 3070578, 'scaling_factor': 1}}), (3.374897791088664, {'nlcpl': {'loss': 3.374897791088664, 'count': 3070578, 'scaling_factor': 1}}), (3.353403174607634, {'nlcpl': {'loss': 3.353403174607634, 'count': 3070578, 'scaling_factor': 1}}), (3.3441992935367217, {'nlcpl': {'loss': 3.3441992935367217, 'count': 3070578, 'scaling_factor': 1}}), (3.3528480166039327, {'nlcpl': {'loss': 3.3528480166039327, 'count': 3070578, 'scaling_factor': 1}}), (3.3648666141233172, {'nlcpl': {'loss': 3.3648666141233172, 'count': 3070578, 'scaling_factor': 1}}), (3.34143072970293, {'nlcpl': {'loss': 3.34143072970293, 'count': 3070578, 'scaling_factor': 1}}), (3.331651038906333, {'nlcpl': {'loss': 3.331651038906333, 'count': 3070578, 'scaling_factor': 1}}), (3.314635857243087, {'nlcpl': {'loss': 3.314635857243087, 'count': 3070578, 'scaling_factor': 1}}), (3.332863781124595, {'nlcpl': {'loss': 3.332863781124595, 'count': 3070578, 'scaling_factor': 1}}), (3.308450773293889, {'nlcpl': {'loss': 3.308450773293889, 'count': 3070578, 'scaling_factor': 1}}), (3.334669374862985, {'nlcpl': {'loss': 3.334669374862985, 'count': 3070578, 'scaling_factor': 1}}), (3.3279374262713795, {'nlcpl': {'loss': 3.3279374262713795, 'count': 3070578, 'scaling_factor': 1}}), (3.336630603793399, {'nlcpl': {'loss': 3.336630603793399, 'count': 3070578, 'scaling_factor': 1}}), (3.307758083987007, {'nlcpl': {'loss': 3.307758083987007, 'count': 3070578, 'scaling_factor': 1}}), (3.3086275211376464, {'nlcpl': {'loss': 3.3086275211376464, 'count': 3070578, 'scaling_factor': 1}}), (3.3005124756639628, {'nlcpl': {'loss': 3.3005124756639628, 'count': 3070578, 'scaling_factor': 1}}), (3.3006190230528403, {'nlcpl': {'loss': 3.3006190230528403, 'count': 3070578, 'scaling_factor': 1}}), (3.318657887161878, {'nlcpl': {'loss': 3.318657887161878, 'count': 3070578, 'scaling_factor': 1}}), (3.298570272561831, {'nlcpl': {'loss': 3.298570272561831, 'count': 3070578, 'scaling_factor': 1}}), (3.295555013686942, {'nlcpl': {'loss': 3.295555013686942, 'count': 3070578, 'scaling_factor': 1}}), (3.299277685707751, {'nlcpl': {'loss': 3.299277685707751, 'count': 3070578, 'scaling_factor': 1}}), (3.2989065818842813, {'nlcpl': {'loss': 3.2989065818842813, 'count': 3070578, 'scaling_factor': 1}}), (3.3056364536636673, {'nlcpl': {'loss': 3.3056364536636673, 'count': 3070578, 'scaling_factor': 1}}), (3.2979590766379148, {'nlcpl': {'loss': 3.2979590766379148, 'count': 3070578, 'scaling_factor': 1}}), (3.3020245290712693, {'nlcpl': {'loss': 3.3020245290712693, 'count': 3070578, 'scaling_factor': 1}}), (3.2936237415042715, {'nlcpl': {'loss': 3.2936237415042715, 'count': 3070578, 'scaling_factor': 1}}), (3.3079255471055533, {'nlcpl': {'loss': 3.3079255471055533, 'count': 3070578, 'scaling_factor': 1}}), (3.290981234294246, {'nlcpl': {'loss': 3.290981234294246, 'count': 3070578, 'scaling_factor': 1}}), (3.3007437968859374, {'nlcpl': {'loss': 3.3007437968859374, 'count': 3070578, 'scaling_factor': 1}}), (3.3005715941741522, {'nlcpl': {'loss': 3.3005715941741522, 'count': 3070578, 'scaling_factor': 1}}), (3.2923294603886544, {'nlcpl': {'loss': 3.2923294603886544, 'count': 3070578, 'scaling_factor': 1}}), (3.289004904853976, {'nlcpl': {'loss': 3.289004904853976, 'count': 3070578, 'scaling_factor': 1}}), (3.3012353109355526, {'nlcpl': {'loss': 3.3012353109355526, 'count': 3070578, 'scaling_factor': 1}}), (3.2972337368904108, {'nlcpl': {'loss': 3.2972337368904108, 'count': 3070578, 'scaling_factor': 1}}), (3.3123337788210847, {'nlcpl': {'loss': 3.3123337788210847, 'count': 3070578, 'scaling_factor': 1}}), (3.292966055976112, {'nlcpl': {'loss': 3.292966055976112, 'count': 3070578, 'scaling_factor': 1}}), (3.295790743776929, {'nlcpl': {'loss': 3.295790743776929, 'count': 3070578, 'scaling_factor': 1}}), (3.300484552019946, {'nlcpl': {'loss': 3.300484552019946, 'count': 3070578, 'scaling_factor': 1}}), (3.309226023916894, {'nlcpl': {'loss': 3.309226023916894, 'count': 3070578, 'scaling_factor': 1}}), (3.290530499051532, {'nlcpl': {'loss': 3.290530499051532, 'count': 3070578, 'scaling_factor': 1}}), (3.2934960947973284, {'nlcpl': {'loss': 3.2934960947973284, 'count': 3070578, 'scaling_factor': 1}}), (3.2842867223959, {'nlcpl': {'loss': 3.2842867223959, 'count': 3070578, 'scaling_factor': 1}}), (3.297099480803971, {'nlcpl': {'loss': 3.297099480803971, 'count': 3070578, 'scaling_factor': 1}}), (3.3175789219726783, {'nlcpl': {'loss': 3.3175789219726783, 'count': 3070578, 'scaling_factor': 1}}), (3.2913014737975743, {'nlcpl': {'loss': 3.2913014737975743, 'count': 3070578, 'scaling_factor': 1}}), (3.312238348972379, {'nlcpl': {'loss': 3.312238348972379, 'count': 3070578, 'scaling_factor': 1}}), (3.2992275653361287, {'nlcpl': {'loss': 3.2992275653361287, 'count': 3070578, 'scaling_factor': 1}}), (3.2966571184280635, {'nlcpl': {'loss': 3.2966571184280635, 'count': 3070578, 'scaling_factor': 1}}), (3.289577636179505, {'nlcpl': {'loss': 3.289577636179505, 'count': 3070578, 'scaling_factor': 1}}), (3.30344093298291, {'nlcpl': {'loss': 3.30344093298291, 'count': 3070578, 'scaling_factor': 1}}), (3.3121436561965036, {'nlcpl': {'loss': 3.3121436561965036, 'count': 3070578, 'scaling_factor': 1}}), (3.304027175191094, {'nlcpl': {'loss': 3.304027175191094, 'count': 3070578, 'scaling_factor': 1}}), (3.3015420353297125, {'nlcpl': {'loss': 3.3015420353297125, 'count': 3070578, 'scaling_factor': 1}}), (3.292553260098016, {'nlcpl': {'loss': 3.292553260098016, 'count': 3070578, 'scaling_factor': 1}}), (3.292998738748324, {'nlcpl': {'loss': 3.292998738748324, 'count': 3070578, 'scaling_factor': 1}}), (3.3006774452984557, {'nlcpl': {'loss': 3.3006774452984557, 'count': 3070578, 'scaling_factor': 1}}), (3.290818260968946, {'nlcpl': {'loss': 3.290818260968946, 'count': 3070578, 'scaling_factor': 1}}), (3.288974155328768, {'nlcpl': {'loss': 3.288974155328768, 'count': 3070578, 'scaling_factor': 1}}), (3.2952703006527715, {'nlcpl': {'loss': 3.2952703006527715, 'count': 3070578, 'scaling_factor': 1}}), (3.294834703945022, {'nlcpl': {'loss': 3.294834703945022, 'count': 3070578, 'scaling_factor': 1}}), (3.290435752407318, {'nlcpl': {'loss': 3.290435752407318, 'count': 3070578, 'scaling_factor': 1}}), (3.292958603441007, {'nlcpl': {'loss': 3.292958603441007, 'count': 3070578, 'scaling_factor': 1}}), (3.3070888274140335, {'nlcpl': {'loss': 3.3070888274140335, 'count': 3070578, 'scaling_factor': 1}}), (3.296859833550233, {'nlcpl': {'loss': 3.296859833550233, 'count': 3070578, 'scaling_factor': 1}}), (3.315843964039167, {'nlcpl': {'loss': 3.315843964039167, 'count': 3070578, 'scaling_factor': 1}}), (3.3052459112119514, {'nlcpl': {'loss': 3.3052459112119514, 'count': 3070578, 'scaling_factor': 1}}), (3.2807102189712345, {'nlcpl': {'loss': 3.2807102189712345, 'count': 3070578, 'scaling_factor': 1}}), (3.314099164258677, {'nlcpl': {'loss': 3.314099164258677, 'count': 3070578, 'scaling_factor': 1}}), (3.303089915586971, {'nlcpl': {'loss': 3.303089915586971, 'count': 3070578, 'scaling_factor': 1}}), (3.2872462760246774, {'nlcpl': {'loss': 3.2872462760246774, 'count': 3070578, 'scaling_factor': 1}}), (3.299487926850512, {'nlcpl': {'loss': 3.299487926850512, 'count': 3070578, 'scaling_factor': 1}}), (3.2969336549763026, {'nlcpl': {'loss': 3.2969336549763026, 'count': 3070578, 'scaling_factor': 1}}), (3.3009741426863006, {'nlcpl': {'loss': 3.3009741426863006, 'count': 3070578, 'scaling_factor': 1}}), (3.2949091793615306, {'nlcpl': {'loss': 3.2949091793615306, 'count': 3070578, 'scaling_factor': 1}}), (3.2950188989613705, {'nlcpl': {'loss': 3.2950188989613705, 'count': 3070578, 'scaling_factor': 1}}), (3.3033484902106016, {'nlcpl': {'loss': 3.3033484902106016, 'count': 3070578, 'scaling_factor': 1}}), (3.305301952273342, {'nlcpl': {'loss': 3.305301952273342, 'count': 3070578, 'scaling_factor': 1}}), (3.318905710591938, {'nlcpl': {'loss': 3.318905710591938, 'count': 3070578, 'scaling_factor': 1}}), (3.2961627406353973, {'nlcpl': {'loss': 3.2961627406353973, 'count': 3070578, 'scaling_factor': 1}}), (3.305765532587777, {'nlcpl': {'loss': 3.305765532587777, 'count': 3070578, 'scaling_factor': 1}}), (3.3043754933087133, {'nlcpl': {'loss': 3.3043754933087133, 'count': 3070578, 'scaling_factor': 1}}), (3.301792581265898, {'nlcpl': {'loss': 3.301792581265898, 'count': 3070578, 'scaling_factor': 1}}), (3.312697755471028, {'nlcpl': {'loss': 3.312697755471028, 'count': 3070578, 'scaling_factor': 1}}), (3.301799874294603, {'nlcpl': {'loss': 3.301799874294603, 'count': 3070578, 'scaling_factor': 1}}), (3.3219556787845756, {'nlcpl': {'loss': 3.3219556787845756, 'count': 3070578, 'scaling_factor': 1}}), (3.3184156985723883, {'nlcpl': {'loss': 3.3184156985723883, 'count': 3070578, 'scaling_factor': 1}})]}
+test loss 3.134866755968043 test loss dict {'nlcpl': {'loss': 3.134866755968043, 'count': 5266197, 'scaling_factor': 1}}

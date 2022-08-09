@@ -47,6 +47,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     dev = args.dev
+    if torch.cuda.device_count() == 0:
+        dev = "cpu"
+
     if args.subset:
         test_ids = []
         with open(os.path.join(args.subset), 'r') as f:

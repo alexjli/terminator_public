@@ -46,12 +46,13 @@ AA_to_int = {
 AA_to_int = {key: val - 1 for key, val in AA_to_int.items()}
 
 int_to_AA = {y: x for x, y in AA_to_int.items() if len(x) == 1}
-"""
-Given a string of one-letter encoded AAs, return its corresponding integer encoding
-"""
 
+int_to_3lt_AA = {y: x for x, y in AA_to_int.items() if len(x) == 3}
 
 def seq_to_ints(sequence):
+    """
+    Given a string of one-letter encoded AAs, return its corresponding integer encoding
+    """
     return [AA_to_int[residue] for residue in sequence]
 
 
