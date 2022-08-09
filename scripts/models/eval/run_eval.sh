@@ -5,9 +5,8 @@
 #SBATCH --mem=50G
 #SBATCH -o OUTPUTDIR/eval-output.out
 #SBATCH -e OUTPUTDIR/eval-error.out
-#SBATCH -p normal
 
-CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2019b/
+CONDA_ROOT=/state/partition1/llgrid/pkg/anaconda/anaconda3-2022b/
 source ${CONDA_ROOT}/etc/profile.d/conda.sh
 conda activate terminator-nightly
 ulimit -s unlimited

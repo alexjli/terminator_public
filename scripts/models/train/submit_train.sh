@@ -55,7 +55,7 @@ sed \
   -e "s|TRAIN|${TRAIN}|g" \
   -e "s|VALIDATION|${VALIDATION}|g" \
   -e "s|TEST|${TEST}|g" \
-  <run_train.sh \
+  <run_train_gpu.sh \
   >bash_files/run_${DATANAME}_${RUNNAME}_run0.sh
 jid0=$(sbatch --parsable bash_files/run_${DATANAME}_${RUNNAME}_run0.sh)
 echo $jid0
