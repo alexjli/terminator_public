@@ -1,0 +1,1 @@
+{"train_batch_size": null, "shuffle": false, "semi_shuffle": true, "sort_data": false, "term_matches_cutoff": null, "regularization": 0, "max_term_res": 55000, "max_seq_tokens": null, "term_dropout": null, "loss_config": {"nlcpl": 1}, "finetune": false}
