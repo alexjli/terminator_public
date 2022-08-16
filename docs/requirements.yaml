@@ -1,10 +1,12 @@
 name: docs
 channels:
+  - defaults
+  - conda-forge
+  - pytorch
+  - pyg
 dependencies:
     # Base depends
-  - python
-  - pip
-  - pytorch
+  - pytorch=1.10.1
   - numpy
   - pandas
   - pytest
@@ -13,7 +15,11 @@ dependencies:
   - tqdm
   - seaborn
   - matplotlib
+  - pylint
+  - pytest-pylint
+  - yapf
+  - pyg
+
 
     # Pip-only installs
   #- pip:
-
