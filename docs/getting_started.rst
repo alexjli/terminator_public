@@ -132,6 +132,18 @@ Although these two steps are run automatically, oftentimes certain dTERMen jobs 
 Run the above step again if you see no :code:`summary_results.csv` in the output directory or it's empty,
 and it will resubmit all dTERMen jobs that didn't complete.
 
+Redesign using Complexity-based Penalty
+#######################################
+If you have a low-complexity sequence, you may want to redesign it with our complexity-based penalty. To do that, use run
+
+.. code-block::
+
+  bash design_complex_penalt.sh \
+      <input_etab> \
+      <output_file_path>
+
+which will run MCMC optimization with our complexity-based penalty.
+
 Other Potentially Useful Scripts
 ================================
 To convert dTERMen etabs to numpy etabs, run
