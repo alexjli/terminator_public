@@ -135,7 +135,7 @@ python scripts/data/postprocessing/batch_arr_dTERMen.py \
     --batch_size=48
 ```
 
-`batch_size` specifies how many dTERMen runs each job in the job array will run in parallel. Each job in the job array should take 5-10 minutes.
+`batch_size` specifies how many dTERMen runs each job in the job array will run in parallel. Each job in the job array should take 5-10 minutes, but could take longer depending on protein size.
 The resultant files are also dumped in `<output_dir>/etabs/`.
 
 After the previous step completes, a summarization script should also automatically run.

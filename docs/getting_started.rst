@@ -12,13 +12,13 @@ Setup
 Setup the proper conda environment using the :code:`env.yaml` file (e.g. :code:`conda env create -f env.yaml`).
 This will create a conda env called :code:`terminator`, which can be activated using :code:`conda activate terminator`.
 
-Next, run :code:`python setup.py install`, which will install the TERMinator software suite as an importable module :code:`terminator` in the environment.
+Next, run :code:`pip install -e .`, which will install the TERMinator software suite as an importable module :code:`terminator` in the environment.
 
 Additionally, you'll need to modify :code:`scripts/config.sh` specifying the path to your MST installation (e.g. :code:`~/MST_workspace/MST`).
 This is necessary for using :code:`MST/bin/design`.
 
-Feature Generation
-==================
+TERMinator Feature Generation
+==============================
 First, you'll need a folder that of dTERMen runs e.g. a folder of structure :code:`<dataset>/<pdb_id>/<pdb_id>.<ext>`,
 where :code:`<ext>` must include :code:`.dat` and :code:`.red.pdb` outputted from running :code:`MST/bin/design`.
 
@@ -34,36 +34,40 @@ To generate feature files from this folder, use
 
 which will create a dataset :code:`<output_features_folder>` that you can feed into TERMinator.
 
-TERMless TERMinator
-###################
-You can run TERMinator without mining TERMs! This requires a bit of extra preprocessing.
-To generate feature files from your raw data, use
+COORDinator Feature Generation
+==============================
+COORDinator preprocessing requires a bit of extra preprocessing. To generate feature files from your raw data, use
+
 
 .. code-block::
 
-  python cleanStructs.py \
+  python scripts/data/preprocessing/cleanStructs.py \
       --in_list_path <pdb_paths_file> \
       --out_folder <output_folder> \
       -n <num_processes>
 
-which will clean the PDB files listed in :code:`<pdb_paths_file>`. Be sure that <pdb_paths_file> is a file containing a list of PDB paths,
-with one path per line. The outputted :code:`<output_folder>` can then be fed into :code:`generateDataset.py` above
-with the additional flag :code:`--coords_only` to featurize these structures for TERMinator.
+which will clean the PDB files listed in `<pdb_paths_file>`. Be sure that `<pdb_paths_file>` is a file containing a list of PDB paths,
+with one path per line. The outputted `<output_folder>` can then be fed into `generateDataset.py` above
+with the additional flag `--coords_only` to featurize these structures for COORDinator.
 
-Training and evaluation TERMinator
-==================================
+Training and evaluation
+=======================
 To train a new model, run
 
 .. code-block::
 
   ./scripts/models/train/submit_train.sh \
       <dataset_dir> \
-      <hparams_path> \
-      <output_dir>
+      <model_hparams_path> \
+      <run_hparams_path> \
+      <run_dir> \
+      <output_dir> \
+      <run_wall_time>
 
-This will submit a job to train on the given dataset using TERMinator with the given hyperparameters, and place the trained model and results in the output directory.
-Note that the train script assumes you place the train, val, and test splits in :code:`<dataset_dir>/train.in`, :code:`<dataset_dir>/validation.in`, and :code:`<dataset_dir>/test.in`, respectively.
-The model will automatically evaluate on the test set and dump that into :code:`net.out` in :code:`<output_dir>`, which can be used in postprocessing.
+This will submit a job to train on the given dataset with the given hyperparameters, place the trained model and related files in the run directory, and results in the output directory. For TERMinator, use `model_hparams=hparams/model/terminator.json` and `run_hparams=hparams/run/default.json`. For COORDinator, use `model_hparams=hparams/model/coordinator.json` and `run_hparams/run/seq_batching.json`; you may also want to remove the `--lazy` option in `scripts/models/train/run_train_gpu.sh`, which can speed up training by loading the whole dataset into memory first.
+Note that the train script will assume you placed the train, val, and test splits in `<dataset_dir>/train.in`, `<dataset_dir>/validation.in`, and `<dataset_dir>/test.in`, respectively. If you need different behavior, you can directly call the `scripts/models/train/train.py` script.
+The model will automatically evaluate on the test set and dump the results into `net.out` in `<output_dir>`, which can be used in postprocessing.
+
 
 If you instead want to evaluate on a pretrained model, run
 
@@ -90,7 +94,7 @@ To perform postprocessing, run
       <output_dir>
 
 :code:`dtermen_data_root` should be the parent directory to all the dTERMen runs you've run
-(e.g. for every dtermen dataset DATA, the directory should be structured :code:`DATA/<pdb_id>/(dTERMen run files for pdb_id)`).
+(e.g. for every dtermen dataset DATA, the directory should be structured :code:`DATA/<pdb_id>/(dTERMen run files for pdb_id)`). For COORDinator, you can use the outputs of `scripts/data/preprocessing/cleanStructs.py`.
 
 :code:`pdb_root` is similar but should be the parent directory to all databases in databaseCreator format
 (e.g. for database DATA, the directory should be structured :code:`DATA/PDB/<pdb_id_mid>/<pdb_id>.pdb`).
@@ -107,10 +111,9 @@ In case you want to run this manually, this command is
       --output_dir=<output_directory_name> \
       --pdb_root=<pdb_root> \
       --dtermen_data=<dtermen_data_root> \
-      --batch_size=10
+      --batch_size=48
 
-:code:`batch_size` specifies how many dTERMen runs each job in the job array will run.
-For a batch size of 10, each job in the job array should take roughly 1-2 hours.
+`batch_size` specifies how many dTERMen runs each job in the job array will run in parallel. Each job in the job array should take 5-10 minutes, but could take longer depending on protein size.
 The resultant files are also dumped in :code:`<output_dir>/etabs/`.
 
 After the previous step completes, a summarization script should also automatically run.
