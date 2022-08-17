@@ -184,8 +184,8 @@ To compress etab files,
 
 ## Acknowledgements
 Much of this work adapts code from two source:
-- [Ingraham et. al NeurIPS 2019](https://github.com/jingraham/neurips19-graph-protein-design) Copyright (c) 2019 John Ingraham, Vikas Garg, Regina Barzilay, Tommi Jaakkola
-- [Jing et. al ICLR 2021](https://github.com/drorlab/gvp-pytorch) Copyright (c) 2020 Bowen Jing, Stephan Eismann, Pratham Soni, Patricia Suriana, Raphael Townshend, Ron Dror
+- [Ingraham et al. NeurIPS 2019](https://github.com/jingraham/neurips19-graph-protein-design) Copyright (c) 2019 John Ingraham, Vikas Garg, Regina Barzilay, Tommi Jaakkola
+- [Jing et al. ICLR 2021](https://github.com/drorlab/gvp-pytorch) Copyright (c) 2020 Bowen Jing, Stephan Eismann, Pratham Soni, Patricia Suriana, Raphael Townshend, Ron Dror
 
 ## License
 We license this work under the MIT license.
