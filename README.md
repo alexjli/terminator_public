@@ -1,7 +1,7 @@
 # TERMinator
-This repo contains code for the TERMinator neural net, a neural net inspired by dTERMen.
+This repo contains code for [Neural Network-Derived Potts Models for Structure-Based Protein Design using Backbone Atomic Coordinates and Tertiary Motifs](https://www.biorxiv.org/content/10.1101/2022.08.02.501736v1) by Alex J. Li, Mindren Lu, Israel Desta, Vikram Sundar, Gevorg Grigoryan, and Amy E. Keating.
 
-The following instructions assume you are running on SuperCloud, one of MIT's HPCC.
+The following instructions assume you are running on SuperCloud, one of MIT's HPCC systems.
 These SLURM scripts are included in the repo, and can be adapted to other HPCC systems if necessary.
 
 
