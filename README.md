@@ -6,7 +6,7 @@ These SLURM scripts are included in the repo, and can be adapted to other HPCC s
 
 
 ## Documentation
-As of now, we don't have the docs hosted anywhere, but they're pretty nice! You can build the docs and view them locally following the instructions in the `docs` folder. The "Getting Started" guide is also given below.
+Documentation will be hosted at [ReadTheDocs](https://terminator-public.readthedocs.io/en/latest/). You can also build the docs and view them locally following the instructions in the `docs` folder. The "Getting Started" guide is copied below for convenience.
 
 
 ## Requirements
