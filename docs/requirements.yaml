@@ -6,6 +6,7 @@ channels:
   - pyg
 dependencies:
     # Base depends
+  - cpuonly
   - pytorch=1.10.1
   - numpy
   - pandas
